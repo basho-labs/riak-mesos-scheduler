@@ -10,3 +10,4 @@ rel/riak_mesos
 .concrete/DEV_MODE
 .rebar
 .vagrant
+log/
