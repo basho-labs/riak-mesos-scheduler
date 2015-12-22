@@ -28,6 +28,7 @@
          registered/3,
          reregistered/2,
          disconnected/2,
+         status_update/3,
          resource_offers/3,
          offer_rescinded/3,
          error/3,
@@ -57,8 +58,39 @@ reregistered(_SchedulerInfo, State) ->
     lager:info("reregistered", []),
     {ok, State#state{callback = reregistered}}.
 
-resource_offers(_SchedulerInfo, EventOffers,State) ->
-    lager:info("~p", [EventOffers]),
+status_update(_SchedulerInfo, StatusUpdates,State) ->
+    lager:info("~p", [StatusUpdates]),
+    {ok, State#state{callback = status_update}}.
+
+resource_offers(SchedulerInfo, #event_offers{offers = Offers}, State) ->
+    lager:info("~p", [Offers]),
+    [#offer{id = OfferId,
+            agent_id = #agent_id{value = AgentIdValue}} | _] = Offers,
+
+    AgentIdObj = erl_mesos_obj:new([{<<"value">>, AgentIdValue}]),
+    TaskIdObj = erl_mesos_obj:new([{<<"value">>, <<"2">>}]),
+%%    CommandInfoUriObj = erl_mesos_obj:new([{<<"value">>, <<"test-executor">>}]),
+%%    CommandInfoObj = erl_mesos_obj:new([{<<"uris">>, [CommandInfoUriObj]},
+%%                                        {<<"shell">>, false}]),
+    CommandValue = <<"while true; do echo 'Test task is running...'; sleep 1; done">>,
+    CommandInfoObj = erl_mesos_obj:new([{<<"shell">>, true},
+                                        {<<"value">>, CommandValue}]),
+    CpuScalarObj = erl_mesos_obj:new([{<<"value">>, 0.1}]),
+    ResourceCpuObj = erl_mesos_obj:new([{<<"name">>, <<"cpus">>},
+                                        {<<"type">>, <<"SCALAR">>},
+                                        {<<"scalar">>, CpuScalarObj}]),
+    TaskInfoObj = erl_mesos_obj:new([{<<"name">>, <<"TEST TASK">>},
+                                     {<<"task_id">>, TaskIdObj},
+                                     {<<"agent_id">>, AgentIdObj},
+                                     {<<"command">>, CommandInfoObj},
+                                     {<<"resources">>, [ResourceCpuObj]}]),
+    Launch = #offer_operation_launch{task_infos = [TaskInfoObj]},
+    OfferOperation = #offer_operation{type = <<"LAUNCH">>,
+                                      launch = Launch},
+    CallAccept = #call_accept{offer_ids = [OfferId],
+                              operations = [OfferOperation]},
+    Result = erl_mesos_scheduler:accept(SchedulerInfo, CallAccept),
+    lager:info("Result ~p", [Result]),
     {ok, State#state{callback = resource_offers}}.
 
 offer_rescinded(_SchedulerInfo, EventRescind, State) ->

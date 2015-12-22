@@ -70,7 +70,7 @@ content_types_accepted(RD, Ctx) ->
     {Types, RD, Ctx}.
 
 resource_exists(RD, Ctx) ->
-    case riak_mesos_server:get_status() of
+    case riak_mesos_event_coordinator:get_status() of
         {error, _Reason} ->
             {false, RD, Ctx};
         Response ->
@@ -84,7 +84,7 @@ accept_content(RD, Ctx) ->
     RawValue = wrq:req_body(RD),
     case mochijson2:decode(RawValue) of
         {struct, [{<<"status">>, Status}]} ->
-            riak_mesos_server:set_status([{status, Status}]),
+            riak_mesos_event_coordinator:set_status([{status, Status}]),
             {true, RD, Ctx#ctx{response=undefined}};
         _ ->
             {false, RD, Ctx#ctx{response=undefined}}

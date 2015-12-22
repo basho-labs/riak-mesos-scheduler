@@ -18,7 +18,7 @@
 %%
 %% -------------------------------------------------------------------
 
--module(riak_mesos_server).
+-module(riak_mesos_event_coordinator).
 -behaviour(gen_server).
 
 -export([start_link/1]).
@@ -73,7 +73,7 @@ code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 terminate(Reason, _State) ->
-    lager:error("riak_mesos_server terminated, reason: ~p", [Reason]),
+    lager:error("riak_mesos_event_coordinator terminated, reason: ~p", [Reason]),
     ok.
 
 %%%===================================================================

@@ -53,11 +53,11 @@ load_schema() ->
     end.
 
 status(_Command, [], []) ->
-    JSON = riak_mesos_server:get_status(),
+    JSON = riak_mesos_event_coordinator:get_status(),
     [clique_status:text(mochijson2:encode(JSON))];
 status(_Command, [], [{status, Status}]) ->
-    riak_mesos_server:set_status([{status, list_to_binary(Status)}]),
-    JSON = riak_mesos_server:get_status(),
+    riak_mesos_event_coordinator:set_status([{status, list_to_binary(Status)}]),
+    JSON = riak_mesos_event_coordinator:get_status(),
     [clique_status:text(mochijson2:encode(JSON))].
 
 
