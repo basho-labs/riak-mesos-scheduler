@@ -11,7 +11,8 @@
                   inets,
                   crypto,
                   lager,
-                  clique
+                  clique,
+                  erl_mesos
                  ]},
   {mod, { riak_mesos_scheduler_app, []}},
   {env, []}
