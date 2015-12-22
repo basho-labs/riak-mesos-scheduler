@@ -40,16 +40,18 @@ init([]) ->
     %%Ip = riak_mesos_config:get_value(ip, "0.0.0.0"),
     %%Port = riak_mesos_config:get_value(port, 9090, integer), %% TODO: Will need to get this dynamically... somehow
     %%WebConfig = riak_mesos_wm_util:dispatch(Ip, Port),
-    %%Master = riak_mesos_config:get_value(master, <<"master.mesos:5050">>, binary), %% TODO: need to turn this into a list if it contains commas
 
-    %%Ref = {riak_mesos, scheduler},
-    %%Scheduler = riak_mesos_scheduler,
-    %%SchedulerOptions = [],
-    %%Options = [{master_hosts, [Master]}],
+    %% TODO: need to turn this into a list if it contains commas
+    Master = riak_mesos_scheduler_config:get_value(master, <<"localhost:5050">>, binary),
 
-    %%SCHEDULER = {riak_mesos_scheduler,
-        %%{erl_mesos, start_scheduler, [Ref, Scheduler, SchedulerOptions, Options]},
-        %%permanent, 5000, worker, [riak_mesos_scheduler]},
+    Ref = {riak_mesos, scheduler},
+    Scheduler = riak_mesos_scheduler,
+    SchedulerOptions = [],
+    Options = [{master_hosts, [Master]}],
+
+    SchedulerSpec = {riak_mesos_scheduler,
+                     {erl_mesos, start_scheduler, [Ref, Scheduler, SchedulerOptions, Options]},
+                     permanent, 5000, worker, [riak_mesos_scheduler]},
     %%SERVER = {riak_mesos_server,
           %%{riak_mesos_server, start_link, [[]]},
           %%permanent, 5000, worker, [riak_mesos_server]},
@@ -57,6 +59,6 @@ init([]) ->
            %%{webmachine_mochiweb, start, [WebConfig]},
            %%permanent, 5000, worker, [mochiweb_socket_server]},
     %%Processes = [SCHEDULER, SERVER, WEB],
-    Processes = [],
+    Processes = [SchedulerSpec],
 
     {ok, { {one_for_one, 10, 10}, Processes} }.
