@@ -79,11 +79,11 @@ resource_offers(SchedulerInfo, #event_offers{offers = Offers},
     ok = erl_mesos_scheduler:accept(SchedulerInfo, CallAccept),
     {ok, State#state{offer_mode = accept}};
 resource_offers(SchedulerInfo, #event_offers{offers = Offers} = EventOffers,
-                State=#state{offer_mode=accept}) ->
+                State=#state{offer_mode=accept, task_ids=TaskIds}) ->
     lager:info("Resource Offers: ~p", [EventOffers]),
     lager:info("Offer mode: ~p", [State#state.offer_mode]),
 
-    HandleOfferFun = fun(#offer{id = OfferId, agent_id = AgentId}, {OfferIds, Operations, OfferNum}) ->
+    HandleOfferFun = fun(#offer{id = OfferId, agent_id = AgentId}, {OfferIds, Operations, TaskIdValues, OfferNum}) ->
         TaskIdValue = list_to_binary(binary_to_list(AgentId#agent_id.value) ++ "-" ++ integer_to_list(OfferNum)),
         TaskId = #task_id{value = TaskIdValue},
 
@@ -102,10 +102,10 @@ resource_offers(SchedulerInfo, #event_offers{offers = Offers} = EventOffers,
         Launch = #offer_operation_launch{task_infos = [TaskInfo]},
         OfferOperation = #offer_operation{type = <<"LAUNCH">>,
                                           launch = Launch},
-        {[OfferId|OfferIds], [OfferOperation|Operations], OfferNum + 1}
+        {[OfferId|OfferIds], [OfferOperation|Operations], [TaskIdValue|TaskIdValues], OfferNum + 1}
     end,
 
-    {OfferIds, Operations, _} = lists:foldl(HandleOfferFun, {[],[], 1}, Offers),
+    {OfferIds, Operations, TaskIdValues, _} = lists:foldl(HandleOfferFun, {[],[],[],1}, Offers),
     CallAccept = #call_accept{offer_ids = OfferIds,
                               operations = Operations},
 
@@ -114,7 +114,7 @@ resource_offers(SchedulerInfo, #event_offers{offers = Offers} = EventOffers,
     ok = erl_mesos_scheduler:accept(SchedulerInfo, CallAccept),
     %% TODO: Manually returing to decline mode for now, but needs to be based on
     %% whether or not we have nodes to launch eventually.
-    {ok, State#state{offer_mode = decline}};
+    {ok, State#state{offer_mode = decline, task_ids = TaskIdValues ++ TaskIds}};
 resource_offers(SchedulerInfo, #event_offers{offers = Offers},
                 State=#state{offer_mode=decline}) ->
     lager:info("Resource Offers: Offer mode: ~p", [State#state.offer_mode]),
