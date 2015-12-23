@@ -12,6 +12,7 @@
                   crypto,
                   lager,
                   clique,
+                  webmachine,
                   erl_mesos
                  ]},
   {mod, { riak_mesos_scheduler_app, []}},
