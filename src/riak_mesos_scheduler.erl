@@ -37,7 +37,9 @@
          handle_info/3,
          terminate/3]).
 
--record(state, {offer_mode = accept :: accept | reconcile | decline}).
+-record(state, {
+    offer_mode = reconcile :: accept | reconcile | decline,
+    task_ids = [] :: [binary()]}).
 
 %%%===================================================================
 %%% Callbacks
@@ -67,9 +69,9 @@ resource_offers(SchedulerInfo, #event_offers{offers = Offers},
                 State=#state{offer_mode=reconcile}) ->
     lager:info("Resource Offers: Offer mode: ~p", [State#state.offer_mode]),
     %% Reconcile
-    TaskId = #task_id{value = <<"3">>},
-    CallReconcileTask = #call_reconcile_task{task_id = TaskId},
-    CallReconcile = #call_reconcile{tasks = [CallReconcileTask]},
+    CallReconcileTasks = lists:map(fun(TaskIdValue) ->
+        #task_id{value = TaskIdValue} end, State#state.task_ids),
+    CallReconcile = #call_reconcile{tasks = CallReconcileTasks},
     ok = erl_mesos_scheduler:reconcile(SchedulerInfo, CallReconcile),
     %% Decline this offer
     OfferIds = lists:map(fun(#offer{id = OfferId}) -> OfferId end, Offers),
