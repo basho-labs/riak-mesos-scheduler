@@ -22,5 +22,5 @@ rel: relclean deps compile
 relclean:
 	rm -rf rel/riak_mesos
 stage: rel
-	$(foreach dep,$(wildcard deps/*), rm -rf rel/riak_mesos/lib/$(shell basename $(dep))-* && ln -sf $(abspath $(dep)) rel/riak_mesos/lib;)
-	$(foreach app,$(wildcard apps/*), rm -rf rel/riak_mesos/lib/$(shell basename $(app))-* && ln -sf $(abspath $(app)) rel/riak_mesos/lib;)
+	$(foreach dep,$(wildcard deps/*), rm -rf rel/riak_mesos_scheduler/lib/$(shell basename $(dep))-* && ln -sf $(abspath $(dep)) rel/riak_mesos_scheduler/lib;)
+	$(foreach app,$(wildcard apps/*), rm -rf rel/riak_mesos_scheduler/lib/$(shell basename $(app))-* && ln -sf $(abspath $(app)) rel/riak_mesos_scheduler/lib;)

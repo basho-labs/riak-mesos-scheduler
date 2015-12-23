@@ -30,11 +30,16 @@
          disconnected/2,
          resource_offers/3,
          offer_rescinded/3,
+         status_update/3,
+         slave_lost/3,
+         executor_lost/3,
          error/3,
          handle_info/3,
          terminate/3]).
 
--record(state, {callback}).
+-record(state, {
+    offer_mode = reconcile :: accept | reconcile | decline,
+    task_ids = [] :: [binary()]}).
 
 %%%===================================================================
 %%% Callbacks
@@ -42,42 +47,111 @@
 
 init(Options) ->
     FrameworkInfo = framework_info(),
-    lager:info("~n~p~n~p", [Options, FrameworkInfo]),
-    {ok, FrameworkInfo, true, #state{callback = init}}.
+    lager:info("Options: ~p", [Options]),
+    lager:info("FrameworkInfo: ~p", [FrameworkInfo]),
+    %% We should always start up in reconcile mode to ensure that
+    %% we have the latest update information before acting on offers.
+    {ok, FrameworkInfo, true, #state{offer_mode = reconcile}}.
 
-registered(_SchedulerInfo, EventSubscribed, State) ->
-    lager:info("~p", [EventSubscribed]),
-    {ok, State#state{callback = registered}}.
+registered(_SchedulerInfo, #event_subscribed{} = EventSubscribed, State) ->
+    lager:info("Registered: ~p", [EventSubscribed]),
+    {ok, State}.
 
-disconnected(_SchedulerInfo, State) ->
-    lager:info("disconnected", []),
-    {ok, State#state{callback = disconnected}}.
+reregistered(SchedulerInfo, State) ->
+    lager:info("Reregistered: ~p", [SchedulerInfo]),
+    {ok, State}.
 
-reregistered(_SchedulerInfo, State) ->
-    lager:info("reregistered", []),
-    {ok, State#state{callback = reregistered}}.
+disconnected(SchedulerInfo, State) ->
+    lager:warning("Disconnected: ~p", [SchedulerInfo]),
+    {ok, State}.
 
-resource_offers(_SchedulerInfo, EventOffers,State) ->
-    lager:info("~p", [EventOffers]),
-    {ok, State#state{callback = resource_offers}}.
+resource_offers(SchedulerInfo, #event_offers{offers = Offers},
+                State=#state{offer_mode=reconcile}) ->
+    lager:info("Resource Offers: Offer mode: ~p", [State#state.offer_mode]),
+    %% Reconcile
+    CallReconcileTasks = lists:map(fun(TaskIdValue) ->
+        #task_id{value = TaskIdValue} end, State#state.task_ids),
+    CallReconcile = #call_reconcile{tasks = CallReconcileTasks},
+    ok = erl_mesos_scheduler:reconcile(SchedulerInfo, CallReconcile),
+    %% Decline this offer
+    OfferIds = lists:map(fun(#offer{id = OfferId}) -> OfferId end, Offers),
+    CallAccept = #call_accept{offer_ids = OfferIds, operations = []},
+    ok = erl_mesos_scheduler:accept(SchedulerInfo, CallAccept),
+    {ok, State#state{offer_mode = accept}};
+resource_offers(SchedulerInfo, #event_offers{offers = Offers} = EventOffers,
+                State=#state{offer_mode=accept, task_ids=TaskIds}) ->
+    lager:info("Resource Offers: ~p", [EventOffers]),
+    lager:info("Offer mode: ~p", [State#state.offer_mode]),
 
-offer_rescinded(_SchedulerInfo, EventRescind, State) ->
-    lager:info("~p", [EventRescind]),
-    {ok, State#state{callback = offer_rescinded}}.
+    HandleOfferFun = fun(#offer{id = OfferId, agent_id = AgentId}, {OfferIds, Operations, TaskIdValues, OfferNum}) ->
+        TaskIdValue = list_to_binary(binary_to_list(AgentId#agent_id.value) ++ "-" ++ integer_to_list(OfferNum)),
+        TaskId = #task_id{value = TaskIdValue},
 
-error(_SchedulerInfo, EventError, State) ->
-    lager:error("~p", [EventError]),
-    {stop, State#state{callback = error}}.
+        CommandValue = <<"while true; do echo 'Test task is running...'; sleep 1; done">>,
+        CommandInfo = #command_info{shell = true,
+                                    value = CommandValue},
+        CpuScalarValue = #value_scalar{value = 0.1},
+        ResourceCpu = #resource{name = <<"cpus">>,
+                                type = <<"SCALAR">>,
+                                scalar = CpuScalarValue},
+        TaskInfo = #task_info{name = <<"test_task">>,
+                              task_id = TaskId,
+                              agent_id = AgentId,
+                              command = CommandInfo,
+                              resources = [ResourceCpu]},
+        Launch = #offer_operation_launch{task_infos = [TaskInfo]},
+        OfferOperation = #offer_operation{type = <<"LAUNCH">>,
+                                          launch = Launch},
+        {[OfferId|OfferIds], [OfferOperation|Operations], [TaskIdValue|TaskIdValues], OfferNum + 1}
+    end,
 
-handle_info(_SchedulerInfo, stop, State) ->
-    lager:info("stopped", []),
+    {OfferIds, Operations, TaskIdValues, _} = lists:foldl(HandleOfferFun, {[],[],[],1}, Offers),
+    CallAccept = #call_accept{offer_ids = OfferIds,
+                              operations = Operations},
+
+    lager:info("Call Accept: ~p", [CallAccept]),
+
+    ok = erl_mesos_scheduler:accept(SchedulerInfo, CallAccept),
+    %% TODO: Manually returing to decline mode for now, but needs to be based on
+    %% whether or not we have nodes to launch eventually.
+    {ok, State#state{offer_mode = decline, task_ids = TaskIdValues ++ TaskIds}};
+resource_offers(SchedulerInfo, #event_offers{offers = Offers},
+                State=#state{offer_mode=decline}) ->
+    lager:info("Resource Offers: Offer mode: ~p", [State#state.offer_mode]),
+    OfferIds = lists:map(fun(#offer{id = OfferId}) -> OfferId end, Offers),
+    CallAccept = #call_accept{offer_ids = OfferIds, operations = []},
+    ok = erl_mesos_scheduler:accept(SchedulerInfo, CallAccept),
+    {ok, State}.
+
+offer_rescinded(_SchedulerInfo, #event_rescind{} = EventRescind, State) ->
+    lager:info("Offer Rescinded: ~p", [EventRescind]),
+    {ok, State}.
+
+status_update(_SchedulerInfo, #event_update{} = EventUpdate, State) ->
+    lager:info("Status Update: ~p", [EventUpdate]),
+    {ok, State}.
+
+slave_lost(_SchedulerInfo, #event_failure{} = EventFailure, State) ->
+    lager:info("Slave Lost: ~p", [EventFailure]),
+    {ok, State}.
+
+executor_lost(_SchedulerInfo, #event_failure{} = EventFailure, State) ->
+    lager:info("Executor Lost: ~p", [EventFailure]),
+    {ok, State}.
+
+error(_SchedulerInfo, #event_error{} = EventError, State) ->
+    lager:info("Error: ~p", [EventError]),
+    {stop, State}.
+
+handle_info(SchedulerInfo, stop, State) ->
+    lager:info("Handle Info: Stop: ~p", [SchedulerInfo]),
     {stop, State};
 handle_info(_SchedulerInfo, Info, State) ->
-    lager:warn("~p", [Info]),
+    lager:info("Handle Info: Undefined: ~p", [Info]),
     {ok, State}.
 
 terminate(_SchedulerInfo, Reason, _State) ->
-    lager:warning("~p", [Reason]),
+    lager:warning("Terminate: ~p", [Reason]),
     ok.
 
 %% ====================================================================
