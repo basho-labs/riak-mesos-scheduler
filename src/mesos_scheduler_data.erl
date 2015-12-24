@@ -42,6 +42,9 @@
 -define(CLUST_TAB, mesos_scheduler_cluster_data).
 -define(NODE_TAB, mesos_scheduler_node_data).
 
+-define(ZK_CLUSTER_NODE, "clusters").
+-define(ZK_NODE_NODE, "nodes").
+
 %% public API
 
 -spec start_link() -> {ok, pid()}.
@@ -83,8 +86,8 @@ delete_node(Key) ->
 %% gen_server implementation
 
 init(_) ->
-    ets:create_table(?CLUST_TAB, [set, private, named_table, {keypos, #cluster.key}]),
-    ets:create_table(?NODE_TAB, [set, private, named_table, {keypos, #node.key}]),
+    init_ets(),
+    load_or_init_persistent_data(),
     {ok, #state{
            }
     }.
@@ -127,6 +130,47 @@ code_change(_OldVersion, State, _Extra) ->
     {ok, State}.
 
 %% Private implementation functions
+
+init_ets() ->
+    ets:create_table(?CLUST_TAB, [set, private, named_table, {keypos, #cluster.key}]),
+    ets:create_table(?NODE_TAB, [set, private, named_table, {keypos, #node.key}]).
+
+load_or_init_persistent_data() ->
+    {ok, RootPath, _Data} = mesos_metadata_manager:get_root_node(),
+    ClusterPath = load_or_init_persistent_data(
+                    RootPath, ?ZK_CLUSTER_NODE, fun load_persistent_cluster_data/1),
+    NodePath = load_or_init_persistent_data(
+                 RootPath, ?ZK_NODE_NODE, fun load_persistent_node_data/1),
+    {ClusterPath, NodePath}.
+
+load_or_init_persistent_data(RootPath, ZooKeeperNode, LoadFunc) ->
+    %% XXX Do the metadata functions support iolists or do we need to flatten this? I forget
+    Path = [RootPath, "/", ZooKeeperNode],
+    case mesos_metadata_manager:get_children(Path) of
+        {error, no_node} ->
+            {ok, NewPath, <<>>} = mesos_metadata_manager:make_child(RootPath, ZooKeeperNode),
+            NewPath;
+        {ok, Children} ->
+            laod_persistent_data(Path, Children, LoadFunc),
+            Path
+    end.
+
+laod_persistent_data(Path, Children, LoadFunc) ->
+    %% XXX Do the metadata functions support iolists or do we need to flatten these? I forget
+    _ = [LoadFunc([Path, "/", Child]) || Child <- Children],
+    ok.
+
+load_persistent_cluster_data(ZKPath) ->
+    {ok, _Path, ClusterRecordBin} = mesos_metadata_manager:get_node(ZKPath),
+    ClusterRecord = erlang:binary_to_term(ClusterRecordBin),
+    %% TODO check against data corruption? Verify no duplicate keys? etc.
+    ets:insert(?CLUST_TAB, ClusterRecord).
+
+load_persistent_node_data(ZKPath) ->
+    {ok, _Path, NodeRecordBin} = mesos_metadata_manager:get_node(ZKPath),
+    NodeRecord = erlang:binary_to_term(NodeRecordBin),
+    %% TODO check against data corruption? Verify no duplicate keys? etc.
+    ets:insert(?NODE_TAB, NodeRecord).
 
 do_add_cluster(Key, Status, Nodes) ->
     NewCluster = #cluster{
