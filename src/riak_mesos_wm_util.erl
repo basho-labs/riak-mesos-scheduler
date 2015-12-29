@@ -21,9 +21,12 @@
 -module(riak_mesos_wm_util).
 
 -export([
+  path_part/2,
   dispatch/2,
-  build_routes/1,
-  build_routes/2]).
+  base_route/0,
+  build_routes/1, build_routes/2,
+  halt/3, halt/4, halt/5,
+  halt_json/4]).
 
 -define(RIAK_MESOS_BASE_ROUTE, "api").
 -define(RIAK_MESOS_API_VERSION, "v1").
@@ -32,9 +35,21 @@
 %%% API
 %%%===================================================================
 
+path_part(Idx, RD) ->
+    Path = wrq:path(RD),
+    Tokens = string:tokens(Path, "/"),
+    Idx1 = length(base_route()) + Idx,
+
+    case {Idx1, length(Tokens)} of
+        {I, T} when I =< T -> lists:nth(I, Tokens);
+        _ -> undefined
+    end.
+
 dispatch(Ip, Port) ->
     Resources = [
-        riak_mesos_wm_resource:dispatch()
+        riak_mesos_wm_cluster:dispatch(),
+        riak_mesos_wm_node:dispatch(),
+        riak_mesos_wm_health:dispatch()
     ],
     [
         {ip, Ip},
@@ -44,13 +59,26 @@ dispatch(Ip, Port) ->
         {dispatch, lists:flatten(Resources)}
     ].
 
+base_route() -> [?RIAK_MESOS_BASE_ROUTE, ?RIAK_MESOS_API_VERSION].
+
 build_routes(Routes) ->
     build_routes([
-        [?RIAK_MESOS_BASE_ROUTE, ?RIAK_MESOS_API_VERSION]
+        base_route()
     ], Routes, []).
 
 build_routes(Prefixes, Routes) ->
     build_routes(Prefixes, Routes, []).
+
+halt(Code, RD, Ctx) ->
+    {{halt, Code}, RD, Ctx}.
+halt(Code, Headers, RD, Ctx) ->
+    {{halt, Code}, wrq:set_resp_headers(Headers, RD), Ctx}.
+halt(Code, Headers, Data, RD, Ctx) ->
+    {{halt, Code}, wrq:set_resp_headers(Headers, wrq:set_resp_body(Data, RD)), Ctx}.
+
+halt_json(Code, Data, RD, Ctx) ->
+    halt(Code, [{<<"Content-Type">>, <<"application/json">>}],
+         mochijson2:encode(Data), RD, Ctx).
 
 %%%===================================================================
 %%% Private
