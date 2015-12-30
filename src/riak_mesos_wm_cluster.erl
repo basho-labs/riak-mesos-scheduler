@@ -19,7 +19,7 @@
 %% -------------------------------------------------------------------
 
 -module(riak_mesos_wm_cluster).
--export([routes/0, dispatch/0]).
+-export([routes/0, special_routes/0]).
 -export([init/1]).
 -export([service_available/2,
          allowed_methods/2,
@@ -54,16 +54,38 @@
 %%% API
 %%%===================================================================
 
+special_routes() ->
+    [
+        {clusters,
+            ['GET'],
+            [{"application/json", provide_content}],
+            ["clusters"]},
+        {cluster,
+            ['GET', 'PUT', 'DELETE'],
+            [{"application/json", provide_content}],
+            ["clusters", cluster]},
+        {restart,
+            ['POST'],
+            [{"application/json", provide_content}],
+            ["clusters", cluster, "restart"]},
+        {'riak.conf',
+            ['GET', 'PUT'],
+            [{"plain/text", provide_content}],
+            ["clusters", cluster, "riak.conf"]},
+        {'advanced.config',
+            ['GET', 'PUT'],
+            [{"plain/text", provide_content}],
+            ["clusters", cluster, "advanced.config"]}
+    ].
+
 routes() ->
-    riak_mesos_wm_util:build_routes([
+    [
         ["clusters"],
         ["clusters", cluster],
         ["clusters", cluster, "restart"],
         ["clusters", cluster, "riak.conf"],
         ["clusters", cluster, "advanced.config"]
-    ]).
-
-dispatch() -> lists:map(fun(Route) -> {Route, ?MODULE, []} end, routes()).
+    ].
 
 %%%===================================================================
 %%% Callbacks
@@ -73,25 +95,16 @@ init(_) ->
     {ok, #ctx{}}.
 
 service_available(RD, Ctx) ->
+    lager:info("RD: ~p", [RD]),
     {true, RD, Ctx#ctx{
         cluster = wrq:path_info(cluster, RD),
         resource = riak_mesos_wm_util:path_part(3, RD),
-        method = wrq:method(RD)
+        route = riak_mesos_wm_util:reverse_lookup_route(special_routes(), RD)
     }}.
 
-allowed_methods(RD, Ctx=?clusters()) -> {['GET'], RD, Ctx};
-allowed_methods(RD, Ctx=?config(_)) -> {['GET', 'PUT'], RD, Ctx};
-allowed_methods(RD, Ctx=?advanced(_)) -> {['GET', 'PUT'], RD, Ctx};
-allowed_methods(RD, Ctx=?restart(_)) -> {['POST'], RD, Ctx};
-allowed_methods(RD, Ctx=?createCluster(_)) -> {['PUT'], RD, Ctx};
-allowed_methods(RD, Ctx=?cluster(_)) -> {['GET', 'DELETE'], RD, Ctx}.
+allowed_methods(RD, Ctx=#ctx{route={_,Methods,_,_}}) -> {Methods, RD, Ctx}.
 
-content_types_provided(RD, Ctx=?config(_)) ->
-    {[{"plain/text", provide_content}], RD, Ctx};
-content_types_provided(RD, Ctx=?advanced(_)) ->
-    {[{"plain/text", provide_content}], RD, Ctx};
-content_types_provided(RD, Ctx) ->
-    {[{"application/json", provide_content}], RD, Ctx}.
+content_types_provided(RD, Ctx=#ctx{route={_,_,Types,_}}) -> {Types, RD, Ctx}.
 
 content_types_accepted(RD, Ctx) ->
     {[

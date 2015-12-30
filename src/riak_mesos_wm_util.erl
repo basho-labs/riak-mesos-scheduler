@@ -23,8 +23,7 @@
 -export([
   path_part/2,
   dispatch/2,
-  base_route/0,
-  build_routes/1, build_routes/2,
+  reverse_lookup_route/2,
   halt/3, halt/4, halt/5,
   halt_json/4]).
 
@@ -47,9 +46,9 @@ path_part(Idx, RD) ->
 
 dispatch(Ip, Port) ->
     Resources = [
-        riak_mesos_wm_cluster:dispatch(),
-        riak_mesos_wm_node:dispatch(),
-        riak_mesos_wm_health:dispatch()
+        dispatch_resource([base_route()], riak_mesos_wm_cluster),
+        dispatch_resource([base_route()], riak_mesos_wm_node),
+        dispatch_resource([[]], riak_mesos_wm_health)
     ],
     [
         {ip, Ip},
@@ -59,15 +58,29 @@ dispatch(Ip, Port) ->
         {dispatch, lists:flatten(Resources)}
     ].
 
-base_route() -> [?RIAK_MESOS_BASE_ROUTE, ?RIAK_MESOS_API_VERSION].
+reverse_lookup_route([], _RD) ->
+    undefined;
+reverse_lookup_route([{_, Methods, PathDef}=Route|Rest], RD) ->
+    ReqMethod = wrq:method(RD),
+    ReqPath = string:tokens(wrq:path(RD), "/"),
+    case lists:member(ReqMethod, Methods) of
+        true  ->
+            case construct_path(PathDef, RD, []) of
+                ReqPath ->
+                    Route;
+                _ ->
+                    reverse_lookup_route(Rest, RD)
+            end;
+        false ->
+            reverse_lookup_route(Rest, RD)
+    end.
 
-build_routes(Routes) ->
-    build_routes([
-        base_route()
-    ], Routes, []).
-
-build_routes(Prefixes, Routes) ->
-    build_routes(Prefixes, Routes, []).
+construct_path([], _, Accum) ->
+    lists:reverse(Accum);
+construct_path([Part|Rest], RD, Accum) when is_list(Part) ->
+    construct_path(Rest, RD, [Part|Accum]);
+construct_path([Part|Rest], RD, Accum) when is_atom(Part) ->
+    construct_path(Rest, RD, [wrq:path_info(RD, Part)|Accum]).
 
 halt(Code, RD, Ctx) ->
     {{halt, Code}, RD, Ctx}.
@@ -83,6 +96,15 @@ halt_json(Code, Data, RD, Ctx) ->
 %%%===================================================================
 %%% Private
 %%%===================================================================
+
+base_route() -> [?RIAK_MESOS_BASE_ROUTE, ?RIAK_MESOS_API_VERSION].
+
+dispatch_resource(Base, M) ->
+    Routes = build_routes(Base, M:routes()),
+    lists:map(fun(Route) -> {Route, M, []} end, Routes).
+
+build_routes(Prefixes, Routes) ->
+    build_routes(Prefixes, Routes, []).
 
 build_routes([], _, Acc) ->
     Acc;

@@ -19,7 +19,7 @@
 %% -------------------------------------------------------------------
 
 -module(riak_mesos_wm_health).
--export([routes/0, dispatch/0]).
+-export([routes/0]).
 -export([init/1]).
 -export([service_available/2,
          allowed_methods/2,
@@ -38,11 +38,9 @@
 %%%===================================================================
 
 routes() ->
-    riak_mesos_wm_util:build_routes([[]],[
+    [
         ["healthcheck"]
-    ]).
-
-dispatch() -> lists:map(fun(Route) -> {Route, ?MODULE, []} end, routes()).
+    ].
 
 %%%===================================================================
 %%% Callbacks
