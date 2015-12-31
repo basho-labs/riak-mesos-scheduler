@@ -21,7 +21,9 @@
 -module(riak_mesos_wm_resource).
 -export([
   routes/0,
-  dispatch/2,
+  dispatch/2
+]).
+-export([
   get_clusters/1,
   cluster_exists/1,
   create_cluster/1,
@@ -32,6 +34,18 @@
   set_riak_conf/1,
   advanced_config/1,
   set_advanced_config/1
+]).
+-export([
+  get_nodes/1,
+  node_exists/1,
+  node_path/1,
+  create_node/1,
+  delete_node/1,
+  get_node/1,
+  restart_node/1
+]).
+-export([
+  healthcheck/1
 ]).
 -export([init/1]).
 -export([
@@ -44,7 +58,9 @@
   delete_resource/2,
   process_post/2,
   provide_text_content/2,
-  accept_content/2]).
+  accept_content/2,
+  post_is_create/2,
+  create_path/2]).
 
 -define(api_base, "api").
 -define(api_version, "v1").
@@ -69,7 +85,9 @@
     exists = true :: {module(), atom()} | boolean(),
     content = [{success, true}] :: {module(), atom()} | nonempty_list(),
     accept :: {module(), atom()} | undefined,
-    delete :: {module(), atom()} | undefined
+    delete :: {module(), atom()} | undefined,
+    post_create = false :: boolean(),
+    post_path :: {module(), atom()} | undefined
 }).
 
 -type route() :: #route{}.
@@ -86,6 +104,7 @@
 
 routes() ->
     [
+    % Clusters
     #route{path=["clusters"],
            content={?MODULE, get_clusters}},
     #route{path=["clusters", cluster],
@@ -103,7 +122,23 @@ routes() ->
     #route{path=["clusters", cluster, "advanced.config"],
            methods=['GET', 'PUT'], exists={?MODULE, cluster_exists},
            provides=?provide_text, content={?MODULE, advanced_config},
-           accepts=?accept_text,   accept={?MODULE, set_advanced_config}}
+           accepts=?accept_text,   accept={?MODULE, set_advanced_config}},
+    % Nodes
+    #route{path=["clusters", cluster, "nodes"],
+           methods=['GET', 'POST'],
+           post_create=true, post_path={?MODULE, node_path},
+           accepts=?accept_text, accept={?MODULE, create_node},
+           content={?MODULE, get_nodes}},
+    #route{path=["clusters", cluster, "nodes", node],
+           methods=['GET', 'DELETE'], exists={?MODULE, node_exists},
+           content={?MODULE, get_node},
+           delete={?MODULE, delete_node}},
+    #route{path=["clusters", cluster, "nodes", node, "restart"],
+           methods=['POST'], exists={?MODULE, node_exists},
+           accepts=?accept_text, accept={?MODULE, restart_node}}
+    % Healthcheck
+    #route{base=[[]], path=["healthcheck"],
+           content={?MODULE, healthcheck}}
     ].
 
 dispatch(Ip, Port) ->
@@ -116,11 +151,15 @@ dispatch(Ip, Port) ->
         {dispatch, lists:flatten(Resources)}
     ].
 
+%% Clusters
+
 get_clusters(RD) -> {[{clusters, [<<"default">>]}], RD}.
 
 cluster_exists(RD) -> {true, RD}.
 
-create_cluster(RD) -> {true, RD}.
+create_cluster(RD) ->
+    Body = [{success, true}],
+    {true, wrq:append_to_response_body(mochijson2:encode(Body), RD)}.
 
 delete_cluster(RD) ->
     Body = [{success, true}],
@@ -129,12 +168,12 @@ delete_cluster(RD) ->
 get_cluster(RD) ->
     ClusterKey = list_to_binary(wrq:path_info(cluster, RD)),
     ClusterData = [{ClusterKey, [
-        {key, <<"default">>},
+        {key, ClusterKey},
         {status, active},
         {nodes, [
-            <<"default-1">>,
-            <<"default-2">>,
-            <<"default-3">>
+            list_to_binary(wrq:path_info(cluster, RD) ++ "-1"),
+            list_to_binary(wrq:path_info(cluster, RD) ++ "-2"),
+            list_to_binary(wrq:path_info(cluster, RD) ++ "-3")
         ]},
         {node_cpus, 2.0},
         {node_mem, 2048.0},
@@ -169,6 +208,58 @@ set_advanced_config(RD) ->
     Body = [{success, true}],
     {true, wrq:append_to_response_body(mochijson2:encode(Body), RD)}.
 
+%% Nodes
+
+get_nodes(RD) ->
+    ClusterKeyStr = wrq:path_info(cluster, RD),
+    Nodes = [{nodes, [
+        list_to_binary(ClusterKeyStr ++ "-1"),
+        list_to_binary(ClusterKeyStr ++ "-2"),
+        list_to_binary(ClusterKeyStr ++ "-3")
+    ]}],
+    {Nodes, RD}.
+
+node_exists(RD) ->
+    {ClusterExists, RD1} = cluster_exists(RD),
+    {ClusterExists and true, RD1}.
+
+node_path(RD) ->
+    ClusterKeyStr = wrq:path_info(cluster, RD),
+    Path = ClusterKeyStr ++ "-1",
+    {Path, RD}.
+
+create_node(RD) ->
+    Body = [{success, true}],
+    {true, wrq:append_to_response_body(mochijson2:encode(Body), RD)}.
+
+delete_node(RD) ->
+    Body = [{success, true}],
+    {true, wrq:append_to_response_body(mochijson2:encode(Body), RD)}.
+
+get_node(RD) ->
+    NodeKey = list_to_binary(wrq:path_info(node, RD)),
+    NodeData = [{NodeKey, [
+        {key, NodeKey},
+        {status, active},
+        {location, [
+            {node_name, list_to_binary(wrq:path_info(node, RD) ++ "@somehost")},
+            {hostname, <<"somehost">>},
+            {http_port, 1234},
+            {pb_port, 1235},
+            {disterl_port, 1236},
+            {slave_id, <<"some_slave_id">>}
+        ]},
+        {container_path, <<"root">>},
+        {persistence_id, <<"some_uuid">>}
+    ]}],
+    {NodeData, RD}.
+
+restart_node(RD) ->
+    Body = [{success, true}],
+    {true, wrq:append_to_response_body(mochijson2:encode(Body), RD)}.
+
+healthcheck(RD) ->
+    {[{success, true}], RD}.
 
 %%%===================================================================
 %%% Callbacks
@@ -214,9 +305,14 @@ accept_content(RD, Ctx=#ctx{route=#route{accept=undefined}}) ->
 
 process_post(RD, Ctx=#ctx{route=#route{accept={M,F}}}) ->
     {Success, RD1} = M:F(RD),
-    {Success, RD1, Ctx};
-process_post(RD, Ctx=#ctx{route=#route{accept=undefined}}) ->
-    {false, RD, Ctx}.
+    {Success, RD1, Ctx}.
+
+post_is_create(RD, Ctx=#ctx{route=#route{post_create=PostCreate}}) ->
+    {PostCreate, RD, Ctx}.
+
+create_path(RD, Ctx=#ctx{route=#route{post_path={M,F}}}) ->
+    {Path, RD1} = M:F(RD),
+    {Path, RD1, Ctx}.
 
 %% ====================================================================
 %% WM Util
@@ -243,14 +339,3 @@ build_wm_routes([], Accum) ->
     [lists:reverse(Accum)];
 build_wm_routes([#route{base=Base, path=Path}|Rest], Accum) ->
     build_wm_routes(Rest, [{Base ++ Path, ?MODULE, []}|Accum]).
-
-% halt(Code, RD, Ctx) ->
-%     {{halt, Code}, RD, Ctx}.
-% halt(Code, Headers, RD, Ctx) ->
-%     {{halt, Code}, wrq:set_resp_headers(Headers, RD), Ctx}.
-% halt(Code, Headers, Data, RD, Ctx) ->
-%     {{halt, Code}, wrq:set_resp_headers(Headers, wrq:set_resp_body(Data, RD)), Ctx}.
-%
-% halt_json(Code, Data, RD, Ctx) ->
-%     halt(Code, [{<<"Content-Type">>, <<"application/json">>}],
-%          mochijson2:encode(Data), RD, Ctx).
