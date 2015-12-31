@@ -19,56 +19,56 @@
 %% -------------------------------------------------------------------
 
 -module(riak_mesos_wm_health).
--export([routes/0]).
--export([init/1]).
--export([service_available/2,
-         allowed_methods/2,
-         content_types_provided/2,
-         content_types_accepted/2,
-         resource_exists/2,
-         provide_content/2,
-         accept_content/2]).
-
--record(ctx, {}).
-
--include_lib("webmachine/include/webmachine.hrl").
-
-%%%===================================================================
-%%% API
-%%%===================================================================
-
-routes() ->
-    [
-        ["healthcheck"]
-    ].
-
-%%%===================================================================
-%%% Callbacks
-%%%===================================================================
-
-init(_) ->
-    {ok, #ctx{}}.
-
-service_available(RD, Ctx) ->
-    {true, RD, Ctx#ctx{}}.
-
-allowed_methods(RD, Ctx) -> {['GET'], RD, Ctx}.
-
-content_types_provided(RD, Ctx) ->
-    {[{"application/json", provide_content}], RD, Ctx}.
-
-content_types_accepted(RD, Ctx) -> {[], RD, Ctx}.
-
-resource_exists(RD, Ctx) -> {true, RD, Ctx}.
-
-provide_content(RD, Ctx) ->
-    Data = healthcheck(),
-    {mochijson2:encode(Data), RD, Ctx}.
-
-accept_content(RD, Ctx) -> {false, RD, Ctx}.
-
-%% ====================================================================
-%% Private
-%% ====================================================================
-
-healthcheck() -> [{success, true}].
+% -export([routes/0]).
+% -export([init/1]).
+% -export([service_available/2,
+%          allowed_methods/2,
+%          content_types_provided/2,
+%          content_types_accepted/2,
+%          resource_exists/2,
+%          provide_content/2,
+%          accept_content/2]).
+%
+% -record(ctx, {}).
+%
+% -include_lib("webmachine/include/webmachine.hrl").
+%
+% %%%===================================================================
+% %%% API
+% %%%===================================================================
+%
+% routes() ->
+%     [
+%         ["healthcheck"]
+%     ].
+%
+% %%%===================================================================
+% %%% Callbacks
+% %%%===================================================================
+%
+% init(_) ->
+%     {ok, #ctx{}}.
+%
+% service_available(RD, Ctx) ->
+%     {true, RD, Ctx#ctx{}}.
+%
+% allowed_methods(RD, Ctx) -> {['GET'], RD, Ctx}.
+%
+% content_types_provided(RD, Ctx) ->
+%     {[{"application/json", provide_content}], RD, Ctx}.
+%
+% content_types_accepted(RD, Ctx) -> {[], RD, Ctx}.
+%
+% resource_exists(RD, Ctx) -> {true, RD, Ctx}.
+%
+% provide_content(RD, Ctx) ->
+%     Data = healthcheck(),
+%     {mochijson2:encode(Data), RD, Ctx}.
+%
+% accept_content(RD, Ctx) -> {false, RD, Ctx}.
+%
+% %% ====================================================================
+% %% Private
+% %% ====================================================================
+%
+% healthcheck() -> [{success, true}].
