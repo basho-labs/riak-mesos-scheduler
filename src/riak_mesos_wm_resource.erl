@@ -153,9 +153,11 @@ dispatch(Ip, Port) ->
 
 %% Clusters
 
-get_clusters(RD) -> {[{clusters, [<<"default">>]}], RD}.
+get_clusters(RD) ->
+    {[{clusters, [<<"default">>]}], RD}.
 
-cluster_exists(RD) -> {true, RD}.
+cluster_exists(RD) ->
+    {true, RD}.
 
 create_cluster(RD) ->
     Body = [{success, true}],
