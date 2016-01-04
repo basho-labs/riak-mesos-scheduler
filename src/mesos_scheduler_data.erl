@@ -16,6 +16,9 @@
 
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
+%% Debug/testing use only?
+-export([reset_all_data/0]).
+
 -type key() :: term(). %% Keys used to identify nodes/clusters
 
 -type location() :: term(). %% FIXME determine how we track node location? Or just leave it opaque?
@@ -83,6 +86,11 @@ set_node_status(Key, Status) ->
 delete_node(Key) ->
     gen_server:call(?MODULE, {delete_node, Key}).
 
+%% debug/test API
+
+reset_all_data() ->
+    gen_server:call(?MODULE, reset_all_data).
+
 %% gen_server implementation
 
 init(_) ->
@@ -115,7 +123,17 @@ handle_call({set_node_status, Key, Status}, _From, State) ->
     {reply, Result, State};
 handle_call({delete_node, Key}, _From, State) ->
     Result = do_delete_node(Key),
-    {reply, Result, State}.
+    {reply, Result, State};
+
+handle_call(reset_all_data, _From, State) ->
+    RootPath = root_path(),
+    ClusterBasePath = [RootPath, "/", ?ZK_CLUSTER_NODE],
+    NodeBasePath = [RootPath, "/", ?ZK_NODE_NODE],
+    ok = mesos_metadata_manager:recursive_delete(ClusterBasePath),
+    ok = mesos_metadata_manager:recursive_delete(NodeBasePath),
+    true = ets:delete_all_objects(?CLUST_TAB),
+    true = ets:delete_all_objects(?NODE_TAB),
+    {reply, ok, State}.
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
