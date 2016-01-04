@@ -38,8 +38,8 @@
 -export([
   get_nodes/1,
   node_exists/1,
-  node_path/1,
-  create_node/1,
+  create_node_and_path/1,
+  noop_create_node/1,
   delete_node/1,
   get_node/1,
   restart_node/1
@@ -126,8 +126,8 @@ routes() ->
     % Nodes
     #route{path=["clusters", cluster, "nodes"],
            methods=['GET', 'POST'],
-           post_create=true, post_path={?MODULE, node_path},
-           accepts=?accept_text, accept={?MODULE, create_node},
+           post_create=true, post_path={?MODULE, create_node_and_path},
+           accepts=?accept_text, accept={?MODULE, noop_create_node},
            content={?MODULE, get_nodes}},
     #route{path=["clusters", cluster, "nodes", node],
            methods=['GET', 'DELETE'], exists={?MODULE, node_exists},
@@ -135,9 +135,9 @@ routes() ->
            delete={?MODULE, delete_node}},
     #route{path=["clusters", cluster, "nodes", node, "restart"],
            methods=['POST'], exists={?MODULE, node_exists},
-           accepts=?accept_text, accept={?MODULE, restart_node}}
+           accepts=?accept_text, accept={?MODULE, restart_node}},
     % Healthcheck
-    #route{base=[[]], path=["healthcheck"],
+    #route{base=[], path=["healthcheck"],
            content={?MODULE, healthcheck}}
     ].
 
@@ -223,14 +223,14 @@ node_exists(RD) ->
     {ClusterExists, RD1} = cluster_exists(RD),
     {ClusterExists and true, RD1}.
 
-node_path(RD) ->
+create_node_and_path(RD) ->
     ClusterKeyStr = wrq:path_info(cluster, RD),
     Path = ClusterKeyStr ++ "-1",
-    {Path, RD}.
-
-create_node(RD) ->
     Body = [{success, true}],
-    {true, wrq:append_to_response_body(mochijson2:encode(Body), RD)}.
+    {Path, wrq:append_to_response_body(mochijson2:encode(Body), RD)}.
+
+noop_create_node(RD) ->
+    {true, RD}.
 
 delete_node(RD) ->
     Body = [{success, true}],
@@ -322,9 +322,15 @@ get_route([], _RD) ->
     undefined;
 get_route([Route|Rest], RD) ->
     BaseLength = length(Route#route.base),
-    ReqPath = lists:nthtail(BaseLength, string:tokens(wrq:path(RD), "/")),
-    case expand_path(Route#route.path, RD, []) of
-        ReqPath -> Route;
+    Tokens = string:tokens(wrq:path(RD), "/"),
+    PathTokensLength = length(Tokens),
+    case BaseLength =< PathTokensLength of
+        true ->
+            ReqPath = lists:nthtail(BaseLength, Tokens),
+            case expand_path(Route#route.path, RD, []) of
+                ReqPath -> Route;
+                _ -> get_route(Rest, RD)
+            end;
         _ -> get_route(Rest, RD)
     end.
 
