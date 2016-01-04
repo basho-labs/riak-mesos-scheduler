@@ -150,8 +150,8 @@ code_change(_OldVersion, State, _Extra) ->
 %% Private implementation functions
 
 init_ets() ->
-    ets:create_table(?CLUST_TAB, [set, private, named_table, {keypos, #cluster.key}]),
-    ets:create_table(?NODE_TAB, [set, private, named_table, {keypos, #node.key}]).
+    ets:new(?CLUST_TAB, [set, private, named_table, {keypos, #cluster.key}]),
+    ets:new(?NODE_TAB, [set, private, named_table, {keypos, #node.key}]).
 
 %% Since the root path will never change, it's not too evil to save it in the process dictionary,
 %% so that we can avoid having to thread the value all over the code everywhere.
