@@ -135,8 +135,19 @@ init_ets() ->
     ets:create_table(?CLUST_TAB, [set, private, named_table, {keypos, #cluster.key}]),
     ets:create_table(?NODE_TAB, [set, private, named_table, {keypos, #node.key}]).
 
+%% Since the root path will never change, it's not too evil to save it in the process dictionary,
+%% so that we can avoid having to thread the value all over the code everywhere.
+%% But we will at least wrap everything in getter/setter functions for cleanliness.
+set_root_path(RootPath) ->
+    put(root_zk_path, RootPath).
+root_path() ->
+    get(root_zk_path).
+
 load_or_init_persistent_data() ->
     {ok, RootPath, _Data} = mesos_metadata_manager:get_root_node(),
+
+    set_root_path(RootPath),
+
     ClusterPath = load_or_init_persistent_data(
                     RootPath, ?ZK_CLUSTER_NODE, fun load_persistent_cluster_data/1),
     NodePath = load_or_init_persistent_data(
@@ -172,6 +183,13 @@ load_persistent_node_data(ZKPath) ->
     %% TODO check against data corruption? Verify no duplicate keys? etc.
     ets:insert(?NODE_TAB, NodeRecord).
 
+%% Assumes that Rec is an Erlang record with a key as the first record field
+persist_record(Rec) ->
+    Path = root_path(),
+    Key = element(2, Rec),
+    Data = term_to_binary(Rec),
+    mesos_metadata_manager:make_child_with_data(Path, Key, Data).
+
 do_add_cluster(Key, Status, Nodes) ->
     NewCluster = #cluster{
                     key = Key,
@@ -182,6 +200,7 @@ do_add_cluster(Key, Status, Nodes) ->
         false ->
             {error, {cluster_exists, Key}};
         true ->
+            persist_record(NewCluster),
             ok
     end.
 
@@ -200,6 +219,7 @@ do_set_cluster_status(Key, Status) ->
         [Cluster] ->
             NewCluster = Cluster#cluster{status = Status},
             ets:insert(?CLUST_TAB, NewCluster),
+            persist_record(NewCluster),
             ok
     end.
 
@@ -223,7 +243,8 @@ do_join_node_to_cluster(ClusterKey, NodeKey) ->
                         false ->
                             NewNodes = [NodeKey | ClusterNodes],
                             NewCluster = Cluster#cluster{nodes = NewNodes},
-                            ets:insert(?CLUST_TAB, NewCluster)
+                            ets:insert(?CLUST_TAB, NewCluster),
+                            persist_record(NewCluster)
                     end
             end
     end.
@@ -239,6 +260,7 @@ do_add_node(Key, Status, Location) ->
                 },
     case ets:insert_new(?NODE_TAB, NewNode) of
         true ->
+            persist_record(NewNode),
             ok;
         false ->
             {error, {node_exists, Key}}
@@ -251,6 +273,7 @@ do_set_node_status(Key, Status) ->
         [Node] ->
             NewNode = Node#node{status = Status},
             ets:insert(?NODE_TAB, NewNode),
+            persist_record(NewNode),
             ok
     end.
 
