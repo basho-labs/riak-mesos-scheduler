@@ -73,3 +73,13 @@ join_node_to_cluster() ->
     {ok, active, []} = mesos_scheduler_data:get_cluster(?C1),
     ok = mesos_scheduler_data:join_node_to_cluster(?C1, ?N1),
     {ok, active, [?N1]} = mesos_scheduler_data:get_cluster(?C1).
+
+test_persistence() ->
+    ok = mesos_scheduler_data:add_cluster(?C1, active, []),
+    ok = mesos_scheduler_data:add_node(?N1, active, "127.0.0.1"), %% Location format may change
+    ok = mesos_scheduler_data:join_node_to_cluster(?C1, ?N1),
+
+    ok = mesos_scheduler_data:stop(),
+    {ok, _Pid} = mesos_scheduler_data:start_link(),
+
+    {ok, active, [?N1]} = mesos_scheduler_data:get_cluster(?C1).
