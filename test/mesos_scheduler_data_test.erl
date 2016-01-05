@@ -20,8 +20,15 @@ sched_data_test_() ->
      SetupFun,
      TeardownFun,
      [
-      fun dummy/0
+      fun add_cluster/0
      ]}.
 
-dummy() ->
+add_cluster() ->
+    C1 = <<"test-cluster1">>,
+    Nodes = [a, b, c],
+
+    {error, {not_found, C1}} = mesos_scheduler_data:get_cluster(C1),
+    ok = mesos_scheduler_data:add_cluster(C1, requested, Nodes),
+    {ok, requested, Nodes} = mesos_scheduler_data:get_cluster(C1),
+
     pass.
