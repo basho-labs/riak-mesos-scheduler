@@ -269,7 +269,8 @@ do_join_node_to_cluster(ClusterKey, NodeKey) ->
                             NewNodes = [NodeKey | ClusterNodes],
                             NewCluster = Cluster#cluster{nodes = NewNodes},
                             ets:insert(?CLUST_TAB, NewCluster),
-                            persist_record(NewCluster)
+                            persist_record(NewCluster),
+                            ok
                     end
             end
     end.
@@ -310,5 +311,6 @@ do_delete(Key, Table) ->
         [] ->
             {error, {not_found, Key}};
         [_] ->
-            ets:delete(Table, Key)
+            ets:delete(Table, Key),
+            ok
     end.
