@@ -213,7 +213,7 @@ persist_record(Rec) ->
     Path = root_path(),
     Key = element(2, Rec),
     Data = term_to_binary(Rec),
-    mesos_metadata_manager:make_child_with_data(Path, Key, Data).
+    {ok, _, _} = mesos_metadata_manager:create_or_set(Path, Key, Data).
 
 do_add_cluster(Key, Status, Nodes) ->
     NewCluster = #cluster{
