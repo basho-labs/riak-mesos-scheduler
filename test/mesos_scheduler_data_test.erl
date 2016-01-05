@@ -21,10 +21,13 @@ sched_data_test_() ->
      TeardownFun,
      [
       fun add_cluster/0,
-      fun set_cluster_status/0
+      fun set_cluster_status/0,
+      fun add_delete_node/0,
+      fun join_node_to_cluster/0
      ]}.
 
 -define(C1, <<"test-cluster1">>).
+-define(N1, <<"test-node1">>).
 -define(NODES, [a, b, c]).
 
 add_cluster() ->
@@ -36,3 +39,30 @@ set_cluster_status() ->
     ok = mesos_scheduler_data:add_cluster(?C1, requested, ?NODES),
     ok = mesos_scheduler_data:set_cluster_status(?C1, starting),
     {ok, starting, ?NODES} = mesos_scheduler_data:get_cluster(?C1).
+
+add_delete_node() ->
+    {error, {not_found, ?N1}} = mesos_scheduler_data:delete_node(?N1),
+    ok = mesos_scheduler_data:add_node(?N1, requested, "127.0.0.1"), %% Location format may change
+    ok = mesos_scheduler_data:delete_node(?N1).
+
+join_node_to_cluster() ->
+    ok = mesos_scheduler_data:add_cluster(?C1, requested, []),
+    {ok, requested, []} = mesos_scheduler_data:get_cluster(?C1),
+
+    {error, {node_not_found, ?N1}} = mesos_scheduler_data:join_node_to_cluster(?C1, ?N1),
+    {ok, requested, []} = mesos_scheduler_data:get_cluster(?C1),
+
+    ok = mesos_scheduler_data:add_node(?N1, requested, "127.0.0.1"), %% Location format may change
+    {ok, requested, []} = mesos_scheduler_data:get_cluster(?C1),
+
+    {error, {node_not_active,?N1,requested}} = mesos_scheduler_data:join_node_to_cluster(?C1, ?N1),
+    {ok, requested, []} = mesos_scheduler_data:get_cluster(?C1),
+
+    ok = mesos_scheduler_data:set_node_status(?N1, active),
+    {error,{cluster_not_active,?C1,requested}} = mesos_scheduler_data:join_node_to_cluster(?C1,?N1),
+    {ok, requested, []} = mesos_scheduler_data:get_cluster(?C1),
+
+    ok = mesos_scheduler_data:set_cluster_status(?C1, active),
+    {ok, active, []} = mesos_scheduler_data:get_cluster(?C1),
+    ok = mesos_scheduler_data:join_node_to_cluster(?C1, ?N1),
+    {ok, active, [?N1]} = mesos_scheduler_data:get_cluster(?C1).
