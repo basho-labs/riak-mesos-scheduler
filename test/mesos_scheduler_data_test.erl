@@ -7,15 +7,16 @@
 sched_data_test_() ->
     SetupFun = fun() ->
                        application:ensure_all_started(erlzk),
-                       (catch mesos_metadata_manager:stop()),
                        {ok, _} = mesos_metadata_manager:start_link(?TEST_ZK_SERVER,"md-mgr-test"),
-
                        {ok, _} = mesos_scheduler_data:start_link(),
                        ok = mesos_scheduler_data:reset_all_data()
                end,
-    TeardownFun = fun(_) -> ok end,
+    TeardownFun = fun(_) ->
+                          mesos_scheduler_data:stop(),
+                          mesos_metadata_manager:stop()
+                  end,
 
-    {setup,
+    {foreach,
      SetupFun,
      TeardownFun,
      [
