@@ -20,7 +20,7 @@ sched_data_test_() ->
      SetupFun,
      TeardownFun,
      [
-      fun add_cluster/0,
+      fun add_delete_cluster/0,
       fun set_cluster_status/0,
       fun add_delete_node/0,
       fun join_node_to_cluster/0
@@ -30,10 +30,17 @@ sched_data_test_() ->
 -define(N1, <<"test-node1">>).
 -define(NODES, [a, b, c]).
 
-add_cluster() ->
+add_delete_cluster() ->
     {error, {not_found, ?C1}} = mesos_scheduler_data:get_cluster(?C1),
+
+    {error, {not_found, ?C1}} = mesos_scheduler_data:delete_cluster(?C1),
+    {error, {not_found, ?C1}} = mesos_scheduler_data:get_cluster(?C1),
+
     ok = mesos_scheduler_data:add_cluster(?C1, requested, ?NODES),
-    {ok, requested, ?NODES} = mesos_scheduler_data:get_cluster(?C1).
+    {ok, requested, ?NODES} = mesos_scheduler_data:get_cluster(?C1),
+
+    ok = mesos_scheduler_data:delete_cluster(?C1),
+    {error, {not_found, ?C1}} = mesos_scheduler_data:get_cluster(?C1).
 
 set_cluster_status() ->
     ok = mesos_scheduler_data:add_cluster(?C1, requested, ?NODES),
