@@ -7,13 +7,14 @@
 sched_data_test_() ->
     SetupFun = fun() ->
                        application:ensure_all_started(erlzk),
-                       {ok, _} = mesos_metadata_manager:start_link(?TEST_ZK_SERVER,"md-mgr-test"),
+                       {ok, _} = mesos_metadata_manager:start_link(?TEST_ZK_SERVER,"schd-dat-test"),
                        {ok, _} = mesos_scheduler_data:start_link(),
                        ok = mesos_scheduler_data:reset_all_data()
                end,
     TeardownFun = fun(_) ->
                           mesos_scheduler_data:stop(),
-                          mesos_metadata_manager:stop()
+                          mesos_metadata_manager:stop(),
+                          application:stop(erlzk)
                   end,
 
     {foreach,
@@ -23,7 +24,8 @@ sched_data_test_() ->
       fun add_delete_cluster/0,
       fun set_cluster_status/0,
       fun add_delete_node/0,
-      fun join_node_to_cluster/0
+      fun join_node_to_cluster/0,
+      fun test_persistence/0
      ]}.
 
 -define(C1, <<"test-cluster1">>).

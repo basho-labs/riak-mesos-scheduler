@@ -140,6 +140,7 @@ handle_call(reset_all_data, _From, State) ->
     ok = mesos_metadata_manager:recursive_delete(NodeBasePath),
     true = ets:delete_all_objects(?CLUST_TAB),
     true = ets:delete_all_objects(?NODE_TAB),
+    load_or_init_persistent_data(),
     {reply, ok, State}.
 
 handle_cast(_Msg, State) ->
@@ -208,10 +209,13 @@ load_persistent_node_data(ZKPath) ->
     %% TODO check against data corruption? Verify no duplicate keys? etc.
     ets:insert(?NODE_TAB, NodeRecord).
 
-%% Assumes that Rec is an Erlang record with a key as the first record field
-persist_record(Rec) ->
-    Path = root_path(),
-    Key = element(2, Rec),
+persist_record(Rec) when is_record(Rec, cluster) ->
+    persist_record(Rec, ?ZK_CLUSTER_NODE, Rec#cluster.key);
+persist_record(Rec) when is_record(Rec, node) ->
+    persist_record(Rec, ?ZK_NODE_NODE, Rec#node.key).
+
+persist_record(Rec, Node, Key) ->
+    Path = [root_path(), "/", Node],
     Data = term_to_binary(Rec),
     {ok, _, _} = mesos_metadata_manager:create_or_set(Path, Key, Data).
 
