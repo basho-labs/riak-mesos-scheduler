@@ -20,7 +20,7 @@
 %% Debug/testing use only?
 -export([reset_all_data/0]).
 
--type key() :: term(). %% Keys used to identify nodes/clusters
+-type key() :: iolist(). %% Keys used to identify nodes/clusters
 
 -type location() :: term(). %% FIXME determine how we track node location? Or just leave it opaque?
 
@@ -63,7 +63,7 @@ stop() ->
 add_cluster(Key, Status, Nodes) ->
     gen_server:call(?MODULE, {add_cluster, Key, Status, Nodes}).
 
--spec get_cluster(key()) -> {ok, cluster_status(), [key()]} | {error, not_found}.
+-spec get_cluster(key()) -> {ok, cluster_status(), [key()]} | {error, {not_found, key()}}.
 get_cluster(Key) ->
     gen_server:call(?MODULE, {get_cluster, Key}).
 
