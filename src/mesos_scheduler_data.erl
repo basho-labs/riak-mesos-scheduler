@@ -4,6 +4,7 @@
 
 -export([
          start_link/0,
+         stop/0,
          add_cluster/3,
          get_cluster/1,
          set_cluster_status/2,
@@ -54,6 +55,10 @@
 start_link() ->
     gen_server:start_link({local,?MODULE}, ?MODULE, nil, []).
 
+-spec stop() -> ok.
+stop() ->
+    gen_server:call(?MODULE, stop).
+
 -spec add_cluster(key(), cluster_status(), [key()]) -> ok | {error, term()}.
 add_cluster(Key, Status, Nodes) ->
     gen_server:call(?MODULE, {add_cluster, Key, Status, Nodes}).
@@ -100,6 +105,8 @@ init(_) ->
            }
     }.
 
+handle_call(stop, _From, State) ->
+    {stop, normal, ok, State};
 handle_call({add_cluster, Key, Status, Nodes}, _From, State) ->
     Result = do_add_cluster(Key, Status, Nodes),
     {reply, Result, State};
