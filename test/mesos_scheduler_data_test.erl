@@ -57,15 +57,16 @@ set_cluster_status() ->
     {ok, Expected} = mesos_scheduler_data:get_cluster(?C1).
 
 add_delete_node() ->
-    Loc = "127.0.0.1", %% Location format may change
+    Node = #rms_node{key = ?N1, status = requested},
 
     {error, {not_found, ?N1}} = mesos_scheduler_data:delete_node(?N1),
-    ok = mesos_scheduler_data:add_node(?N1, requested, Loc),
-    {ok, #rms_node{status = requested, location = Loc}} = mesos_scheduler_data:get_node(?N1),
+    ok = mesos_scheduler_data:add_node(Node),
+    {ok, #rms_node{status = requested}} = mesos_scheduler_data:get_node(?N1),
     ok = mesos_scheduler_data:delete_node(?N1).
 
 join_node_to_cluster() ->
     Cluster = #rms_cluster{key = ?C1, status = requested, nodes = []},
+    Node = #rms_node{key = ?N1, status = requested},
 
     ok = mesos_scheduler_data:add_cluster(Cluster),
     {ok, #rms_cluster{status = requested, nodes = []}} = mesos_scheduler_data:get_cluster(?C1),
@@ -73,7 +74,7 @@ join_node_to_cluster() ->
     {error, {node_not_found, ?N1}} = mesos_scheduler_data:join_node_to_cluster(?C1, ?N1),
     {ok, #rms_cluster{status = requested, nodes = []}} = mesos_scheduler_data:get_cluster(?C1),
 
-    ok = mesos_scheduler_data:add_node(?N1, requested, "127.0.0.1"), %% Location format may change
+    ok = mesos_scheduler_data:add_node(Node),
     {ok, #rms_cluster{status = requested, nodes = []}} = mesos_scheduler_data:get_cluster(?C1),
 
     {error, {node_not_active,?N1,requested}} = mesos_scheduler_data:join_node_to_cluster(?C1, ?N1),
@@ -90,9 +91,10 @@ join_node_to_cluster() ->
 
 test_persistence() ->
     Cluster = #rms_cluster{key = ?C1, status = active, nodes = []},
+    Node = #rms_node{key = ?N1, status = active},
 
     ok = mesos_scheduler_data:add_cluster(Cluster),
-    ok = mesos_scheduler_data:add_node(?N1, active, "127.0.0.1"), %% Location format may change
+    ok = mesos_scheduler_data:add_node(Node),
     ok = mesos_scheduler_data:join_node_to_cluster(?C1, ?N1),
 
     ok = mesos_scheduler_data:stop(),

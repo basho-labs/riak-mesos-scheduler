@@ -12,7 +12,7 @@
          set_cluster_status/2,
          join_node_to_cluster/2,
          delete_cluster/1,
-         add_node/3,
+         add_node/1,
          get_node/1,
          set_node_status/2,
          delete_node/1
@@ -26,8 +26,6 @@
 -type key() :: iolist(). %% Keys used to identify nodes/clusters
 -type cluster_key() :: key().
 -type node_key() :: key().
-
--type location() :: term(). %% FIXME determine how we track node location? Or just leave it opaque?
 
 %% We might not need all of these, it's just a best guess as to what states we might expect to see:
 -type node_status() :: requested | starting | active | down | stopping | stopped.
@@ -79,9 +77,9 @@ join_node_to_cluster(ClusterKey, NodeKey) ->
 delete_cluster(Key) ->
     gen_server:call(?MODULE, {delete_cluster, Key}).
 
--spec add_node(key(), node_status(), location()) -> ok | {error, term()}.
-add_node(Key, Status, Location) ->
-    gen_server:call(?MODULE, {add_node, Key, Status, Location}).
+-spec add_node(#rms_node{}) -> ok | {error, term()}.
+add_node(NodeRec) ->
+    gen_server:call(?MODULE, {add_node, NodeRec}).
 
 -spec get_node(key()) -> {ok, #rms_node{}} | {error, term()}.
 get_node(Key) ->
@@ -126,8 +124,8 @@ handle_call({join_node_to_cluster, ClusterKey, NodeKey}, _From, State) ->
 handle_call({delete_cluster, Key}, _From, State) ->
     Result = do_delete_cluster(Key),
     {reply, Result, State};
-handle_call({add_node, Key, Status, Location}, _From, State) ->
-    Result = do_add_node(Key, Status, Location),
+handle_call({add_node, NodeRec}, _From, State) ->
+    Result = do_add_node(NodeRec),
     {reply, Result, State};
 handle_call({get_node, Key}, _From, State) ->
     Result = do_get_node(Key),
@@ -287,17 +285,13 @@ do_join_node_to_cluster(ClusterKey, NodeKey) ->
 do_delete_cluster(Key) ->
     do_delete(Key, ?CLUST_TAB).
 
-do_add_node(Key, Status, Location) ->
-    NewNode = #rms_node{
-                 key = Key,
-                 status = Status,
-                 location = Location
-                },
-    case ets:insert_new(?NODE_TAB, NewNode) of
+do_add_node(NodeRec) ->
+    case ets:insert_new(?NODE_TAB, NodeRec) of
         true ->
-            persist_record(NewNode),
+            persist_record(NodeRec),
             ok;
         false ->
+            Key = NodeRec#rms_node.key,
             {error, {node_exists, Key}}
     end.
 
