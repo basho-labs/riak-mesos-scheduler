@@ -1,5 +1,7 @@
 -module(mesos_scheduler_data).
 
+-include("mesos_scheduler_data.hrl").
+
 -behavior(gen_server).
 
 -export([
@@ -30,18 +32,6 @@
 
 -record(state, {
          }).
-
--record(cluster, {
-          key :: key(),
-          status :: cluster_status(),
-          nodes = [] :: [key()]
-}).
-
--record(node, {
-          key :: key(),
-          status :: node_status(),
-          location :: term()
-}).
 
 -define(CLUST_TAB, mesos_scheduler_cluster_data).
 -define(NODE_TAB, mesos_scheduler_node_data).
@@ -158,8 +148,8 @@ code_change(_OldVersion, State, _Extra) ->
 %% Private implementation functions
 
 init_ets() ->
-    ets:new(?CLUST_TAB, [set, private, named_table, {keypos, #cluster.key}]),
-    ets:new(?NODE_TAB, [set, private, named_table, {keypos, #node.key}]).
+    ets:new(?CLUST_TAB, [set, private, named_table, {keypos, #rms_cluster.key}]),
+    ets:new(?NODE_TAB, [set, private, named_table, {keypos, #rms_node.key}]).
 
 %% Since the root path will never change, it's not too evil to save it in the process dictionary,
 %% so that we can avoid having to thread the value all over the code everywhere.
@@ -209,10 +199,10 @@ load_persistent_node_data(ZKPath) ->
     %% TODO check against data corruption? Verify no duplicate keys? etc.
     ets:insert(?NODE_TAB, NodeRecord).
 
-persist_record(Rec) when is_record(Rec, cluster) ->
-    persist_record(Rec, ?ZK_CLUSTER_NODE, Rec#cluster.key);
-persist_record(Rec) when is_record(Rec, node) ->
-    persist_record(Rec, ?ZK_NODE_NODE, Rec#node.key).
+persist_record(Rec) when is_record(Rec, rms_cluster) ->
+    persist_record(Rec, ?ZK_CLUSTER_NODE, Rec#rms_cluster.key);
+persist_record(Rec) when is_record(Rec, rms_node) ->
+    persist_record(Rec, ?ZK_NODE_NODE, Rec#rms_node.key).
 
 persist_record(Rec, Node, Key) ->
     Path = [root_path(), "/", Node],
@@ -220,7 +210,7 @@ persist_record(Rec, Node, Key) ->
     {ok, _, _} = mesos_metadata_manager:create_or_set(Path, Key, Data).
 
 do_add_cluster(Key, Status, Nodes) ->
-    NewCluster = #cluster{
+    NewCluster = #rms_cluster{
                     key = Key,
                     status = Status,
                     nodes = Nodes
@@ -238,7 +228,7 @@ do_get_cluster(Key) ->
         [] ->
             {error, {not_found, Key}};
         [Cluster] ->
-            {ok, Cluster#cluster.status, Cluster#cluster.nodes}
+            {ok, Cluster#rms_cluster.status, Cluster#rms_cluster.nodes}
     end.
 
 do_set_cluster_status(Key, Status) ->
@@ -246,7 +236,7 @@ do_set_cluster_status(Key, Status) ->
         [] ->
             {error, {not_found, Key}};
         [Cluster] ->
-            NewCluster = Cluster#cluster{status = Status},
+            NewCluster = Cluster#rms_cluster{status = Status},
             ets:insert(?CLUST_TAB, NewCluster),
             persist_record(NewCluster),
             ok
@@ -256,22 +246,22 @@ do_join_node_to_cluster(ClusterKey, NodeKey) ->
     case ets:lookup(?NODE_TAB, NodeKey) of
         [] ->
             {error, {node_not_found, NodeKey}};
-        [Node] when Node#node.status =/= active ->
-            {error, {node_not_active, NodeKey, Node#node.status}};
+        [Node] when Node#rms_node.status =/= active ->
+            {error, {node_not_active, NodeKey, Node#rms_node.status}};
         [_Node] ->
             case ets:lookup(?CLUST_TAB, ClusterKey) of
                 [] ->
                     {error, {cluster_not_found, ClusterKey}};
-                [Cluster] when Cluster#cluster.status =/= active ->
-                    {error, {cluster_not_active, ClusterKey, Cluster#cluster.status}};
+                [Cluster] when Cluster#rms_cluster.status =/= active ->
+                    {error, {cluster_not_active, ClusterKey, Cluster#rms_cluster.status}};
                 [Cluster] ->
-                    ClusterNodes = Cluster#cluster.nodes,
+                    ClusterNodes = Cluster#rms_cluster.nodes,
                     case lists:member(NodeKey, ClusterNodes) of
                         true ->
                             {error, {node_already_joined, ClusterKey, NodeKey}};
                         false ->
                             NewNodes = [NodeKey | ClusterNodes],
-                            NewCluster = Cluster#cluster{nodes = NewNodes},
+                            NewCluster = Cluster#rms_cluster{nodes = NewNodes},
                             ets:insert(?CLUST_TAB, NewCluster),
                             persist_record(NewCluster),
                             ok
@@ -283,7 +273,7 @@ do_delete_cluster(Key) ->
     do_delete(Key, ?CLUST_TAB).
 
 do_add_node(Key, Status, Location) ->
-    NewNode = #node{
+    NewNode = #rms_node{
                  key = Key,
                  status = Status,
                  location = Location
@@ -301,7 +291,7 @@ do_set_node_status(Key, Status) ->
         [] ->
             {error, {not_found, Key}};
         [Node] ->
-            NewNode = Node#node{status = Status},
+            NewNode = Node#rms_node{status = Status},
             ets:insert(?NODE_TAB, NewNode),
             persist_record(NewNode),
             ok
