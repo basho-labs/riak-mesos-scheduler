@@ -62,7 +62,7 @@ stop() ->
 add_cluster(Key, Status, Nodes) ->
     gen_server:call(?MODULE, {add_cluster, Key, Status, Nodes}).
 
--spec get_cluster(key()) -> {ok, cluster_status(), [key()]} | {error, {not_found, key()}}.
+-spec get_cluster(key()) -> {ok, #rms_cluster{}} | {error, {not_found, key()}}.
 get_cluster(Key) ->
     gen_server:call(?MODULE, {get_cluster, Key}).
 
@@ -237,7 +237,7 @@ do_get_cluster(Key) ->
         [] ->
             {error, {not_found, Key}};
         [Cluster] ->
-            {ok, Cluster#rms_cluster.status, Cluster#rms_cluster.nodes}
+            {ok, Cluster}
     end.
 
 do_set_cluster_status(Key, Status) ->
