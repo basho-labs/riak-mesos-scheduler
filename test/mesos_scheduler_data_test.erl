@@ -52,8 +52,11 @@ set_cluster_status() ->
     {ok, #rms_cluster{status = starting, nodes = ?NODES}} = mesos_scheduler_data:get_cluster(?C1).
 
 add_delete_node() ->
+    Loc = "127.0.0.1", %% Location format may change
+
     {error, {not_found, ?N1}} = mesos_scheduler_data:delete_node(?N1),
-    ok = mesos_scheduler_data:add_node(?N1, requested, "127.0.0.1"), %% Location format may change
+    ok = mesos_scheduler_data:add_node(?N1, requested, Loc),
+    {ok, #rms_node{status = requested, location = Loc}} = mesos_scheduler_data:get_node(?N1),
     ok = mesos_scheduler_data:delete_node(?N1).
 
 join_node_to_cluster() ->

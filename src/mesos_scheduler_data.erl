@@ -13,6 +13,7 @@
          join_node_to_cluster/2,
          delete_cluster/1,
          add_node/3,
+         get_node/1,
          set_node_status/2,
          delete_node/1
         ]).
@@ -82,6 +83,10 @@ delete_cluster(Key) ->
 add_node(Key, Status, Location) ->
     gen_server:call(?MODULE, {add_node, Key, Status, Location}).
 
+-spec get_node(key()) -> {ok, #rms_node{}} | {error, term()}.
+get_node(Key) ->
+    gen_server:call(?MODULE, {get_node, Key}).
+
 -spec set_node_status(key(), node_status()) -> ok | {error, term()}.
 set_node_status(Key, Status) ->
     gen_server:call(?MODULE, {set_node_status, Key, Status}).
@@ -123,6 +128,9 @@ handle_call({delete_cluster, Key}, _From, State) ->
     {reply, Result, State};
 handle_call({add_node, Key, Status, Location}, _From, State) ->
     Result = do_add_node(Key, Status, Location),
+    {reply, Result, State};
+handle_call({get_node, Key}, _From, State) ->
+    Result = do_get_node(Key),
     {reply, Result, State};
 handle_call({set_node_status, Key, Status}, _From, State) ->
     Result = do_set_node_status(Key, Status),
@@ -233,11 +241,14 @@ do_add_cluster(Key, Status, Nodes) ->
     end.
 
 do_get_cluster(Key) ->
-    case ets:lookup(?CLUST_TAB, Key) of
+    do_get_record(?CLUST_TAB, Key).
+
+do_get_record(Tab, Key) ->
+    case ets:lookup(Tab, Key) of
         [] ->
             {error, {not_found, Key}};
-        [Cluster] ->
-            {ok, Cluster}
+        [Result] ->
+            {ok, Result}
     end.
 
 do_set_cluster_status(Key, Status) ->
@@ -294,6 +305,9 @@ do_add_node(Key, Status, Location) ->
         false ->
             {error, {node_exists, Key}}
     end.
+
+do_get_node(Key) ->
+    do_get_record(?NODE_TAB, Key).
 
 do_set_node_status(Key, Status) ->
     case ets:lookup(?NODE_TAB, Key) of
