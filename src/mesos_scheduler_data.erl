@@ -7,7 +7,7 @@
 -export([
          start_link/0,
          stop/0,
-         add_cluster/3,
+         add_cluster/1,
          get_cluster/1,
          set_cluster_status/2,
          join_node_to_cluster/2,
@@ -59,9 +59,9 @@ start_link() ->
 stop() ->
     gen_server:call(?MODULE, stop).
 
--spec add_cluster(key(), cluster_status(), [key()]) -> ok | {error, term()}.
-add_cluster(Key, Status, Nodes) ->
-    gen_server:call(?MODULE, {add_cluster, Key, Status, Nodes}).
+-spec add_cluster(#rms_cluster{}) -> ok | {error, term()}.
+add_cluster(ClusterRec) ->
+    gen_server:call(?MODULE, {add_cluster, ClusterRec}).
 
 -spec get_cluster(key()) -> {ok, #rms_cluster{}} | {error, {not_found, key()}}.
 get_cluster(Key) ->
@@ -111,8 +111,8 @@ init(_) ->
 
 handle_call(stop, _From, State) ->
     {stop, normal, ok, State};
-handle_call({add_cluster, Key, Status, Nodes}, _From, State) ->
-    Result = do_add_cluster(Key, Status, Nodes),
+handle_call({add_cluster, ClusterRec}, _From, State) ->
+    Result = do_add_cluster(ClusterRec),
     {reply, Result, State};
 handle_call({get_cluster, Key}, _From, State) ->
     Result = do_get_cluster(Key),
@@ -226,17 +226,12 @@ persist_record(Rec, Node, Key) ->
     Data = term_to_binary(Rec),
     {ok, _, _} = mesos_metadata_manager:create_or_set(Path, Key, Data).
 
-do_add_cluster(Key, Status, Nodes) ->
-    NewCluster = #rms_cluster{
-                    key = Key,
-                    status = Status,
-                    nodes = Nodes
-                   },
-    case ets:insert_new(?CLUST_TAB, NewCluster) of
+do_add_cluster(ClusterRec) ->
+    case ets:insert_new(?CLUST_TAB, ClusterRec) of
         false ->
-            {error, {cluster_exists, Key}};
+            {error, {cluster_exists, ClusterRec#rms_cluster.key}};
         true ->
-            persist_record(NewCluster),
+            persist_record(ClusterRec),
             ok
     end.
 

@@ -40,16 +40,21 @@ add_delete_cluster() ->
     {error, {not_found, ?C1}} = mesos_scheduler_data:delete_cluster(?C1),
     {error, {not_found, ?C1}} = mesos_scheduler_data:get_cluster(?C1),
 
-    ok = mesos_scheduler_data:add_cluster(?C1, requested, ?NODES),
-    {ok, #rms_cluster{status = requested, nodes = ?NODES}} = mesos_scheduler_data:get_cluster(?C1),
+    Cluster = #rms_cluster{key = ?C1, status = requested, nodes = ?NODES},
+    ok = mesos_scheduler_data:add_cluster(Cluster),
+    {ok, Cluster} = mesos_scheduler_data:get_cluster(?C1),
 
     ok = mesos_scheduler_data:delete_cluster(?C1),
     {error, {not_found, ?C1}} = mesos_scheduler_data:get_cluster(?C1).
 
 set_cluster_status() ->
-    ok = mesos_scheduler_data:add_cluster(?C1, requested, ?NODES),
+    Cluster = #rms_cluster{key = ?C1, status = requested, nodes = ?NODES},
+
+    ok = mesos_scheduler_data:add_cluster(Cluster),
     ok = mesos_scheduler_data:set_cluster_status(?C1, starting),
-    {ok, #rms_cluster{status = starting, nodes = ?NODES}} = mesos_scheduler_data:get_cluster(?C1).
+
+    Expected = Cluster#rms_cluster{status = starting},
+    {ok, Expected} = mesos_scheduler_data:get_cluster(?C1).
 
 add_delete_node() ->
     Loc = "127.0.0.1", %% Location format may change
@@ -60,7 +65,9 @@ add_delete_node() ->
     ok = mesos_scheduler_data:delete_node(?N1).
 
 join_node_to_cluster() ->
-    ok = mesos_scheduler_data:add_cluster(?C1, requested, []),
+    Cluster = #rms_cluster{key = ?C1, status = requested, nodes = []},
+
+    ok = mesos_scheduler_data:add_cluster(Cluster),
     {ok, #rms_cluster{status = requested, nodes = []}} = mesos_scheduler_data:get_cluster(?C1),
 
     {error, {node_not_found, ?N1}} = mesos_scheduler_data:join_node_to_cluster(?C1, ?N1),
@@ -82,7 +89,9 @@ join_node_to_cluster() ->
     {ok, #rms_cluster{status = active, nodes = [?N1]}} = mesos_scheduler_data:get_cluster(?C1).
 
 test_persistence() ->
-    ok = mesos_scheduler_data:add_cluster(?C1, active, []),
+    Cluster = #rms_cluster{key = ?C1, status = active, nodes = []},
+
+    ok = mesos_scheduler_data:add_cluster(Cluster),
     ok = mesos_scheduler_data:add_node(?N1, active, "127.0.0.1"), %% Location format may change
     ok = mesos_scheduler_data:join_node_to_cluster(?C1, ?N1),
 
