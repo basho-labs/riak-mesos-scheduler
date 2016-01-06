@@ -1,11 +1,11 @@
 -record(rms_cluster, {
-          key :: key(),
-          status :: cluster_status(),
-          nodes = [] :: [key()]
+          key :: mesos_scheduler_data:cluster_key(),
+          status :: mesos_scheduler_data:cluster_status(),
+          nodes = [] :: [mesos_scheduler_data:node_key()]
 }).
 
 -record(rms_node, {
-          key :: key(),
-          status :: node_status(),
+          key :: mesos_scheduler_data:node_key(),
+          status :: mesos_scheduler_data:node_status(),
           location :: term()
 }).

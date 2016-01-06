@@ -23,12 +23,21 @@
 -export([reset_all_data/0]).
 
 -type key() :: iolist(). %% Keys used to identify nodes/clusters
+-type cluster_key() :: key().
+-type node_key() :: key().
 
 -type location() :: term(). %% FIXME determine how we track node location? Or just leave it opaque?
 
 %% We might not need all of these, it's just a best guess as to what states we might expect to see:
 -type node_status() :: requested | starting | active | down | stopping | stopped.
 -type cluster_status() :: requested | active | stopping | stopped.
+
+-export_type([
+              cluster_key/0,
+              node_key/0,
+              node_status/0,
+              cluster_status/0
+             ]).
 
 -record(state, {
          }).
