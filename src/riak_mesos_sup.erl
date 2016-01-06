@@ -39,7 +39,7 @@ init([]) ->
     % Zookeeper = riak_mesos_scheduler_config:get_value(zk, <<"master.mesos:2181">>, binary), %% TODO: integrate with metadata manager once available
     Ip = riak_mesos_scheduler_config:get_value(ip, "0.0.0.0"),
     Port = riak_mesos_scheduler_config:get_value(port, 9090, integer), %% TODO: Will need to get this dynamically... somehow
-    WebConfig = riak_mesos_wm_util:dispatch(Ip, Port),
+    WebConfig = riak_mesos_wm_resource:dispatch(Ip, Port),
 
     %% TODO: need to turn this into a list if it contains commas
     Master = riak_mesos_scheduler_config:get_value(master, <<"localhost:5050">>, binary),
