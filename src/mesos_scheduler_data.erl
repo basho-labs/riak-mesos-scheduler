@@ -14,7 +14,9 @@
          add_node/1,
          get_node/1,
          set_node_status/2,
-         delete_node/1
+         delete_node/1,
+         get_all_clusters/0,
+         get_all_nodes/0
         ]).
 
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
@@ -88,6 +90,14 @@ set_node_status(Key, Status) ->
 delete_node(Key) ->
     gen_server:call(?MODULE, {delete_node, Key}).
 
+-spec get_all_clusters() -> [#rms_cluster{}].
+get_all_clusters() ->
+    gen_server:call(?MODULE, get_all_clusters).
+
+-spec get_all_nodes() -> [#rms_node{}].
+get_all_nodes() ->
+    gen_server:call(?MODULE, get_all_nodes).
+
 %% debug/test API
 
 reset_all_data() ->
@@ -127,6 +137,12 @@ handle_call({set_node_status, Key, Status}, _From, State) ->
     {reply, Result, State};
 handle_call({delete_node, Key}, _From, State) ->
     Result = do_delete_node(Key),
+    {reply, Result, State};
+handle_call(get_all_clusters, _From, State) ->
+    Result = do_get_all_clusters(),
+    {reply, Result, State};
+handle_call(get_all_nodes, _From, State) ->
+    Result = do_get_all_nodes(),
     {reply, Result, State};
 
 handle_call(reset_all_data, _From, State) ->
@@ -323,3 +339,9 @@ do_delete_node(Key) ->
                     ok
             end
     end.
+
+do_get_all_clusters() ->
+    ets:tab2list(?CLUST_TAB).
+
+do_get_all_nodes() ->
+    ets:tab2list(?NODE_TAB).

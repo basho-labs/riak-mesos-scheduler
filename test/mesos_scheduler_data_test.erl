@@ -35,16 +35,20 @@ sched_data_test_() ->
 
 add_delete_cluster() ->
     {error, {not_found, ?C1}} = mesos_scheduler_data:get_cluster(?C1),
+    [] = mesos_scheduler_data:get_all_clusters(),
 
     {error, {not_found, ?C1}} = mesos_scheduler_data:delete_cluster(?C1),
     {error, {not_found, ?C1}} = mesos_scheduler_data:get_cluster(?C1),
+    [] = mesos_scheduler_data:get_all_clusters(),
 
     Cluster = #rms_cluster{key = ?C1, status = requested, nodes = ?NODES},
     ok = mesos_scheduler_data:add_cluster(Cluster),
     {ok, Cluster} = mesos_scheduler_data:get_cluster(?C1),
+    [Cluster] = mesos_scheduler_data:get_all_clusters(),
 
     ok = mesos_scheduler_data:delete_cluster(?C1),
-    {error, {not_found, ?C1}} = mesos_scheduler_data:get_cluster(?C1).
+    {error, {not_found, ?C1}} = mesos_scheduler_data:get_cluster(?C1),
+    [] = mesos_scheduler_data:get_all_clusters().
 
 set_cluster_status() ->
     Cluster = #rms_cluster{key = ?C1, status = requested, nodes = ?NODES},
@@ -60,17 +64,25 @@ add_delete_node() ->
     Node = #rms_node{key = ?N1, status = requested, cluster = ?C1},
 
     {error, {not_found, ?N1}} = mesos_scheduler_data:delete_node(?N1),
+    [] = mesos_scheduler_data:get_all_nodes(),
 
     {error, {no_such_cluster, ?C1}} = mesos_scheduler_data:add_node(Node),
+    {error, {not_found, ?N1}} = mesos_scheduler_data:delete_node(?N1),
+    [] = mesos_scheduler_data:get_all_nodes(),
 
     ok = mesos_scheduler_data:add_cluster(Cluster),
     ok = mesos_scheduler_data:add_node(Node),
     {ok, #rms_node{status = requested}} = mesos_scheduler_data:get_node(?N1),
     {ok, #rms_cluster{nodes = [?N1]}} = mesos_scheduler_data:get_cluster(?C1),
+    [#rms_node{status = requested}] = mesos_scheduler_data:get_all_nodes(),
+    [#rms_cluster{nodes = [?N1]}] = mesos_scheduler_data:get_all_clusters(),
 
     ok = mesos_scheduler_data:delete_node(?N1),
     {error, {not_found, ?N1}} = mesos_scheduler_data:get_node(?N1),
-    {ok, #rms_cluster{nodes = []}} = mesos_scheduler_data:get_cluster(?C1).
+    [] = mesos_scheduler_data:get_all_nodes(),
+
+    {ok, #rms_cluster{nodes = []}} = mesos_scheduler_data:get_cluster(?C1),
+    [#rms_cluster{nodes = []}] = mesos_scheduler_data:get_all_clusters().
 
 test_persistence() ->
     Cluster = #rms_cluster{key = ?C1, status = requested, nodes = []},
