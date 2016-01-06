@@ -10,7 +10,6 @@
          add_cluster/1,
          get_cluster/1,
          set_cluster_status/2,
-         join_node_to_cluster/2,
          delete_cluster/1,
          add_node/1,
          get_node/1,
@@ -69,16 +68,12 @@ get_cluster(Key) ->
 set_cluster_status(Key, Status) ->
     gen_server:call(?MODULE, {set_cluster_status, Key, Status}).
 
--spec join_node_to_cluster(key(), key()) -> ok | {error, term()}.
-join_node_to_cluster(ClusterKey, NodeKey) ->
-    gen_server:call(?MODULE, {join_node_to_cluster, ClusterKey, NodeKey}).
-
 -spec delete_cluster(key()) -> ok | {error, term()}.
 delete_cluster(Key) ->
     gen_server:call(?MODULE, {delete_cluster, Key}).
 
 -spec add_node(#rms_node{}) -> ok | {error, term()}.
-add_node(NodeRec) ->
+add_node(NodeRec) when NodeRec#rms_node.cluster =/= undefined ->
     gen_server:call(?MODULE, {add_node, NodeRec}).
 
 -spec get_node(key()) -> {ok, #rms_node{}} | {error, term()}.
@@ -117,9 +112,6 @@ handle_call({get_cluster, Key}, _From, State) ->
     {reply, Result, State};
 handle_call({set_cluster_status, Key, Status}, _From, State) ->
     Result = do_set_cluster_status(Key, Status),
-    {reply, Result, State};
-handle_call({join_node_to_cluster, ClusterKey, NodeKey}, _From, State) ->
-    Result = do_join_node_to_cluster(ClusterKey, NodeKey),
     {reply, Result, State};
 handle_call({delete_cluster, Key}, _From, State) ->
     Result = do_delete_cluster(Key),
@@ -255,44 +247,38 @@ do_set_cluster_status(Key, Status) ->
             ok
     end.
 
-do_join_node_to_cluster(ClusterKey, NodeKey) ->
-    case ets:lookup(?NODE_TAB, NodeKey) of
+do_delete_cluster(Key) ->
+    case ets:lookup(?CLUST_TAB, Key) of
         [] ->
-            {error, {node_not_found, NodeKey}};
-        [Node] when Node#rms_node.status =/= active ->
-            {error, {node_not_active, NodeKey, Node#rms_node.status}};
-        [_Node] ->
-            case ets:lookup(?CLUST_TAB, ClusterKey) of
-                [] ->
-                    {error, {cluster_not_found, ClusterKey}};
-                [Cluster] when Cluster#rms_cluster.status =/= active ->
-                    {error, {cluster_not_active, ClusterKey, Cluster#rms_cluster.status}};
-                [Cluster] ->
-                    ClusterNodes = Cluster#rms_cluster.nodes,
-                    case lists:member(NodeKey, ClusterNodes) of
-                        true ->
-                            {error, {node_already_joined, ClusterKey, NodeKey}};
-                        false ->
-                            NewNodes = [NodeKey | ClusterNodes],
-                            NewCluster = Cluster#rms_cluster{nodes = NewNodes},
-                            ets:insert(?CLUST_TAB, NewCluster),
-                            persist_record(NewCluster),
-                            ok
-                    end
-            end
+            {error, {not_found, Key}};
+        [_Cluster] ->
+            %% Should we also delete any associated nodes here?
+            %%[do_delete_node(NodeKey) || NodeKey <- Cluster#rms_cluster.nodes],
+            ets:delete(?CLUST_TAB, Key),
+            %% FIXME delete record from ZooKeeper as well!
+            ok
     end.
 
-do_delete_cluster(Key) ->
-    do_delete(Key, ?CLUST_TAB).
-
 do_add_node(NodeRec) ->
-    case ets:insert_new(?NODE_TAB, NodeRec) of
-        true ->
-            persist_record(NodeRec),
-            ok;
-        false ->
-            Key = NodeRec#rms_node.key,
-            {error, {node_exists, Key}}
+    #rms_node{
+       key = NodeKey,
+       cluster = ClusterKey
+      } = NodeRec,
+    case ets:lookup(?CLUST_TAB, ClusterKey) of
+        [] ->
+            {error, {no_such_cluster, ClusterKey}};
+        [Cluster] ->
+            case ets:insert_new(?NODE_TAB, NodeRec) of
+                true ->
+                    persist_record(NodeRec),
+                    NewMembership = [NodeKey | Cluster#rms_cluster.nodes],
+                    NewCluster = Cluster#rms_cluster{nodes = NewMembership},
+                    ets:insert(?CLUST_TAB, NewCluster),
+                    persist_record(NewCluster),
+                    ok;
+                false ->
+                    {error, {node_exists, NodeKey}}
+            end
     end.
 
 do_get_node(Key) ->
@@ -310,13 +296,20 @@ do_set_node_status(Key, Status) ->
     end.
 
 do_delete_node(Key) ->
-    do_delete(Key, ?NODE_TAB).
-
-do_delete(Key, Table) ->
-    case ets:lookup(Table, Key) of
+    case ets:lookup(?NODE_TAB, Key) of
         [] ->
             {error, {not_found, Key}};
-        [_] ->
-            ets:delete(Table, Key),
-            ok
+        [#rms_node{cluster = ClusterKey}] ->
+            ets:delete(?NODE_TAB, Key),
+            %% FIXME delete record from ZK!
+            case ets:lookup(?CLUST_TAB, ClusterKey) of
+                [] ->
+                    ok; %% Shouldn't ever hit this case, but if we do just ignore
+                [Cluster] ->
+                    NewMembership = lists:delete(Key, Cluster#rms_cluster.nodes),
+                    NewCluster = Cluster#rms_cluster{nodes = NewMembership},
+                    ets:insert(?CLUST_TAB, NewCluster),
+                    persist_record(NewCluster),
+                    ok
+            end
     end.

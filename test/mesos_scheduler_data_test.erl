@@ -26,7 +26,6 @@ sched_data_test_() ->
       fun add_delete_cluster/0,
       fun set_cluster_status/0,
       fun add_delete_node/0,
-      fun join_node_to_cluster/0,
       fun test_persistence/0
      ]}.
 
@@ -57,45 +56,28 @@ set_cluster_status() ->
     {ok, Expected} = mesos_scheduler_data:get_cluster(?C1).
 
 add_delete_node() ->
-    Node = #rms_node{key = ?N1, status = requested},
+    Cluster = #rms_cluster{key = ?C1, status = requested, nodes = []},
+    Node = #rms_node{key = ?N1, status = requested, cluster = ?C1},
 
     {error, {not_found, ?N1}} = mesos_scheduler_data:delete_node(?N1),
-    ok = mesos_scheduler_data:add_node(Node),
-    {ok, #rms_node{status = requested}} = mesos_scheduler_data:get_node(?N1),
-    ok = mesos_scheduler_data:delete_node(?N1).
 
-join_node_to_cluster() ->
-    Cluster = #rms_cluster{key = ?C1, status = requested, nodes = []},
-    Node = #rms_node{key = ?N1, status = requested},
+    {error, {no_such_cluster, ?C1}} = mesos_scheduler_data:add_node(Node),
 
     ok = mesos_scheduler_data:add_cluster(Cluster),
-    {ok, #rms_cluster{status = requested, nodes = []}} = mesos_scheduler_data:get_cluster(?C1),
-
-    {error, {node_not_found, ?N1}} = mesos_scheduler_data:join_node_to_cluster(?C1, ?N1),
-    {ok, #rms_cluster{status = requested, nodes = []}} = mesos_scheduler_data:get_cluster(?C1),
-
     ok = mesos_scheduler_data:add_node(Node),
-    {ok, #rms_cluster{status = requested, nodes = []}} = mesos_scheduler_data:get_cluster(?C1),
+    {ok, #rms_node{status = requested}} = mesos_scheduler_data:get_node(?N1),
+    {ok, #rms_cluster{nodes = [?N1]}} = mesos_scheduler_data:get_cluster(?C1),
 
-    {error, {node_not_active,?N1,requested}} = mesos_scheduler_data:join_node_to_cluster(?C1, ?N1),
-    {ok, #rms_cluster{status = requested, nodes = []}} = mesos_scheduler_data:get_cluster(?C1),
-
-    ok = mesos_scheduler_data:set_node_status(?N1, active),
-    {error,{cluster_not_active,?C1,requested}} = mesos_scheduler_data:join_node_to_cluster(?C1,?N1),
-    {ok, #rms_cluster{status = requested, nodes = []}} = mesos_scheduler_data:get_cluster(?C1),
-
-    ok = mesos_scheduler_data:set_cluster_status(?C1, active),
-    {ok, #rms_cluster{status = active, nodes = []}} = mesos_scheduler_data:get_cluster(?C1),
-    ok = mesos_scheduler_data:join_node_to_cluster(?C1, ?N1),
-    {ok, #rms_cluster{status = active, nodes = [?N1]}} = mesos_scheduler_data:get_cluster(?C1).
+    ok = mesos_scheduler_data:delete_node(?N1),
+    {error, {not_found, ?N1}} = mesos_scheduler_data:get_node(?N1),
+    {ok, #rms_cluster{nodes = []}} = mesos_scheduler_data:get_cluster(?C1).
 
 test_persistence() ->
     Cluster = #rms_cluster{key = ?C1, status = active, nodes = []},
-    Node = #rms_node{key = ?N1, status = active},
+    Node = #rms_node{key = ?N1, status = active, cluster = ?C1},
 
     ok = mesos_scheduler_data:add_cluster(Cluster),
     ok = mesos_scheduler_data:add_node(Node),
-    ok = mesos_scheduler_data:join_node_to_cluster(?C1, ?N1),
 
     ok = mesos_scheduler_data:stop(),
     {ok, _Pid} = mesos_scheduler_data:start_link(),

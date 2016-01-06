@@ -13,6 +13,8 @@
 
           status :: mesos_scheduler_data:node_status(),
 
+          cluster :: mesos_scheduler_data:cluster_key(),
+
           node_name :: node(),
           hostname :: string(),
           http_port :: integer(),
