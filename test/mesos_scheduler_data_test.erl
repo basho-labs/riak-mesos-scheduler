@@ -73,13 +73,25 @@ add_delete_node() ->
     {ok, #rms_cluster{nodes = []}} = mesos_scheduler_data:get_cluster(?C1).
 
 test_persistence() ->
-    Cluster = #rms_cluster{key = ?C1, status = active, nodes = []},
+    Cluster = #rms_cluster{key = ?C1, status = requested, nodes = []},
     Node = #rms_node{key = ?N1, status = active, cluster = ?C1},
 
+    %% Check that writes and updates are persisted
     ok = mesos_scheduler_data:add_cluster(Cluster),
     ok = mesos_scheduler_data:add_node(Node),
+    ok = mesos_scheduler_data:set_cluster_status(?C1, active),
 
     ok = mesos_scheduler_data:stop(),
-    {ok, _Pid} = mesos_scheduler_data:start_link(),
+    {ok, _} = mesos_scheduler_data:start_link(),
 
-    {ok, #rms_cluster{status = active, nodes = [?N1]}} = mesos_scheduler_data:get_cluster(?C1).
+    {ok, #rms_cluster{status = active, nodes = [?N1]}} = mesos_scheduler_data:get_cluster(?C1),
+
+    %% Check that deleted records are correctly de-persisted
+    ok = mesos_scheduler_data:delete_node(?N1),
+    ok = mesos_scheduler_data:delete_cluster(?C1),
+
+    ok = mesos_scheduler_data:stop(),
+    {ok, _} = mesos_scheduler_data:start_link(),
+
+    {error, {not_found, ?N1}} = mesos_scheduler_data:get_node(?N1),
+    {error, {not_found, ?C1}} = mesos_scheduler_data:get_node(?C1).
