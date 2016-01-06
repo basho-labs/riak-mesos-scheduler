@@ -216,6 +216,15 @@ persist_record(Rec, Node, Key) ->
     Data = term_to_binary(Rec),
     {ok, _, _} = mesos_metadata_manager:create_or_set(Path, Key, Data).
 
+delete_persistent_record(#rms_cluster{key = Key}) ->
+    delete_persistent_record(?ZK_CLUSTER_NODE, Key);
+delete_persistent_record(#rms_node{key = Key}) ->
+    delete_persistent_record(?ZK_NODE_NODE, Key).
+
+delete_persistent_record(Node, Key) ->
+    Path = [root_path(), "/", Node, "/", Key],
+    mesos_metadata_manager:delete_node(Path).
+
 do_add_cluster(ClusterRec) ->
     case ets:insert_new(?CLUST_TAB, ClusterRec) of
         false ->
@@ -251,11 +260,11 @@ do_delete_cluster(Key) ->
     case ets:lookup(?CLUST_TAB, Key) of
         [] ->
             {error, {not_found, Key}};
-        [_Cluster] ->
+        [Cluster] ->
             %% Should we also delete any associated nodes here?
             %%[do_delete_node(NodeKey) || NodeKey <- Cluster#rms_cluster.nodes],
             ets:delete(?CLUST_TAB, Key),
-            %% FIXME delete record from ZooKeeper as well!
+            delete_persistent_record(Cluster),
             ok
     end.
 
@@ -299,9 +308,10 @@ do_delete_node(Key) ->
     case ets:lookup(?NODE_TAB, Key) of
         [] ->
             {error, {not_found, Key}};
-        [#rms_node{cluster = ClusterKey}] ->
+        [Node] ->
+            #rms_node{cluster = ClusterKey} = Node,
             ets:delete(?NODE_TAB, Key),
-            %% FIXME delete record from ZK!
+            delete_persistent_record(Node),
             case ets:lookup(?CLUST_TAB, ClusterKey) of
                 [] ->
                     ok; %% Shouldn't ever hit this case, but if we do just ignore
