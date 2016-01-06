@@ -11,7 +11,7 @@
                   inets,
                   crypto,
                   lager,
-                  clique,
+                  erlzk,
                   webmachine,
                   erl_mesos
                  ]},
