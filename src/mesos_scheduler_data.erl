@@ -321,17 +321,37 @@ do_add_node(NodeRec) ->
         [] ->
             {error, {no_such_cluster, ClusterKey}};
         [Cluster] ->
-            case ets:insert_new(?NODE_TAB, NodeRec) of
-                true ->
-                    persist_record(NodeRec),
-                    NewMembership = [NodeKey | Cluster#rms_cluster.nodes],
+            case ets:lookup(?NODE_TAB, NodeKey) of
+                [] ->
+                    NewMembership = add_member(NodeKey, Cluster#rms_cluster.nodes),
                     NewCluster = Cluster#rms_cluster{nodes = NewMembership},
-                    ets:insert(?CLUST_TAB, NewCluster),
-                    persist_record(NewCluster),
-                    ok;
-                false ->
+                    %% N.B. It's possible we might succeed in persisting the new cluster
+                    %% record but fail to persist the node record. This should work out
+                    %% okay in the end though, since we've written the add_member function
+                    %% to be idempotent. Once the operation is retried, everything will
+                    %% turn out the way its supposed to be.
+                    case persist_record(NewCluster) of
+                        ok ->
+                            case persist_record(NodeRec) of
+                                ok ->
+                                    ets:insert(?CLUST_TAB, NewCluster),
+                                    ets:insert(?NODE_TAB, NodeRec),
+                                    ok;
+                                {error, Error} ->
+                                    {error, Error}
+                            end;
+                        {error, Error} ->
+                            {error, Error}
+                    end;
+                [_ExistingNode] ->
                     {error, {node_exists, NodeKey}}
             end
+    end.
+
+add_member(NodeKey, Nodes) ->
+    case lists:member(NodeKey, Nodes) of
+        true -> Nodes;
+        false -> [NodeKey | Nodes]
     end.
 
 do_get_node(Key) ->
