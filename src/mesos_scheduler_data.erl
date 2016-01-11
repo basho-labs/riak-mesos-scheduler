@@ -363,9 +363,13 @@ do_set_node_status(Key, Status) ->
             {error, {not_found, Key}};
         [Node] ->
             NewNode = Node#rms_node{status = Status},
-            ets:insert(?NODE_TAB, NewNode),
-            persist_record(NewNode),
-            ok
+            case persist_record(NewNode) of
+                ok ->
+                    ets:insert(?NODE_TAB, NewNode),
+                    ok;
+                {error, Error} ->
+                    {error, Error}
+            end
     end.
 
 do_delete_node(Key) ->
@@ -374,17 +378,25 @@ do_delete_node(Key) ->
             {error, {not_found, Key}};
         [Node] ->
             #rms_node{cluster = ClusterKey} = Node,
-            ets:delete(?NODE_TAB, Key),
-            delete_persistent_record(Node),
-            case ets:lookup(?CLUST_TAB, ClusterKey) of
-                [] ->
-                    ok; %% Shouldn't ever hit this case, but if we do just ignore
-                [Cluster] ->
-                    NewMembership = lists:delete(Key, Cluster#rms_cluster.nodes),
-                    NewCluster = Cluster#rms_cluster{nodes = NewMembership},
-                    ets:insert(?CLUST_TAB, NewCluster),
-                    persist_record(NewCluster),
-                    ok
+            case delete_persistent_record(Node) of
+                ok ->
+                    ets:delete(?NODE_TAB, Key),
+                    case ets:lookup(?CLUST_TAB, ClusterKey) of
+                        [] ->
+                            ok; %% Shouldn't ever hit this case, but if we do just ignore
+                        [Cluster] ->
+                            NewMembership = lists:delete(Key, Cluster#rms_cluster.nodes),
+                            NewCluster = Cluster#rms_cluster{nodes = NewMembership},
+                            case persist_record(NewCluster) of
+                                ok ->
+                                    ets:insert(?CLUST_TAB, NewCluster),
+                                    ok;
+                                {error, Error} ->
+                                    {error, Error}
+                            end
+                    end;
+                {error, Error} ->
+                    {error, Error}
             end
     end.
 
