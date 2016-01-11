@@ -24,7 +24,7 @@
 %% Debug/testing use only?
 -export([reset_all_data/0]).
 
--type key() :: iolist(). %% Keys used to identify nodes/clusters
+-type key() :: string(). %% Keys used to identify nodes/clusters
 -type cluster_key() :: key().
 -type node_key() :: key().
 

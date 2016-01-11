@@ -156,11 +156,17 @@ dispatch(Ip, Port) ->
 %% Clusters
 
 get_clusters(RD) ->
-    ClusterList = [C#rms_cluster.key || C <- mesos_scheduler_data:get_all_clusters()],
+    ClusterList = [list_to_binary(C#rms_cluster.key) ||
+                   C <- mesos_scheduler_data:get_all_clusters()],
     {[{clusters, ClusterList}], RD}.
 
 cluster_exists(RD) ->
-    {true, RD}.
+    Cluster = wrq:path_info(cluster, RD),
+    Result = case mesos_scheduler_data:get_cluster(Cluster) of
+                 {error, {not_found, _}} -> false;
+                 {ok, _} -> true
+             end,
+    {Result, RD}.
 
 create_cluster(RD) ->
     Body = [{success, true}],
