@@ -287,9 +287,13 @@ do_set_cluster_status(Key, Status) ->
             {error, {not_found, Key}};
         [Cluster] ->
             NewCluster = Cluster#rms_cluster{status = Status},
-            ets:insert(?CLUST_TAB, NewCluster),
-            persist_record(NewCluster),
-            ok
+            case persist_record(NewCluster) of
+                ok ->
+                    ets:insert(?CLUST_TAB, NewCluster),
+                    ok;
+                {error, Error} ->
+                    {error, Error}
+            end
     end.
 
 do_delete_cluster(Key) ->
