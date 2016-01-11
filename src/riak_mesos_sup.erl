@@ -61,6 +61,9 @@ init([]) ->
                  {mesos_metadata_manager, start_link,
                   [[{ZooKeeperHost, ZooKeeperPort}], "riak_mesos_scheduler"]},
                  permanent, 5000, worker, [mesos_metadata_manager]},
-    Processes = [MdMgrSpec, SchedulerSpec, WebmachineSpec],
+    SchedulerDataSpec = {mesos_scheduler_data,
+                         {mesos_scheduler_data, start_link, []},
+                         permanent, 5000, worker, [mesos_scheduler_data]},
+    Processes = [MdMgrSpec, SchedulerDataSpec, SchedulerSpec, WebmachineSpec],
 
     {ok, { {one_for_one, 10, 10}, Processes} }.
