@@ -98,6 +98,8 @@
 
 -include_lib("webmachine/include/webmachine.hrl").
 
+-include("mesos_scheduler_data.hrl").
+
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -154,7 +156,8 @@ dispatch(Ip, Port) ->
 %% Clusters
 
 get_clusters(RD) ->
-    {[{clusters, [<<"default">>]}], RD}.
+    ClusterList = [C#rms_cluster.key || C <- mesos_scheduler_data:get_all_clusters()],
+    {[{clusters, ClusterList}], RD}.
 
 cluster_exists(RD) ->
     {true, RD}.
