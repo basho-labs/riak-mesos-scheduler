@@ -301,11 +301,15 @@ do_delete_cluster(Key) ->
         [] ->
             {error, {not_found, Key}};
         [Cluster] ->
-            %% Should we also delete any associated nodes here?
-            %%[do_delete_node(NodeKey) || NodeKey <- Cluster#rms_cluster.nodes],
-            ets:delete(?CLUST_TAB, Key),
-            delete_persistent_record(Cluster),
-            ok
+            case delete_persistent_record(Cluster) of
+                ok ->
+                    %% Should we also delete any associated nodes here?
+                    %%[do_delete_node(NodeKey) || NodeKey <- Cluster#rms_cluster.nodes],
+                    ets:delete(?CLUST_TAB, Key),
+                    ok;
+                {error, Error} ->
+                    {error, Error}
+            end
     end.
 
 do_add_node(NodeRec) ->
