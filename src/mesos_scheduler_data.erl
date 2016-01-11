@@ -255,12 +255,19 @@ delete_persistent_record(Node, Key) ->
     end.
 
 do_add_cluster(ClusterRec) ->
-    case ets:insert_new(?CLUST_TAB, ClusterRec) of
-        false ->
-            {error, {cluster_exists, ClusterRec#rms_cluster.key}};
-        true ->
-            persist_record(ClusterRec),
-            ok
+    Key = ClusterRec#rms_cluster.key,
+
+    case ets:lookup(?CLUST_TAB, Key) of
+        [] ->
+            case persist_record(ClusterRec) of
+                ok ->
+                    ets:insert(?CLUST_TAB, ClusterRec),
+                    ok;
+                {error, Error} ->
+                    {error, Error}
+            end;
+        [_ExistingCluster] ->
+            {error, {cluster_exists, ClusterRec#rms_cluster.key}}
     end.
 
 do_get_cluster(Key) ->
