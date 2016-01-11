@@ -54,6 +54,8 @@ add_delete_cluster() ->
 set_cluster_status() ->
     Cluster = #rms_cluster{key = ?C1, status = requested, nodes = ?NODES},
 
+    {error, {not_found, ?C1}} = mesos_scheduler_data:set_cluster_status(?C1, starting),
+
     ok = mesos_scheduler_data:add_cluster(Cluster),
     ok = mesos_scheduler_data:set_cluster_status(?C1, starting),
 
