@@ -230,7 +230,12 @@ persist_record(Rec) when is_record(Rec, rms_node) ->
 persist_record(Rec, Node, Key) ->
     Path = [root_path(), "/", Node],
     Data = term_to_binary(Rec),
-    {ok, _, _} = mesos_metadata_manager:create_or_set(Path, Key, Data).
+    case mesos_metadata_manager:create_or_set(Path, Key, Data) of
+        {ok, _, _} ->
+            ok;
+        {error, closed} ->
+            {error, closed}
+    end.
 
 delete_persistent_record(#rms_cluster{key = Key}) ->
     delete_persistent_record(?ZK_CLUSTER_NODE, Key);
@@ -239,7 +244,15 @@ delete_persistent_record(#rms_node{key = Key}) ->
 
 delete_persistent_record(Node, Key) ->
     Path = [root_path(), "/", Node, "/", Key],
-    mesos_metadata_manager:delete_node(Path).
+    %% This case statement looks silly but we just want to make sure we're getting one
+    %% of the return values that we're expecting. Anything other than ok or {error, closed}
+    %% indicates a problem, so we want to crash immediately rather than pass the buck.
+    case mesos_metadata_manager:delete_node(Path) of
+        ok ->
+            ok;
+        {error, closed} ->
+            {error, closed}
+    end.
 
 do_add_cluster(ClusterRec) ->
     case ets:insert_new(?CLUST_TAB, ClusterRec) of
