@@ -177,21 +177,25 @@ delete_cluster(RD) ->
     {true, wrq:append_to_response_body(mochijson2:encode(Body), RD)}.
 
 get_cluster(RD) ->
-    ClusterKey = list_to_binary(wrq:path_info(cluster, RD)),
+    ClusterKey = wrq:path_info(cluster, RD),
+    {ok, Cluster} = mesos_scheduler_data:get_cluster(ClusterKey),
+    #rms_cluster{
+       status = Status,
+       riak_conf = RiakConf,
+       advanced_config = AdvancedConfig,
+       nodes = Nodes
+    } = Cluster,
+    NodeData = [list_to_binary(NodeKey) || NodeKey <- Nodes],
     ClusterData = [{ClusterKey, [
-        {key, ClusterKey},
-        {status, active},
-        {nodes, [
-            list_to_binary(wrq:path_info(cluster, RD) ++ "-1"),
-            list_to_binary(wrq:path_info(cluster, RD) ++ "-2"),
-            list_to_binary(wrq:path_info(cluster, RD) ++ "-3")
-        ]},
-        {node_cpus, 2.0},
-        {node_mem, 2048.0},
-        {node_disk, 20000.0},
-        {node_ports, 3},
-        {riak_conf, <<"riak configuration">>},
-        {advanced_config, <<"advanced configuration">>}
+        {key, list_to_binary(ClusterKey)},
+        {status, Status},
+        {nodes, NodeData},
+        %%{node_cpus, 2.0},
+        %%{node_mem, 2048.0},
+        %%{node_disk, 20000.0},
+        %%{node_ports, 3},
+        {riak_conf, list_to_binary(RiakConf)},
+        {advanced_config, list_to_binary(AdvancedConfig)}
     ]}],
     {ClusterData, RD}.
 
