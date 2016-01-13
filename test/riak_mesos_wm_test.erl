@@ -14,7 +14,8 @@ riak_mesos_wm_test_() ->
      SetupFun,
      TeardownFun,
      [
-      fun add_delete_cluster/0
+      fun add_delete_cluster/0,
+      fun list_clusters/0
      ]}.
 
 -define(C1, "wm-test-cluster1").
@@ -39,6 +40,14 @@ add_delete_cluster() ->
 
     {ok, Res5} = httpc:request(get, GetRequest, [], []),
     ?assertMatch({{"HTTP/1.1", 404, "Object Not Found"}, _, _}, Res5).
+
+list_clusters() ->
+    ListRequest = {url("clusters"), []},
+    {ok, Res1} = httpc:request(get, ListRequest, [], []),
+    ?assertMatch({{"HTTP/1.1", 200, "OK"}, _, _}, Res1),
+    {_, _, ListJSON1} = Res1,
+    ClusterList = mochijson2:decode(ListJSON1),
+    ?assertEqual({struct, [{<<"clusters">>, []}]}, ClusterList).
 
 url(Resource) ->
     "http://localhost:9090/api/v1/" ++ Resource.
