@@ -169,18 +169,15 @@ cluster_exists(RD) ->
     {Result, RD}.
 
 create_cluster(RD) ->
-    Body = [{success, true}],
-    {true, wrq:append_to_response_body(mochijson2:encode(Body), RD)}.
+    ClusterKey = wrq:path_info(cluster, RD),
+    Cluster = #rms_cluster{key = ClusterKey},
+    Response = build_response(fun mesos_scheduler_data:add_cluster/1, [Cluster]),
+    {true, wrq:append_to_response_body(mochijson2:encode(Response), RD)}.
 
 delete_cluster(RD) ->
     ClusterKey = wrq:path_info(cluster, RD),
-    Body = case mesos_scheduler_data:delete_cluster(ClusterKey) of
-               ok ->
-                   [{success, true}];
-               {error, _} ->
-                   [{success, false}]
-           end,
-    {true, wrq:append_to_response_body(mochijson2:encode(Body), RD)}.
+    ResponseBody = build_response(fun mesos_scheduler_data:delete_cluster/1, [ClusterKey]),
+    {true, wrq:append_to_response_body(mochijson2:encode(ResponseBody), RD)}.
 
 get_cluster(RD) ->
     ClusterKey = wrq:path_info(cluster, RD),
@@ -366,3 +363,12 @@ build_wm_routes([], Accum) ->
     [lists:reverse(Accum)];
 build_wm_routes([#route{base=Base, path=Path}|Rest], Accum) ->
     build_wm_routes(Rest, [{Base ++ Path, ?MODULE, []}|Accum]).
+
+build_response(Fun, Args) ->
+    case apply(Fun, Args) of
+        ok ->
+            [{success, true}];
+        {error, Error} ->
+            ErrStr = iolist_to_binary(io_lib:format("~p", [Error])),
+            [{success, false}, {error, ErrStr}]
+    end.
