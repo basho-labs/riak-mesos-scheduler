@@ -46,8 +46,18 @@ list_clusters() ->
     {ok, Res1} = httpc:request(get, ListRequest, [], []),
     ?assertMatch({{"HTTP/1.1", 200, "OK"}, _, _}, Res1),
     {_, _, ListJSON1} = Res1,
-    ClusterList = mochijson2:decode(ListJSON1),
-    ?assertEqual({struct, [{<<"clusters">>, []}]}, ClusterList).
+    ClusterList1 = mochijson2:decode(ListJSON1),
+    ?assertEqual({struct, [{<<"clusters">>, []}]}, ClusterList1),
+
+    CreateRequest = {url("clusters/" ++ ?C1), [], "plain/text", ""},
+    {ok, Res2} = httpc:request(put, CreateRequest, [], []),
+    ?assertMatch({{"HTTP/1.1", 200, "OK"}, _, _}, Res2),
+
+    {ok, Res3} = httpc:request(get, ListRequest, [], []),
+    ?assertMatch({{"HTTP/1.1", 200, "OK"}, _, _}, Res1),
+    {_, _, ListJSON2} = Res3,
+    ClusterList2 = mochijson2:decode(ListJSON2),
+    ?assertEqual({struct, [{<<"clusters">>, [<<?C1>>]}]}, ClusterList2).
 
 url(Resource) ->
     "http://localhost:9090/api/v1/" ++ Resource.
