@@ -173,7 +173,13 @@ create_cluster(RD) ->
     {true, wrq:append_to_response_body(mochijson2:encode(Body), RD)}.
 
 delete_cluster(RD) ->
-    Body = [{success, true}],
+    ClusterKey = wrq:path_info(cluster, RD),
+    Body = case mesos_scheduler_data:delete_cluster(ClusterKey) of
+               ok ->
+                   [{success, true}];
+               {error, _} ->
+                   [{success, false}]
+           end,
     {true, wrq:append_to_response_body(mochijson2:encode(Body), RD)}.
 
 get_cluster(RD) ->
