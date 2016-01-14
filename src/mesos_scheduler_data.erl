@@ -230,7 +230,12 @@ persist_record(Rec) when is_record(Rec, rms_node) ->
 persist_record(Rec, Node, Key) ->
     Path = [root_path(), "/", Node],
     Data = term_to_binary(Rec),
-    {ok, _, _} = mesos_metadata_manager:create_or_set(Path, Key, Data).
+    case mesos_metadata_manager:create_or_set(Path, Key, Data) of
+        {ok, _, _} ->
+            ok;
+        {error, closed} ->
+            {error, closed}
+    end.
 
 delete_persistent_record(#rms_cluster{key = Key}) ->
     delete_persistent_record(?ZK_CLUSTER_NODE, Key);
@@ -239,15 +244,30 @@ delete_persistent_record(#rms_node{key = Key}) ->
 
 delete_persistent_record(Node, Key) ->
     Path = [root_path(), "/", Node, "/", Key],
-    mesos_metadata_manager:delete_node(Path).
+    %% This case statement looks silly but we just want to make sure we're getting one
+    %% of the return values that we're expecting. Anything other than ok or {error, closed}
+    %% indicates a problem, so we want to crash immediately rather than pass the buck.
+    case mesos_metadata_manager:delete_node(Path) of
+        ok ->
+            ok;
+        {error, closed} ->
+            {error, closed}
+    end.
 
 do_add_cluster(ClusterRec) ->
-    case ets:insert_new(?CLUST_TAB, ClusterRec) of
-        false ->
-            {error, {cluster_exists, ClusterRec#rms_cluster.key}};
-        true ->
-            persist_record(ClusterRec),
-            ok
+    Key = ClusterRec#rms_cluster.key,
+
+    case ets:lookup(?CLUST_TAB, Key) of
+        [] ->
+            case persist_record(ClusterRec) of
+                ok ->
+                    ets:insert(?CLUST_TAB, ClusterRec),
+                    ok;
+                {error, Error} ->
+                    {error, Error}
+            end;
+        [_ExistingCluster] ->
+            {error, {cluster_exists, ClusterRec#rms_cluster.key}}
     end.
 
 do_get_cluster(Key) ->
@@ -267,9 +287,13 @@ do_set_cluster_status(Key, Status) ->
             {error, {not_found, Key}};
         [Cluster] ->
             NewCluster = Cluster#rms_cluster{status = Status},
-            ets:insert(?CLUST_TAB, NewCluster),
-            persist_record(NewCluster),
-            ok
+            case persist_record(NewCluster) of
+                ok ->
+                    ets:insert(?CLUST_TAB, NewCluster),
+                    ok;
+                {error, Error} ->
+                    {error, Error}
+            end
     end.
 
 do_delete_cluster(Key) ->
@@ -277,11 +301,15 @@ do_delete_cluster(Key) ->
         [] ->
             {error, {not_found, Key}};
         [Cluster] ->
-            %% Should we also delete any associated nodes here?
-            %%[do_delete_node(NodeKey) || NodeKey <- Cluster#rms_cluster.nodes],
-            ets:delete(?CLUST_TAB, Key),
-            delete_persistent_record(Cluster),
-            ok
+            case delete_persistent_record(Cluster) of
+                ok ->
+                    %% Should we also delete any associated nodes here?
+                    %%[do_delete_node(NodeKey) || NodeKey <- Cluster#rms_cluster.nodes],
+                    ets:delete(?CLUST_TAB, Key),
+                    ok;
+                {error, Error} ->
+                    {error, Error}
+            end
     end.
 
 do_add_node(NodeRec) ->
@@ -293,17 +321,37 @@ do_add_node(NodeRec) ->
         [] ->
             {error, {no_such_cluster, ClusterKey}};
         [Cluster] ->
-            case ets:insert_new(?NODE_TAB, NodeRec) of
-                true ->
-                    persist_record(NodeRec),
-                    NewMembership = [NodeKey | Cluster#rms_cluster.nodes],
+            case ets:lookup(?NODE_TAB, NodeKey) of
+                [] ->
+                    NewMembership = add_member(NodeKey, Cluster#rms_cluster.nodes),
                     NewCluster = Cluster#rms_cluster{nodes = NewMembership},
-                    ets:insert(?CLUST_TAB, NewCluster),
-                    persist_record(NewCluster),
-                    ok;
-                false ->
+                    %% N.B. It's possible we might succeed in persisting the new cluster
+                    %% record but fail to persist the node record. This should work out
+                    %% okay in the end though, since we've written the add_member function
+                    %% to be idempotent. Once the operation is retried, everything will
+                    %% turn out the way its supposed to be.
+                    case persist_record(NewCluster) of
+                        ok ->
+                            case persist_record(NodeRec) of
+                                ok ->
+                                    ets:insert(?CLUST_TAB, NewCluster),
+                                    ets:insert(?NODE_TAB, NodeRec),
+                                    ok;
+                                {error, Error} ->
+                                    {error, Error}
+                            end;
+                        {error, Error} ->
+                            {error, Error}
+                    end;
+                [_ExistingNode] ->
                     {error, {node_exists, NodeKey}}
             end
+    end.
+
+add_member(NodeKey, Nodes) ->
+    case lists:member(NodeKey, Nodes) of
+        true -> Nodes;
+        false -> [NodeKey | Nodes]
     end.
 
 do_get_node(Key) ->
@@ -315,9 +363,13 @@ do_set_node_status(Key, Status) ->
             {error, {not_found, Key}};
         [Node] ->
             NewNode = Node#rms_node{status = Status},
-            ets:insert(?NODE_TAB, NewNode),
-            persist_record(NewNode),
-            ok
+            case persist_record(NewNode) of
+                ok ->
+                    ets:insert(?NODE_TAB, NewNode),
+                    ok;
+                {error, Error} ->
+                    {error, Error}
+            end
     end.
 
 do_delete_node(Key) ->
@@ -326,17 +378,25 @@ do_delete_node(Key) ->
             {error, {not_found, Key}};
         [Node] ->
             #rms_node{cluster = ClusterKey} = Node,
-            ets:delete(?NODE_TAB, Key),
-            delete_persistent_record(Node),
-            case ets:lookup(?CLUST_TAB, ClusterKey) of
-                [] ->
-                    ok; %% Shouldn't ever hit this case, but if we do just ignore
-                [Cluster] ->
-                    NewMembership = lists:delete(Key, Cluster#rms_cluster.nodes),
-                    NewCluster = Cluster#rms_cluster{nodes = NewMembership},
-                    ets:insert(?CLUST_TAB, NewCluster),
-                    persist_record(NewCluster),
-                    ok
+            case delete_persistent_record(Node) of
+                ok ->
+                    ets:delete(?NODE_TAB, Key),
+                    case ets:lookup(?CLUST_TAB, ClusterKey) of
+                        [] ->
+                            ok; %% Shouldn't ever hit this case, but if we do just ignore
+                        [Cluster] ->
+                            NewMembership = lists:delete(Key, Cluster#rms_cluster.nodes),
+                            NewCluster = Cluster#rms_cluster{nodes = NewMembership},
+                            case persist_record(NewCluster) of
+                                ok ->
+                                    ets:insert(?CLUST_TAB, NewCluster),
+                                    ok;
+                                {error, Error} ->
+                                    {error, Error}
+                            end
+                    end;
+                {error, Error} ->
+                    {error, Error}
             end
     end.
 

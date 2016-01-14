@@ -26,6 +26,7 @@ sched_data_test_() ->
       fun add_delete_cluster/0,
       fun set_cluster_status/0,
       fun add_delete_node/0,
+      fun duplicate_adds/0,
       fun test_persistence/0
      ]}.
 
@@ -52,6 +53,8 @@ add_delete_cluster() ->
 
 set_cluster_status() ->
     Cluster = #rms_cluster{key = ?C1, status = requested, nodes = ?NODES},
+
+    {error, {not_found, ?C1}} = mesos_scheduler_data:set_cluster_status(?C1, starting),
 
     ok = mesos_scheduler_data:add_cluster(Cluster),
     ok = mesos_scheduler_data:set_cluster_status(?C1, starting),
@@ -83,6 +86,16 @@ add_delete_node() ->
 
     {ok, #rms_cluster{nodes = []}} = mesos_scheduler_data:get_cluster(?C1),
     [#rms_cluster{nodes = []}] = mesos_scheduler_data:get_all_clusters().
+
+duplicate_adds() ->
+    Cluster = #rms_cluster{key = ?C1, status = requested, nodes = []},
+    Node = #rms_node{key = ?N1, status = requested, cluster = ?C1},
+
+    ok = mesos_scheduler_data:add_cluster(Cluster),
+    ok = mesos_scheduler_data:add_node(Node),
+
+    {error, {cluster_exists, ?C1}} = mesos_scheduler_data:add_cluster(Cluster),
+    {error, {node_exists, ?N1}} = mesos_scheduler_data:add_node(Node).
 
 test_persistence() ->
     Cluster = #rms_cluster{key = ?C1, status = requested, nodes = []},
