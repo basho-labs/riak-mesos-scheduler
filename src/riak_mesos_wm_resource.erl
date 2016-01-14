@@ -98,6 +98,8 @@
 
 -include_lib("webmachine/include/webmachine.hrl").
 
+-include("mesos_scheduler_data.hrl").
+
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -154,35 +156,49 @@ dispatch(Ip, Port) ->
 %% Clusters
 
 get_clusters(RD) ->
-    {[{clusters, [<<"default">>]}], RD}.
+    ClusterList = [list_to_binary(C#rms_cluster.key) ||
+                   C <- mesos_scheduler_data:get_all_clusters()],
+    {[{clusters, ClusterList}], RD}.
 
 cluster_exists(RD) ->
-    {true, RD}.
+    Cluster = wrq:path_info(cluster, RD),
+    Result = case mesos_scheduler_data:get_cluster(Cluster) of
+                 {error, {not_found, _}} -> false;
+                 {ok, _} -> true
+             end,
+    {Result, RD}.
 
 create_cluster(RD) ->
-    Body = [{success, true}],
-    {true, wrq:append_to_response_body(mochijson2:encode(Body), RD)}.
+    ClusterKey = wrq:path_info(cluster, RD),
+    Cluster = #rms_cluster{key = ClusterKey},
+    Response = build_response(fun mesos_scheduler_data:add_cluster/1, [Cluster]),
+    {true, wrq:append_to_response_body(mochijson2:encode(Response), RD)}.
 
 delete_cluster(RD) ->
-    Body = [{success, true}],
-    {true, wrq:append_to_response_body(mochijson2:encode(Body), RD)}.
+    ClusterKey = wrq:path_info(cluster, RD),
+    ResponseBody = build_response(fun mesos_scheduler_data:delete_cluster/1, [ClusterKey]),
+    {true, wrq:append_to_response_body(mochijson2:encode(ResponseBody), RD)}.
 
 get_cluster(RD) ->
-    ClusterKey = list_to_binary(wrq:path_info(cluster, RD)),
+    ClusterKey = wrq:path_info(cluster, RD),
+    {ok, Cluster} = mesos_scheduler_data:get_cluster(ClusterKey),
+    #rms_cluster{
+       status = Status,
+       riak_conf = RiakConf,
+       advanced_config = AdvancedConfig,
+       nodes = Nodes
+    } = Cluster,
+    NodeData = [list_to_binary(NodeKey) || NodeKey <- Nodes],
     ClusterData = [{ClusterKey, [
-        {key, ClusterKey},
-        {status, active},
-        {nodes, [
-            list_to_binary(wrq:path_info(cluster, RD) ++ "-1"),
-            list_to_binary(wrq:path_info(cluster, RD) ++ "-2"),
-            list_to_binary(wrq:path_info(cluster, RD) ++ "-3")
-        ]},
-        {node_cpus, 2.0},
-        {node_mem, 2048.0},
-        {node_disk, 20000.0},
-        {node_ports, 3},
-        {riak_conf, <<"riak configuration">>},
-        {advanced_config, <<"advanced configuration">>}
+        {key, list_to_binary(ClusterKey)},
+        {status, Status},
+        {nodes, NodeData},
+        %%{node_cpus, 2.0},
+        %%{node_mem, 2048.0},
+        %%{node_disk, 20000.0},
+        %%{node_ports, 3},
+        {riak_conf, list_to_binary(RiakConf)},
+        {advanced_config, list_to_binary(AdvancedConfig)}
     ]}],
     {ClusterData, RD}.
 
@@ -347,3 +363,12 @@ build_wm_routes([], Accum) ->
     [lists:reverse(Accum)];
 build_wm_routes([#route{base=Base, path=Path}|Rest], Accum) ->
     build_wm_routes(Rest, [{Base ++ Path, ?MODULE, []}|Accum]).
+
+build_response(Fun, Args) ->
+    case apply(Fun, Args) of
+        ok ->
+            [{success, true}];
+        {error, Error} ->
+            ErrStr = iolist_to_binary(io_lib:format("~p", [Error])),
+            [{success, false}, {error, ErrStr}]
+    end.
