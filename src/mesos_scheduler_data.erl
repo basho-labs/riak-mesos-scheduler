@@ -9,6 +9,7 @@
          stop/0,
          add_cluster/1,
          get_cluster/1,
+         update_cluster/2,
          set_cluster_status/2,
          delete_cluster/1,
          add_node/1,
@@ -66,9 +67,14 @@ add_cluster(ClusterRec) ->
 get_cluster(Key) ->
     gen_server:call(?MODULE, {get_cluster, Key}).
 
+-spec update_cluster(key(), fun((#rms_cluster{}) -> #rms_cluster{})) -> ok | {error, term()}.
+update_cluster(Key, UpdateFun) ->
+    gen_server:call(?MODULE, {update_cluster, Key, UpdateFun}).
+
 -spec set_cluster_status(key(), cluster_status()) -> ok | {error, term()}.
 set_cluster_status(Key, Status) ->
-    gen_server:call(?MODULE, {set_cluster_status, Key, Status}).
+    UpdateFun = fun(Cluster) -> Cluster#rms_cluster{status = Status} end,
+    update_cluster(Key, UpdateFun).
 
 -spec delete_cluster(key()) -> ok | {error, term()}.
 delete_cluster(Key) ->
@@ -120,8 +126,8 @@ handle_call({add_cluster, ClusterRec}, _From, State) ->
 handle_call({get_cluster, Key}, _From, State) ->
     Result = do_get_cluster(Key),
     {reply, Result, State};
-handle_call({set_cluster_status, Key, Status}, _From, State) ->
-    Result = do_set_cluster_status(Key, Status),
+handle_call({update_cluster, Key, UpdateFun}, _From, State) ->
+    Result = do_update_cluster(Key, UpdateFun),
     {reply, Result, State};
 handle_call({delete_cluster, Key}, _From, State) ->
     Result = do_delete_cluster(Key),
@@ -281,12 +287,12 @@ do_get_record(Tab, Key) ->
             {ok, Result}
     end.
 
-do_set_cluster_status(Key, Status) ->
+do_update_cluster(Key, UpdateFun) ->
     case ets:lookup(?CLUST_TAB, Key) of
         [] ->
             {error, {not_found, Key}};
         [Cluster] ->
-            NewCluster = Cluster#rms_cluster{status = Status},
+            #rms_cluster{} = NewCluster = UpdateFun(Cluster),
             case persist_record(NewCluster) of
                 ok ->
                     ets:insert(?CLUST_TAB, NewCluster),
