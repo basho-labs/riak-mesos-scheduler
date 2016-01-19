@@ -381,6 +381,8 @@ build_response(Fun, Args) ->
     case apply(Fun, Args) of
         ok ->
             [{success, true}];
+        {ok, _} ->
+            [{success, true}];
         {error, Error} ->
             ErrStr = iolist_to_binary(io_lib:format("~p", [Error])),
             [{success, false}, {error, ErrStr}]
