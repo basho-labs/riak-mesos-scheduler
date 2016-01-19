@@ -11,7 +11,7 @@
 -record(rms_node, {
           key :: mesos_scheduler_data:node_key(),
 
-          status :: mesos_scheduler_data:node_status(),
+          status = requested :: mesos_scheduler_data:node_status(),
 
           cluster :: mesos_scheduler_data:cluster_key(),
 
