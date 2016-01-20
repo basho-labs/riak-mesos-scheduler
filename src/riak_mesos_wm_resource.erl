@@ -39,6 +39,7 @@
   get_nodes/1,
   node_exists/1,
   create_node_and_path/1,
+  update_cluster_with_new_node/1,
   noop_create_node/1,
   delete_node/1,
   get_node/1,
@@ -250,10 +251,38 @@ node_exists(RD) ->
     {ClusterExists and true, RD1}.
 
 create_node_and_path(RD) ->
-    ClusterKeyStr = wrq:path_info(cluster, RD),
-    Path = ClusterKeyStr ++ "-1",
-    Body = [{success, true}],
-    {Path, wrq:append_to_response_body(mochijson2:encode(Body), RD)}.
+    ClusterKey = wrq:path_info(cluster, RD),
+    case mesos_scheduler_data:update_cluster(ClusterKey, fun update_cluster_with_new_node/1) of
+        {error, {not_found, _}} ->
+            [{success, false}, {error, <<"cluster not found">>}];
+        {ok, Cluster} ->
+            %% After adding the new node, the node name should be at the
+            %% head of the cluster's node list:
+            #rms_cluster{nodes = [NewNodeName | _]} = Cluster,
+            NewNode = #rms_node{
+                         key = NewNodeName,
+                         cluster = ClusterKey
+                        },
+            Result = build_response(fun mesos_scheduler_data:add_node/1, [NewNode]),
+            {NewNodeName, wrq:append_to_response_body(mochijson2:encode(Result), RD)}
+    end.
+
+update_cluster_with_new_node(Cluster) ->
+    #rms_cluster{
+       key = Key,
+       nodes = Nodes
+      } = Cluster,
+    %% First thing we need to do is figure out what to name our new node.
+    %% We want to pick something of the form ClusterName-NodeNumber where
+    %% NodeNumber is an ascending integer.
+    Pattern = Key ++ "-(\\d+)",
+    MatchResults = [re:run(Node, Pattern, [{capture, [1], list}]) || Node <- Nodes],
+    ExistingNodeNumbers = [list_to_integer(NodeNum) || {match, [NodeNum]} <- MatchResults],
+    MaxNodeNumber = lists:max([0 | ExistingNodeNumbers]), %% Prepend 0 in case we have no nodes yet
+    NewNodeName = lists:append([Key, "-", integer_to_list(MaxNodeNumber + 1)]),
+
+    NewClusterNodes = [NewNodeName | Nodes],
+    Cluster#rms_cluster{nodes = NewClusterNodes}.
 
 noop_create_node(RD) ->
     {true, RD}.
