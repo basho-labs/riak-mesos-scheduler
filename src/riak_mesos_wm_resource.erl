@@ -207,24 +207,32 @@ restart_cluster(RD) ->
     {true, wrq:append_to_response_body(mochijson2:encode(Body), RD)}.
 
 riak_conf(RD) ->
-    ClusterKey = list_to_binary(wrq:path_info(cluster, RD)),
-    {Cluster, RD1} = get_cluster(RD),
-    ClusterInfo = proplists:get_value(ClusterKey, Cluster),
-    {proplists:get_value(riak_conf, ClusterInfo), RD1}.
+    ClusterKey = wrq:path_info(cluster, RD),
+    {ok, Cluster} = mesos_scheduler_data:get_cluster(ClusterKey),
+    RiakConf = Cluster#rms_cluster.riak_conf,
+    {RiakConf, RD}.
 
 set_riak_conf(RD) ->
-    Body = [{success, true}],
-    {true, wrq:append_to_response_body(mochijson2:encode(Body), RD)}.
+    Config = binary_to_list(wrq:req_body(RD)),
+    UpdateFun = fun(Cluster) -> Cluster#rms_cluster{riak_conf = Config} end,
+    update_cluster(RD, UpdateFun).
+
+update_cluster(RD, UpdateFun) ->
+    ClusterKey = wrq:path_info(cluster, RD),
+    ReplyBody = build_response(fun mesos_scheduler_data:update_cluster/2, [ClusterKey, UpdateFun]),
+    {true, wrq:append_to_response_body(mochijson2:encode(ReplyBody), RD)}.
 
 advanced_config(RD) ->
-    ClusterKey = list_to_binary(wrq:path_info(cluster, RD)),
-    {Cluster, RD1} = get_cluster(RD),
-    ClusterInfo = proplists:get_value(ClusterKey, Cluster),
-    {proplists:get_value(advanced_config, ClusterInfo), RD1}.
+    ClusterKey = wrq:path_info(cluster, RD),
+    {ok, Cluster} = mesos_scheduler_data:get_cluster(ClusterKey),
+    AdvancedConfig = Cluster#rms_cluster.advanced_config,
+    {AdvancedConfig, RD}.
 
 set_advanced_config(RD) ->
-    Body = [{success, true}],
-    {true, wrq:append_to_response_body(mochijson2:encode(Body), RD)}.
+    Config = binary_to_list(wrq:req_body(RD)),
+    UpdateFun = fun(Cluster) -> Cluster#rms_cluster{advanced_config = Config} end,
+    update_cluster(RD, UpdateFun).
+
 
 %% Nodes
 
@@ -313,7 +321,12 @@ provide_content(RD, Ctx=#ctx{route=#route{content={M,F}}}) ->
 
 provide_text_content(RD, Ctx=#ctx{route=#route{content={M,F}}}) ->
     {Body, RD1} = M:F(RD),
-    {binary_to_list(Body), RD1, Ctx}.
+    case is_binary(Body) of
+        true ->
+            {binary_to_list(Body), RD1, Ctx};
+        false ->
+            {Body, RD1, Ctx}
+    end.
 
 accept_content(RD, Ctx=#ctx{route=#route{accept={M,F}}}) ->
     {Success, RD1} = M:F(RD),
