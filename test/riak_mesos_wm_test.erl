@@ -20,6 +20,7 @@ riak_mesos_wm_test_() ->
       fun list_clusters/0,
       fun set_get_cluster_config/0,
       fun create_node/0,
+      fun list_nodes/0,
       fun test_new_node_fun/0
      ]}.
 
@@ -108,6 +109,32 @@ create_node() ->
     {<<"nodes">>, Nodes} = lists:keyfind(<<"nodes">>, 1, Fields),
     ExpectedNode = <<?C1, "-1">>,
     ?assertEqual([ExpectedNode], Nodes).
+
+list_nodes() ->
+    CreateRequest = {url("clusters/" ++ ?C1), [], "plain/text", ""},
+    verify_http_request(put, CreateRequest, 200),
+
+    ListRequest = {url("clusters/" ++ ?C1 ++ "/nodes"), []},
+    {_, _, Result} = verify_http_request(get, ListRequest, 200),
+    ?assertEqual([], decode_node_list(Result)),
+
+    %% Add three nodes
+    [add_node(?C1) || _ <- [1, 2, 3]],
+
+    {_, _, Result2} = verify_http_request(get, ListRequest, 200),
+    Nodes = decode_node_list(Result2),
+    SortedNodes = lists:sort(Nodes),
+
+    ExpectedNodes = [?C1 ++ N || N <- ["-1", "-2", "-3"]],
+    ?assertEqual(ExpectedNodes, SortedNodes).
+
+decode_node_list(Response) ->
+    {struct, [{<<"nodes">>, NodeList}]} = mochijson2:decode(Response),
+    [binary_to_list(N) || N <- NodeList].
+
+add_node(Cluster) ->
+    NodeRequest = {url("/clusters/" ++ Cluster ++ "/nodes"), [], "plain/text", ""},
+    verify_http_request(post, NodeRequest, 201).
 
 test_new_node_fun() ->
     C1 = #rms_cluster{key = ?C1, nodes = []},
