@@ -238,13 +238,15 @@ set_advanced_config(RD) ->
 %% Nodes
 
 get_nodes(RD) ->
-    ClusterKeyStr = wrq:path_info(cluster, RD),
-    Nodes = [{nodes, [
-        list_to_binary(ClusterKeyStr ++ "-1"),
-        list_to_binary(ClusterKeyStr ++ "-2"),
-        list_to_binary(ClusterKeyStr ++ "-3")
-    ]}],
-    {Nodes, RD}.
+    ClusterKey = wrq:path_info(cluster, RD),
+    case mesos_scheduler_data:get_cluster(ClusterKey) of
+        {ok, #rms_cluster{nodes = Nodes}} ->
+            Result = [{nodes, [list_to_binary(N) || N <- Nodes]}],
+            {Result, RD};
+        {error, Error} ->
+            ErrStr = iolist_to_binary(io_lib:format("~p", [Error])),
+            [{success, false}, {error, ErrStr}]
+    end.
 
 node_exists(RD) ->
     {ClusterExists, RD1} = cluster_exists(RD),
