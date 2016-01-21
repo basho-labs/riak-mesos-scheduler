@@ -67,14 +67,20 @@ add_cluster(ClusterRec) ->
 get_cluster(Key) ->
     gen_server:call(?MODULE, {get_cluster, Key}).
 
--spec update_cluster(key(), fun((#rms_cluster{}) -> #rms_cluster{})) -> ok | {error, term()}.
+-spec update_cluster(key(), fun((#rms_cluster{}) -> #rms_cluster{})) ->
+    {ok, #rms_cluster{}} | {error, term()}.
 update_cluster(Key, UpdateFun) ->
     gen_server:call(?MODULE, {update_cluster, Key, UpdateFun}).
 
 -spec set_cluster_status(key(), cluster_status()) -> ok | {error, term()}.
 set_cluster_status(Key, Status) ->
     UpdateFun = fun(Cluster) -> Cluster#rms_cluster{status = Status} end,
-    update_cluster(Key, UpdateFun).
+    case update_cluster(Key, UpdateFun) of
+        {ok, _NewCluster} ->
+            ok;
+        Error ->
+            Error
+    end.
 
 -spec delete_cluster(key()) -> ok | {error, term()}.
 delete_cluster(Key) ->
@@ -296,7 +302,7 @@ do_update_cluster(Key, UpdateFun) ->
             case persist_record(NewCluster) of
                 ok ->
                     ets:insert(?CLUST_TAB, NewCluster),
-                    ok;
+                    {ok, NewCluster};
                 {error, Error} ->
                     {error, Error}
             end
