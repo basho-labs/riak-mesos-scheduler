@@ -249,8 +249,24 @@ get_nodes(RD) ->
     end.
 
 node_exists(RD) ->
-    {ClusterExists, RD1} = cluster_exists(RD),
-    {ClusterExists and true, RD1}.
+    ClusterKey = wrq:path_info(cluster, RD),
+    NodeKey = wrq:path_info(node, RD),
+    case mesos_scheduler_data:get_cluster(ClusterKey) of
+        {error, {not_found, _}} ->
+            {false, RD};
+        {ok, Cluster} ->
+            case lists:member(NodeKey, Cluster#rms_cluster.nodes) of
+                false ->
+                    {false, RD};
+                true ->
+                    case mesos_scheduler_data:get_node(NodeKey) of
+                        {error, {not_found, _}} ->
+                            {false, RD};
+                        {ok, _Node} ->
+                            {true, RD}
+                    end
+            end
+    end.
 
 create_node_and_path(RD) ->
     ClusterKey = wrq:path_info(cluster, RD),
