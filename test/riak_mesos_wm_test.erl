@@ -22,7 +22,8 @@ riak_mesos_wm_test_() ->
       fun create_node/0,
       fun list_nodes/0,
       fun get_node/0,
-      fun test_new_node_fun/0
+      fun test_new_node_fun/0,
+      fun delete_node/0
      ]}.
 
 -define(C1, "wm-test-cluster1").
@@ -112,6 +113,21 @@ list_nodes() ->
 
     ExpectedNodes = [?C1 ++ N || N <- ["-1", "-2", "-3"]],
     ?assertEqual(ExpectedNodes, SortedNodes).
+
+delete_node() ->
+    NodeName = ?C1 ++ "-1",
+
+    GetRequest = {url("clusters/" ++ ?C1 ++ "/nodes/" ++ NodeName), []},
+    verify_http_request(get, GetRequest, 404),
+
+    add_cluster(?C1),
+    add_node(?C1),
+
+    verify_http_request(get, GetRequest, 200),
+
+    verify_http_request(delete, GetRequest, 200),
+
+    verify_http_request(get, GetRequest, 404).
 
 get_node() ->
     ClusterKey = ?C1,
