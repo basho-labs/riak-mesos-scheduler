@@ -21,6 +21,7 @@ riak_mesos_wm_test_() ->
       fun set_get_cluster_config/0,
       fun create_node/0,
       fun list_nodes/0,
+      fun get_node/0,
       fun test_new_node_fun/0
      ]}.
 
@@ -111,6 +112,25 @@ list_nodes() ->
 
     ExpectedNodes = [?C1 ++ N || N <- ["-1", "-2", "-3"]],
     ?assertEqual(ExpectedNodes, SortedNodes).
+
+get_node() ->
+    ClusterKey = ?C1,
+    NodeKey = ?C1 ++ "-1",
+    NodeKeyBin = list_to_binary(NodeKey),
+    add_cluster(ClusterKey),
+    add_node(ClusterKey),
+
+    GetRequest = {url("clusters/" ++ ClusterKey ++ "/nodes/" ++ NodeKey), []},
+    {_, _, ResultJson} = verify_http_request(get, GetRequest, 200),
+
+    Result = mochijson2:decode(ResultJson),
+    ?assertMatch({struct, [{NodeKeyBin, {struct,
+                                         [{<<"key">>, NodeKeyBin},
+                                          {<<"status">>, <<"requested">>},
+                                          {<<"location">>, {struct, _}},
+                                          {<<"container_path">>, _},
+                                          {<<"persistence_id">>, _}]}}]},
+                 Result).
 
 decode_node_list(Response) ->
     {struct, [{<<"nodes">>, NodeList}]} = mochijson2:decode(Response),
