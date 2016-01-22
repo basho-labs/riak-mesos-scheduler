@@ -21,6 +21,7 @@ riak_mesos_wm_test_() ->
       fun set_get_cluster_config/0,
       fun create_node/0,
       fun list_nodes/0,
+      fun get_node/0,
       fun test_new_node_fun/0
      ]}.
 
@@ -28,40 +29,27 @@ riak_mesos_wm_test_() ->
 
 add_delete_cluster() ->
     GetRequest = {url("clusters/" ++ ?C1), []},
-    {ok, Res1} = httpc:request(get, GetRequest, [], []),
-    ?assertMatch({{"HTTP/1.1", 404, "Object Not Found"}, _, _}, Res1),
+    verify_http_request(get, GetRequest, 404),
 
-    CreateRequest = {url("clusters/" ++ ?C1), [], "plain/text", ""},
-    {ok, Res2} = httpc:request(put, CreateRequest, [], []),
-    ?assertMatch({{"HTTP/1.1", 200, "OK"}, _, _}, Res2),
+    add_cluster(?C1),
 
-    {ok, Res3} = httpc:request(get, GetRequest, [], []),
-    ?assertMatch({{"HTTP/1.1", 200, "OK"}, _, _}, Res3),
-    {_, _, GetJSON} = Res3,
+    {_, _, GetJSON} = verify_http_request(get, GetRequest, 200),
     Cluster = mochijson2:decode(GetJSON),
     ?assertMatch({struct, [{<<?C1>>, {struct, _}}]}, Cluster),
 
-    {ok, Res4} = httpc:request(delete, GetRequest, [], []),
-    ?assertMatch({{"HTTP/1.1", 200, "OK"}, _, _}, Res4),
+    verify_http_request(delete, GetRequest, 200),
 
-    {ok, Res5} = httpc:request(get, GetRequest, [], []),
-    ?assertMatch({{"HTTP/1.1", 404, "Object Not Found"}, _, _}, Res5).
+    verify_http_request(get, GetRequest, 404).
 
 list_clusters() ->
     ListRequest = {url("clusters"), []},
-    {ok, Res1} = httpc:request(get, ListRequest, [], []),
-    ?assertMatch({{"HTTP/1.1", 200, "OK"}, _, _}, Res1),
-    {_, _, ListJSON1} = Res1,
+    {_, _, ListJSON1} = verify_http_request(get, ListRequest, 200),
     ClusterList1 = mochijson2:decode(ListJSON1),
     ?assertEqual({struct, [{<<"clusters">>, []}]}, ClusterList1),
 
-    CreateRequest = {url("clusters/" ++ ?C1), [], "plain/text", ""},
-    {ok, Res2} = httpc:request(put, CreateRequest, [], []),
-    ?assertMatch({{"HTTP/1.1", 200, "OK"}, _, _}, Res2),
+    add_cluster(?C1),
 
-    {ok, Res3} = httpc:request(get, ListRequest, [], []),
-    ?assertMatch({{"HTTP/1.1", 200, "OK"}, _, _}, Res1),
-    {_, _, ListJSON2} = Res3,
+    {_, _, ListJSON2} = verify_http_request(get, ListRequest, 200),
     ClusterList2 = mochijson2:decode(ListJSON2),
     ?assertEqual({struct, [{<<"clusters">>, [<<?C1>>]}]}, ClusterList2).
 
@@ -75,8 +63,7 @@ set_get_cluster_config() ->
     verify_http_request(get, GetRiakConfRequest, 404),
     verify_http_request(get, GetAdvancedConfRequest, 404),
 
-    CreateRequest = {url("clusters/" ++ ?C1), [], "plain/text", ""},
-    verify_http_request(put, CreateRequest, 200),
+    add_cluster(?C1),
 
     %% Getting config should succeed now, but actual config contents
     %% are undefined (in practice will probably default to "").
@@ -96,11 +83,9 @@ set_get_cluster_config() ->
     ?assertEqual(CurrentAdvancedConfig, TestConfig).
 
 create_node() ->
-    CreateRequest = {url("clusters/" ++ ?C1), [], "plain/text", ""},
-    verify_http_request(put, CreateRequest, 200),
+    add_cluster(?C1),
 
-    NodeRequest = {url("/clusters/" ++ ?C1 ++ "/nodes"), [], "plain/text", ""},
-    verify_http_request(post, NodeRequest, 201),
+    add_node(?C1),
 
     GetRequest = {url("clusters/" ++ ?C1), []},
     {_, _, ClusterDataBin} = verify_http_request(get, GetRequest, 200),
@@ -128,9 +113,32 @@ list_nodes() ->
     ExpectedNodes = [?C1 ++ N || N <- ["-1", "-2", "-3"]],
     ?assertEqual(ExpectedNodes, SortedNodes).
 
+get_node() ->
+    ClusterKey = ?C1,
+    NodeKey = ?C1 ++ "-1",
+    NodeKeyBin = list_to_binary(NodeKey),
+    add_cluster(ClusterKey),
+    add_node(ClusterKey),
+
+    GetRequest = {url("clusters/" ++ ClusterKey ++ "/nodes/" ++ NodeKey), []},
+    {_, _, ResultJson} = verify_http_request(get, GetRequest, 200),
+
+    Result = mochijson2:decode(ResultJson),
+    ?assertMatch({struct, [{NodeKeyBin, {struct,
+                                         [{<<"key">>, NodeKeyBin},
+                                          {<<"status">>, <<"requested">>},
+                                          {<<"location">>, {struct, _}},
+                                          {<<"container_path">>, _},
+                                          {<<"persistence_id">>, _}]}}]},
+                 Result).
+
 decode_node_list(Response) ->
     {struct, [{<<"nodes">>, NodeList}]} = mochijson2:decode(Response),
     [binary_to_list(N) || N <- NodeList].
+
+add_cluster(Cluster) ->
+    CreateRequest = {url("clusters/" ++ Cluster), [], "plain/text", ""},
+    verify_http_request(put, CreateRequest, 200).
 
 add_node(Cluster) ->
     NodeRequest = {url("/clusters/" ++ Cluster ++ "/nodes"), [], "plain/text", ""},

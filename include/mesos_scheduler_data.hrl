@@ -16,11 +16,11 @@
           cluster :: mesos_scheduler_data:cluster_key(),
 
           node_name :: node(),
-          hostname :: string(),
+          hostname = "" :: string(),
           http_port :: integer(),
           pb_port :: integer(),
           disterl_port :: integer(),
-          slave_id :: string(),
-          container_path :: string(),
-          persistence_id :: string()
+          slave_id = "" :: string(),
+          container_path = "" :: string(),
+          persistence_id = "" :: string()
 }).

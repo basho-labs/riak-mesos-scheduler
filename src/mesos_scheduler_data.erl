@@ -90,7 +90,7 @@ delete_cluster(Key) ->
 add_node(NodeRec) when NodeRec#rms_node.cluster =/= undefined ->
     gen_server:call(?MODULE, {add_node, NodeRec}).
 
--spec get_node(key()) -> {ok, #rms_node{}} | {error, term()}.
+-spec get_node(key()) -> {ok, #rms_node{}} | {error, {not_found, node_key()}}.
 get_node(Key) ->
     gen_server:call(?MODULE, {get_node, Key}).
 
