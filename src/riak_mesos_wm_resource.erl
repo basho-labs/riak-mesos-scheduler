@@ -310,21 +310,39 @@ delete_node(RD) ->
     {true, wrq:append_to_response_body(mochijson2:encode(Body), RD)}.
 
 get_node(RD) ->
-    NodeKey = list_to_binary(wrq:path_info(node, RD)),
-    NodeData = [{NodeKey, [
-        {key, NodeKey},
-        {status, active},
+    NodeKey = wrq:path_info(node, RD),
+    %% Slight chance of crash here if a node is deleted after the call to node_exists
+    %% but before we call get_node. Should be a small enough chance to be negligible
+    %% in practice, though, and if we do crash it should harmlessly fail the HTTP request.
+    {ok, Node} = mesos_scheduler_data:get_node(NodeKey),
+
+    #rms_node{
+       status = Status,
+       node_name = NodeName,
+       hostname = Hostname,
+       http_port = HttpPort,
+       pb_port = PbPort,
+       disterl_port = DisterlPort,
+       slave_id = SlaveId,
+       container_path = ContainerPath,
+       persistence_id = PersistenceId
+      } = Node,
+
+    NodeData = [{list_to_binary(NodeKey), [
+        {key, list_to_binary(NodeKey)},
+        {status, Status},
         {location, [
-            {node_name, list_to_binary(wrq:path_info(node, RD) ++ "@somehost")},
-            {hostname, <<"somehost">>},
-            {http_port, 1234},
-            {pb_port, 1235},
-            {disterl_port, 1236},
-            {slave_id, <<"some_slave_id">>}
+            {node_name, NodeName},
+            {hostname, list_to_binary(Hostname)},
+            {http_port, HttpPort},
+            {pb_port, PbPort},
+            {disterl_port, DisterlPort},
+            {slave_id, list_to_binary(SlaveId)}
         ]},
-        {container_path, <<"root">>},
-        {persistence_id, <<"some_uuid">>}
+        {container_path, list_to_binary(ContainerPath)},
+        {persistence_id, list_to_binary(PersistenceId)}
     ]}],
+
     {NodeData, RD}.
 
 restart_node(RD) ->
