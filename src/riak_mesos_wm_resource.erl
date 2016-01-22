@@ -172,12 +172,12 @@ cluster_exists(RD) ->
 create_cluster(RD) ->
     ClusterKey = wrq:path_info(cluster, RD),
     Cluster = #rms_cluster{key = ClusterKey},
-    Response = build_response(fun mesos_scheduler_data:add_cluster/1, [Cluster]),
+    Response = build_response(mesos_scheduler_data:add_cluster(Cluster)),
     {true, wrq:append_to_response_body(mochijson2:encode(Response), RD)}.
 
 delete_cluster(RD) ->
     ClusterKey = wrq:path_info(cluster, RD),
-    ResponseBody = build_response(fun mesos_scheduler_data:delete_cluster/1, [ClusterKey]),
+    ResponseBody = build_response(mesos_scheduler_data:delete_cluster(ClusterKey)),
     {true, wrq:append_to_response_body(mochijson2:encode(ResponseBody), RD)}.
 
 get_cluster(RD) ->
@@ -220,7 +220,7 @@ set_riak_conf(RD) ->
 
 update_cluster(RD, UpdateFun) ->
     ClusterKey = wrq:path_info(cluster, RD),
-    ReplyBody = build_response(fun mesos_scheduler_data:update_cluster/2, [ClusterKey, UpdateFun]),
+    ReplyBody = build_response(mesos_scheduler_data:update_cluster(ClusterKey, UpdateFun)),
     {true, wrq:append_to_response_body(mochijson2:encode(ReplyBody), RD)}.
 
 advanced_config(RD) ->
@@ -281,7 +281,7 @@ create_node_and_path(RD) ->
                          key = NewNodeName,
                          cluster = ClusterKey
                         },
-            Result = build_response(fun mesos_scheduler_data:add_node/1, [NewNode]),
+            Result = build_response(mesos_scheduler_data:add_node(NewNode)),
             {NewNodeName, wrq:append_to_response_body(mochijson2:encode(Result), RD)}
     end.
 
@@ -307,7 +307,7 @@ noop_create_node(RD) ->
 
 delete_node(RD) ->
     NodeKey = wrq:path_info(node, RD),
-    Body = build_response(fun mesos_scheduler_data:delete_node/1, [NodeKey]),
+    Body = build_response(mesos_scheduler_data:delete_node(NodeKey)),
     {true, wrq:append_to_response_body(mochijson2:encode(Body), RD)}.
 
 get_node(RD) ->
@@ -443,13 +443,10 @@ build_wm_routes([], Accum) ->
 build_wm_routes([#route{base=Base, path=Path}|Rest], Accum) ->
     build_wm_routes(Rest, [{Base ++ Path, ?MODULE, []}|Accum]).
 
-build_response(Fun, Args) ->
-    case apply(Fun, Args) of
-        ok ->
-            [{success, true}];
-        {ok, _} ->
-            [{success, true}];
-        {error, Error} ->
-            ErrStr = iolist_to_binary(io_lib:format("~p", [Error])),
-            [{success, false}, {error, ErrStr}]
-    end.
+build_response(ok) ->
+    [{success, true}];
+build_response({ok, _}) ->
+    [{success, true}];
+build_response({error, Error}) ->
+    ErrStr = iolist_to_binary(io_lib:format("~p", [Error])),
+    [{success, false}, {error, ErrStr}].
