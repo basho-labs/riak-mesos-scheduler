@@ -179,5 +179,5 @@ framework_info() ->
                     id = undefined, %% TODO: Will need to check ZK for this for reregistration
                     webui_url = undefined, %% TODO: Get this from webmachine helper probably
                     failover_timeout = undefined, %% TODO: Add this to configurable options
-                    capabilities = undefined,
+                    %%capabilities = undefined,
                     labels = undefined}.
