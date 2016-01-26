@@ -38,9 +38,8 @@
          handle_info/3,
          terminate/3]).
 
--record(state, {
-    offer_mode = reconcile :: accept | reconcile | decline,
-    task_ids = [] :: [binary()]}).
+-record(state, {offer_mode = reconcile :: accept | reconcile | decline,
+                task_id_values = [] :: [string()]}).
 
 %%%===================================================================
 %%% Callbacks
@@ -48,115 +47,105 @@
 
 init(Options) ->
     FrameworkInfo = framework_info(),
-    lager:info("Options: ~p", [Options]),
-    lager:info("FrameworkInfo: ~p", [FrameworkInfo]),
+    lager:info("Options: ~p.", [Options]),
+    lager:info("FrameworkInfo: ~p.", [FrameworkInfo]),
     %% We should always start up in reconcile mode to ensure that
     %% we have the latest update information before acting on offers.
     {ok, FrameworkInfo, true, #state{offer_mode = reconcile}}.
 
-registered(_SchedulerInfo, #'Event.Subscribed'{} = EventSubscribed, State) ->
-    lager:info("Registered: ~p", [EventSubscribed]),
+registered(_SchedulerInfo, EventSubscribed, State) ->
+    lager:info("Registered: ~p.", [EventSubscribed]),
     {ok, State}.
 
 reregistered(SchedulerInfo, State) ->
-    lager:info("Reregistered: ~p", [SchedulerInfo]),
+    lager:info("Reregistered: ~p.", [SchedulerInfo]),
     {ok, State}.
 
 disconnected(SchedulerInfo, State) ->
-    lager:warning("Disconnected: ~p", [SchedulerInfo]),
+    lager:warning("Disconnected: ~p.", [SchedulerInfo]),
     {ok, State}.
 
 resource_offers(SchedulerInfo, #'Event.Offers'{offers = Offers},
-                State=#state{offer_mode=reconcile}) ->
-    lager:info("Resource Offers: Offer mode: ~p", [State#state.offer_mode]),
-    %% Reconcile
-    CallReconcileTasks = lists:map(fun(TaskIdValue) ->
-        #'TaskID'{value = TaskIdValue} end, State#state.task_ids),
-    CallReconcile = #'Call.Reconcile'{tasks = CallReconcileTasks},
-    ok = erl_mesos_scheduler:reconcile(SchedulerInfo, CallReconcile),
-    %% Decline this offer
-    OfferIds = lists:map(fun(#'Offer'{id = OfferId}) -> OfferId end, Offers),
-    CallAccept = #'Call.Accept'{offer_ids = OfferIds, operations = []},
-    ok = erl_mesos_scheduler:accept(SchedulerInfo, CallAccept),
+                State = #state{offer_mode = reconcile,
+                               task_id_values = TaskIdValues}) ->
+    lager:info("Resource Offers. Offer mode: ~p.", [State#state.offer_mode]),
+    %% Reconcile.
+    CallReconcileTasks = [call_reconcile_task(erl_mesos_utils:task_id(TaskIdValue)) ||
+                          TaskIdValue <- TaskIdValues],
+    ok = erl_mesos_scheduler:reconcile(SchedulerInfo, CallReconcileTasks),
+    %% Decline this offer.
+    ok = erl_mesos_scheduler:decline(SchedulerInfo, offer_ids(Offers)),
     {ok, State#state{offer_mode = accept}};
 resource_offers(SchedulerInfo, #'Event.Offers'{offers = Offers} = EventOffers,
-                State=#state{offer_mode=accept, task_ids=TaskIds}) ->
-    lager:info("Resource Offers: ~p", [EventOffers]),
-    lager:info("Offer mode: ~p", [State#state.offer_mode]),
+                State=#state{offer_mode = accept, task_id_values = TaskIdValues}) ->
+    lager:info("Resource offers: ~p.", [EventOffers]),
+    lager:info("Offer mode: ~p.", [State#state.offer_mode]),
 
-    HandleOfferFun = fun(#'Offer'{id = OfferId, agent_id = AgentId}, {OfferIds, Operations, TaskIdValues, OfferNum}) ->
-        TaskIdValue = list_to_binary(binary_to_list(AgentId#'AgentID'.value) ++ "-" ++ integer_to_list(OfferNum)),
-        TaskId = #'TaskID'{value = TaskIdValue},
-
-        CommandValue = <<"while true; do echo 'Test task is running...'; sleep 1; done">>,
-        CommandInfo = #'CommandInfo'{shell = true,
-                                    value = CommandValue},
-        CpuScalarValue = #'Value.Scalar'{value = 0.1},
-        ResourceCpu = #'Resource'{name = <<"cpus">>,
-                                type = <<"SCALAR">>,
-                                scalar = CpuScalarValue},
-        TaskInfo = #'TaskInfo'{name = <<"test_task">>,
-                              task_id = TaskId,
-                              agent_id = AgentId,
-                              command = CommandInfo,
-                              resources = [ResourceCpu]},
-        Launch = #'Offer.Operation.Launch'{task_infos = [TaskInfo]},
-        OfferOperation = #'Offer.Operation'{type = <<"LAUNCH">>,
-                                          launch = Launch},
-        {[OfferId|OfferIds], [OfferOperation|Operations], [TaskIdValue|TaskIdValues], OfferNum + 1}
+    HandleOfferFun = fun(#'Offer'{id = OfferId,
+                                  agent_id = AgentId},
+                         {OfferIds,
+                          OfferOperations,
+                          NewTaskIdValues,
+                          OfferNum}) ->
+        TaskIdValue = AgentId#'AgentID'.value ++ "-" ++
+                      integer_to_list(OfferNum),
+        TaskId = erl_mesos_utils:task_id(TaskIdValue),
+        CommandValue = "while true; do echo 'Test task'; sleep 1; done",
+        CommandInfo = erl_mesos_utils:command_info(CommandValue),
+        ResourceCpu = erl_mesos_utils:scalar_resource("cpus", 0.1),
+        TaskInfo = erl_mesos_utils:task_info("test_task", TaskId, AgentId,
+                                             [ResourceCpu], undefined,
+                                             CommandInfo),
+        OfferOperation = erl_mesos_utils:launch_offer_operation([TaskInfo]),
+        {[OfferId | OfferIds],
+         [OfferOperation | OfferOperations],
+         [TaskIdValue | NewTaskIdValues],
+         OfferNum + 1}
     end,
 
-    {OfferIds, Operations, TaskIdValues, _} = lists:foldl(HandleOfferFun, {[],[],[],1}, Offers),
-    CallAccept = #'Call.Accept'{offer_ids = OfferIds,
-                              operations = Operations},
-
-    lager:info("Call Accept: ~p", [CallAccept]),
-
-    ok = erl_mesos_scheduler:accept(SchedulerInfo, CallAccept),
+    {OfferIds, Operations, NewTaskIdValues, _} =
+        lists:foldl(HandleOfferFun, {[], [], [], 1}, Offers),
+    ok = erl_mesos_scheduler:accept(SchedulerInfo, OfferIds, Operations),
     %% TODO: Manually returing to decline mode for now, but needs to be based on
     %% whether or not we have nodes to launch eventually.
-    {ok, State#state{offer_mode = decline, task_ids = TaskIdValues ++ TaskIds}};
+    {ok, State#state{offer_mode = decline,
+                     task_id_values = TaskIdValues ++ NewTaskIdValues}};
 resource_offers(SchedulerInfo, #'Event.Offers'{offers = Offers},
-                State=#state{offer_mode=decline}) ->
-    lager:info("Resource Offers: Offer mode: ~p", [State#state.offer_mode]),
-    OfferIds = lists:map(fun(#'Offer'{id = OfferId}) -> OfferId end, Offers),
-    CallAccept = #'Call.Accept'{offer_ids = OfferIds, operations = []},
-    ok = erl_mesos_scheduler:accept(SchedulerInfo, CallAccept),
+                State=#state{offer_mode = decline}) ->
+    lager:info("Resource offers. Offer mode: ~p.", [State#state.offer_mode]),
+    ok = erl_mesos_scheduler:accept(SchedulerInfo, offer_ids(Offers), []),
     {ok, State}.
 
 offer_rescinded(_SchedulerInfo, #'Event.Rescind'{} = EventRescind, State) ->
-    lager:info("Offer Rescinded: ~p", [EventRescind]),
+    lager:info("Offer rescinded: ~p.", [EventRescind]),
     {ok, State}.
 
 status_update(_SchedulerInfo, #'Event.Update'{} = EventUpdate, State) ->
-    lager:info("Status Update: ~p", [EventUpdate]),
+    lager:info("Status update: ~p.", [EventUpdate]),
     {ok, State}.
 
 framework_message(_SchedulerInfo, #'Event.Message'{} = EventMessage, State) ->
-    lager:info("Framework Message: ~p", [EventMessage]),
+    lager:info("Framework message: ~p.", [EventMessage]),
     {ok, State}.
 
 slave_lost(_SchedulerInfo, #'Event.Failure'{} = EventFailure, State) ->
-    lager:info("Slave Lost: ~p", [EventFailure]),
+    lager:info("Slave lost: ~p.", [EventFailure]),
     {ok, State}.
 
 executor_lost(_SchedulerInfo, #'Event.Failure'{} = EventFailure, State) ->
-    lager:info("Executor Lost: ~p", [EventFailure]),
+    lager:info("Executor lost: ~p.", [EventFailure]),
     {ok, State}.
 
 error(_SchedulerInfo, #'Event.Error'{} = EventError, State) ->
-    lager:info("Error: ~p", [EventError]),
+    lager:info("Error: ~p.", [EventError]),
     {stop, State}.
 
-handle_info(SchedulerInfo, stop, State) ->
-    lager:info("Handle Info: Stop: ~p", [SchedulerInfo]),
-    {stop, State};
 handle_info(_SchedulerInfo, Info, State) ->
-    lager:info("Handle Info: Undefined: ~p", [Info]),
+    lager:info("Handle info. Undefined: ~p.", [Info]),
     {ok, State}.
 
 terminate(_SchedulerInfo, Reason, _State) ->
-    lager:warning("Terminate: ~p", [Reason]),
+    lager:warning("Terminate: ~p.", [Reason]),
     ok.
 
 %% ====================================================================
@@ -164,11 +153,11 @@ terminate(_SchedulerInfo, Reason, _State) ->
 %% ====================================================================
 
 framework_info() ->
-    User = riak_mesos_scheduler_config:get_value(user, <<"root">>, binary),
-    Name = riak_mesos_scheduler_config:get_value(name, <<"riak">>, binary),
-    Role = riak_mesos_scheduler_config:get_value(role, <<"riak">>, binary),
-    Hostname = riak_mesos_scheduler_config:get_value(hostname, undefined, binary),
-    Principal = riak_mesos_scheduler_config:get_value(principal, <<"riak">>, binary),
+    User = riak_mesos_scheduler_config:get_value(user, "root"),
+    Name = riak_mesos_scheduler_config:get_value(name, "riak", string),
+    Role = riak_mesos_scheduler_config:get_value(role, "riak", string),
+    Hostname = riak_mesos_scheduler_config:get_value(hostname, undefined, string),
+    Principal = riak_mesos_scheduler_config:get_value(principal, "riak", string),
 
     #'FrameworkInfo'{user = User,
                     name = Name,
@@ -181,3 +170,9 @@ framework_info() ->
                     failover_timeout = undefined, %% TODO: Add this to configurable options
                     %%capabilities = undefined,
                     labels = undefined}.
+
+offer_ids(Offers) ->
+    [OfferId || #'Offer'{id = OfferId} <- Offers].
+
+call_reconcile_task(TaskId) ->
+    #'Call.Reconcile.Task'{task_id = TaskId}.
