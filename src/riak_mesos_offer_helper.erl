@@ -2,9 +2,20 @@
 
 -include_lib("erl_mesos/include/scheduler_protobuf.hrl").
 
+-include_lib("erl_mesos/include/utils.hrl").
+
 -export([new/1,
          get_offer_id_value/1,
-         get_persistence_ids/1]).
+         get_persistence_ids/1,
+         get_reserved_resources/1,
+         get_reserved_resources_cpus/1,
+         get_reserved_resources_mem/1,
+         get_reserved_resources_disk/1,
+         get_reserved_resources_ports/1,
+         get_unreserved_resources_cpus/1,
+         get_unreserved_resources_mem/1,
+         get_unreserved_resources_disk/1,
+         get_unreserved_resources_ports/1]).
 
 -record(offer_helper, {offer :: erl_mesos:'Offer'(),
                        offer_id_value :: string(),
@@ -23,15 +34,61 @@
 
 new(#'Offer'{id = #'OfferID'{value = OfferIdValue},
              resources = Resources} = Offer) ->
+    PersistenceIds = get_persistence_ids(Resources, []),
+    ReservedCpus = get_scalar_resource_value("cpus", true, Resources),
+    ReservedMem = get_scalar_resource_value("mem", true, Resources),
+    ReservedDisk = get_scalar_resource_value("disk", true, Resources),
+    ReservedPorts = get_ranges_resource_values("ports", true, Resources),
+    ReservedResources = resources(ReservedCpus, ReservedMem, ReservedDisk,
+                                  ReservedPorts),
+    UnreservedCpus = get_scalar_resource_value("cpus", false, Resources),
+    UnreservedMem = get_scalar_resource_value("mem", false, Resources),
+    UnreservedDisk = get_scalar_resource_value("disk", false, Resources),
+    UnreservedPorts = get_ranges_resource_values("ports", false, Resources),
+    UnreservedResources = resources(UnreservedCpus, UnreservedMem,
+                                    UnreservedDisk, UnreservedPorts),
     #offer_helper{offer = Offer,
                   offer_id_value = OfferIdValue,
-                  persistence_ids = get_persistence_ids(Resources, [])}.
+                  persistence_ids = PersistenceIds,
+                  reserved_resources = ReservedResources,
+                  unreserved_resources = UnreservedResources}.
 
 get_offer_id_value(#offer_helper{offer_id_value = OfferIdValue}) ->
     OfferIdValue.
 
 get_persistence_ids(#offer_helper{persistence_ids = PersistenceIds}) ->
     PersistenceIds.
+
+get_reserved_resources(#offer_helper{reserved_resources = ReservedResources}) ->
+    ReservedResources.
+
+get_reserved_resources_cpus(OfferHelper) ->
+    erl_mesos_utils:resources_cpus(get_reserved_resources(OfferHelper)).
+
+get_reserved_resources_mem(OfferHelper) ->
+    erl_mesos_utils:resources_mem(get_reserved_resources(OfferHelper)).
+
+get_reserved_resources_disk(OfferHelper) ->
+    erl_mesos_utils:resources_disk(get_reserved_resources(OfferHelper)).
+
+get_reserved_resources_ports(OfferHelper) ->
+    erl_mesos_utils:resources_ports(get_reserved_resources(OfferHelper)).
+
+get_unreserved_resources(#offer_helper{unreserved_resources =
+                                           UnreservedResources}) ->
+    UnreservedResources.
+
+get_unreserved_resources_cpus(OfferHelper) ->
+    erl_mesos_utils:resources_cpus(get_unreserved_resources(OfferHelper)).
+
+get_unreserved_resources_mem(OfferHelper) ->
+    erl_mesos_utils:resources_mem(get_unreserved_resources(OfferHelper)).
+
+get_unreserved_resources_disk(OfferHelper) ->
+    erl_mesos_utils:resources_disk(get_unreserved_resources(OfferHelper)).
+
+get_unreserved_resources_ports(OfferHelper) ->
+    erl_mesos_utils:resources_ports(get_unreserved_resources(OfferHelper)).
 
 %% ====================================================================
 %% Private
@@ -51,4 +108,68 @@ get_persistence_ids([_Resource | Resources], PersistenceIds) ->
 get_persistence_ids([], PersistenceIds) ->
     lists:reverse(PersistenceIds).
 
+get_scalar_resource_value(Name, WithReservation, Resources) ->
+    get_scalar_resource_value(Name, WithReservation, Resources, 0.0).
 
+get_scalar_resource_value(Name, true,
+                          [#'Resource'{name = Name,
+                                       type = 'SCALAR',
+                                       scalar = #'Value.Scalar'{value =
+                                                                  ScalarValue},
+                                       reservation = Reservation} |
+                           Resources], Value)
+  when Reservation =/= undefined  ->
+    get_scalar_resource_value(Name, true, Resources, Value + ScalarValue);
+get_scalar_resource_value(Name, false,
+                          [#'Resource'{name = Name,
+                                       type = 'SCALAR',
+                                       scalar = #'Value.Scalar'{value =
+                                                                  ScalarValue},
+                                       reservation = undefined} |
+                           Resources], Value) ->
+    get_scalar_resource_value(Name, false, Resources, Value + ScalarValue);
+get_scalar_resource_value(Name, WithReservation, [_Resource | Resources],
+                          Value) ->
+    get_scalar_resource_value(Name, WithReservation, Resources, Value);
+get_scalar_resource_value(_Name, _WithReservation, [], Value) ->
+    Value.
+
+get_ranges_resource_values(Name, WithReservation, Resources) ->
+    get_ranges_resource_values(Name, WithReservation, Resources, []).
+
+get_ranges_resource_values(Name, true,
+                           [#'Resource'{name = Name,
+                                        type = 'RANGES',
+                                        ranges = #'Value.Ranges'{range =
+                                                                     Ranges},
+                                        reservation = Reservation} |
+                           Resources], Values)
+  when Reservation =/= undefined  ->
+    Values1 = add_ranges_values(Ranges, Values),
+    get_ranges_resource_values(Name, true, Resources, Values1);
+get_ranges_resource_values(Name, false,
+                           [#'Resource'{name = Name,
+                                        type = 'RANGES',
+                                        ranges = #'Value.Ranges'{range =
+                                                                     Ranges},
+                                        reservation = undefined} |
+                            Resources], Values) ->
+    Values1 = add_ranges_values(Ranges, Values),
+    get_ranges_resource_values(Name, false, Resources, Values1);
+get_ranges_resource_values(Name, WithReservation, [_Resource | Resources],
+                           Values) ->
+    get_ranges_resource_values(Name, WithReservation, Resources, Values);
+get_ranges_resource_values(_Name, _WithReservation, [], Values) ->
+    Values.
+
+add_ranges_values(Ranges, Values) ->
+    lists:foldl(fun(#'Value.Range'{'begin' = Begin,
+                                   'end' = End}, Acc) ->
+                    Acc ++ lists:seq(Begin, End)
+                end, Values, Ranges).
+
+resources(Cpus, Mem, Disk, Ports) ->
+    #resources{cpus = Cpus,
+               mem = Mem,
+               disk = Disk,
+               ports = Ports}.
