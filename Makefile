@@ -19,8 +19,9 @@ test: cleantest
 rel: relclean deps compile
 	$(REBAR) compile
 	$(REBAR) skip_deps=true generate $(OVERLAY_VARS)
+clean: relclean
 relclean:
-	rm -rf rel/riak_mesos
+	-rm -rf rel/riak_mesos
 stage: rel
 	$(foreach dep,$(wildcard deps/*), rm -rf rel/riak_mesos_scheduler/lib/$(shell basename $(dep))-* && ln -sf $(abspath $(dep)) rel/riak_mesos_scheduler/lib;)
 	$(foreach app,$(wildcard apps/*), rm -rf rel/riak_mesos_scheduler/lib/$(shell basename $(app))-* && ln -sf $(abspath $(app)) rel/riak_mesos_scheduler/lib;)
