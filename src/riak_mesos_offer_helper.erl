@@ -17,6 +17,9 @@
          get_unreserved_resources_disk/1,
          get_unreserved_resources_ports/1]).
 
+-export([has_reservations/1,
+         has_volumes/1]).
+
 -record(offer_helper, {offer :: erl_mesos:'Offer'(),
                        offer_id_value :: string(),
                        persistence_ids = [] :: [string()],
@@ -89,6 +92,15 @@ get_unreserved_resources_disk(OfferHelper) ->
 
 get_unreserved_resources_ports(OfferHelper) ->
     erl_mesos_utils:resources_ports(get_unreserved_resources(OfferHelper)).
+
+has_reservations(OfferHelper) ->
+    get_reserved_resources_cpus(OfferHelper) > 0.0 orelse
+    get_reserved_resources_mem(OfferHelper) > 0.0 orelse
+    get_reserved_resources_disk(OfferHelper) > 0.0 orelse
+    length(get_reserved_resources_ports(OfferHelper)) > 0.
+
+has_volumes(OfferHelper) ->
+    length(get_persistence_ids(OfferHelper)) > 0.
 
 %% ====================================================================
 %% Private
