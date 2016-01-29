@@ -64,6 +64,10 @@ init([]) ->
     SchedulerDataSpec = {mesos_scheduler_data,
                          {mesos_scheduler_data, start_link, []},
                          permanent, 5000, worker, [mesos_scheduler_data]},
-    Processes = [MdMgrSpec, SchedulerDataSpec, SchedulerSpec, WebmachineSpec],
+    NodeFsmSup = {scheduler_node_fsm_sup,
+                  {scheduler_node_fsm_sup, start_link, []},
+                  permanent, 5000, worker, [scheduler_node_fsm_sup]},
+
+    Processes = [MdMgrSpec, SchedulerDataSpec, NodeFsmSup, SchedulerSpec, WebmachineSpec],
 
     {ok, { {one_for_one, 10, 10}, Processes} }.
