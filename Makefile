@@ -15,7 +15,8 @@ deps:
 cleantest:
 	rm -rf .eunit/*
 test: cleantest
-	$(REBAR)  skip_deps=true eunit
+	$(REBAR) skip_deps=true eunit
+	$(REBAR) skip_deps=true ct
 rel: relclean deps compile
 	$(REBAR) compile
 	$(REBAR) skip_deps=true generate $(OVERLAY_VARS)
