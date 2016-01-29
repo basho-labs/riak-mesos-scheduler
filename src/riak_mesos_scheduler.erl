@@ -41,6 +41,11 @@
 -record(state, {offer_mode = reconcile :: accept | reconcile | decline,
                 task_id_values = [] :: [string()]}).
 
+%% FIXME These should be configurable (and probably higher)
+-define(MIN_CPU, 1).
+-define(MIN_RAM, 1024).
+-define(MIN_DISK, 4096).
+
 %%%===================================================================
 %%% Callbacks
 %%%===================================================================
@@ -81,27 +86,46 @@ resource_offers(SchedulerInfo, #'Event.Offers'{offers = Offers} = EventOffers,
     lager:info("Resource offers: ~p.", [EventOffers]),
     lager:info("Offer mode: ~p.", [State#state.offer_mode]),
 
-    HandleOfferFun = fun(#'Offer'{id = OfferId,
-                                  agent_id = AgentId},
-                         {OfferIds,
-                          OfferOperations,
-                          NewTaskIdValues,
-                          OfferNum}) ->
-        TaskIdValue = AgentId#'AgentID'.value ++ "-" ++
-                      integer_to_list(OfferNum),
-        TaskId = erl_mesos_utils:task_id(TaskIdValue),
-        CommandValue = "while true; do echo 'Test task'; sleep 1; done",
-        CommandInfo = erl_mesos_utils:command_info(CommandValue),
-        ResourceCpu = erl_mesos_utils:scalar_resource("cpus", 0.1),
-        TaskInfo = erl_mesos_utils:task_info("test_task", TaskId, AgentId,
-                                             [ResourceCpu], undefined,
-                                             CommandInfo),
-        OfferOperation = erl_mesos_utils:launch_offer_operation([TaskInfo]),
-        {[OfferId | OfferIds],
-         [OfferOperation | OfferOperations],
-         [TaskIdValue | NewTaskIdValues],
-         OfferNum + 1}
-    end,
+    HandleOfferFun = fun(Offer = #'Offer'{id = OfferId, agent_id = AgentId},
+                         {OfferIds, OfferOperations, NewTaskIdValues, OfferNum}) ->
+
+                             TaskIdValue = AgentId#'AgentID'.value ++ "-" ++ integer_to_list(
+                                                                               OfferNum),
+                             TaskId = erl_mesos_utils:task_id(TaskIdValue),
+
+                             OfferHelper = riak_mesos_offer_helper:new(Offer),
+
+                             CommandValue = "./ermf-executor.sh",
+                             CommandInfo = erl_mesos_utils:command_info(CommandValue),
+
+                             case riak_mesos_offer_helper:offer_fits(OfferHelper) of
+                                 true ->
+                                     %% TODO - only take as much as we need, instead of
+                                     %% using the entire offer!
+                                     CPU = riak_mesos_offer_helper:resources_cpus(OfferHelper),
+                                     Mem = riak_mesos_offer_helper:resource_mem(OfferHelper),
+                                     ResourceCpu = erl_mesos_utils:scalar_resource("cpus", CPU),
+                                     ResourceMem = erl_mesos_utils:scalar_resource("mem", Mem),
+                                     TaskInfo = erl_mesos_utils:task_info("riak",
+                                                                          TaskId,
+                                                                          AgentId,
+                                                                          [ResourceCpu,
+                                                                          ResourceMem],
+                                                                          undefined,
+                                                                          CommandInfo),
+                                     OfferOperation = erl_mesos_utils:launch_offer_operation(
+                                                        [TaskInfo]),
+                                     {[OfferId | OfferIds],
+                                      [OfferOperation | OfferOperations],
+                                      [TaskIdValue | NewTaskIdValues],
+                                      OfferNum + 1};
+                                 false ->
+                                     {OfferIds,
+                                      OfferOperations,
+                                      NewTaskIdValues,
+                                      OfferNum + 1}
+                             end
+                     end,
 
     {OfferIds, Operations, NewTaskIdValues, _} =
         lists:foldl(HandleOfferFun, {[], [], [], 1}, Offers),
