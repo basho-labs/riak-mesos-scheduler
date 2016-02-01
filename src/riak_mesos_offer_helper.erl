@@ -15,10 +15,13 @@
          get_unreserved_resources_cpus/1,
          get_unreserved_resources_mem/1,
          get_unreserved_resources_disk/1,
-         get_unreserved_resources_ports/1]).
+         get_unreserved_resources_ports/1,
+         get_resources_to_reserve/1]).
 
 -export([has_reservations/1,
          has_volumes/1]).
+
+-export([make_reservation/7]).
 
 -record(offer_helper, {offer :: erl_mesos:'Offer'(),
                        offer_id_value :: string(),
@@ -93,6 +96,10 @@ get_unreserved_resources_disk(OfferHelper) ->
 get_unreserved_resources_ports(OfferHelper) ->
     erl_mesos_utils:resources_ports(get_unreserved_resources(OfferHelper)).
 
+get_resources_to_reserve(#offer_helper{resources_to_reserve =
+                                       ResourcesToReserve}) ->
+    ResourcesToReserve.
+
 has_reservations(OfferHelper) ->
     get_reserved_resources_cpus(OfferHelper) > 0.0 orelse
     get_reserved_resources_mem(OfferHelper) > 0.0 orelse
@@ -101,6 +108,15 @@ has_reservations(OfferHelper) ->
 
 has_volumes(OfferHelper) ->
     length(get_persistence_ids(OfferHelper)) > 0.
+
+make_reservation(Cpus, Mem, Disk, Ports, Role, Principal,
+                 #offer_helper{unreserved_resources = UnreservedResources} =
+                 OfferHelper) ->
+    {UnreservedResources1, Resources} =
+        apply(Cpus, Mem, Disk, Ports, Role, Principal, undefined, undefined,
+              UnreservedResources),
+    OfferHelper#offer_helper{unreserved_resources = UnreservedResources1,
+                             resources_to_reserve = Resources}.
 
 %% ====================================================================
 %% Private
@@ -185,3 +201,98 @@ resources(Cpus, Mem, Disk, Ports) ->
                mem = Mem,
                disk = Disk,
                ports = Ports}.
+
+apply(Cpus, Mem, Disk, _Ports, Role, Principal, PersistenceId, ContainerPath,
+      Res) ->
+    Resources = [],
+    {Res1, Resources1} = apply_cpus(Cpus, Role, Principal, Res, Resources),
+    {Res2, Resources2} = apply_mem(Mem, Role, Principal, Res1, Resources1),
+    {Res3, Resources3} = apply_disk(Disk, Role, Principal, PersistenceId,
+                                    ContainerPath, Res2, Resources2),
+    {Res3, lists:reverse(Resources3)}.
+
+
+apply_cpus(Cpus, Role, Principal, #resources{cpus = ResCpus} = Res,
+           Resources) ->
+    case Cpus of
+        undefined ->
+            {Res, Resources};
+        _Cpus when Role =/= undefined, Principal =/= undefined ->
+            Res1 = Res#resources{cpus = ResCpus - Cpus},
+            Resource = erl_mesos_utils:scalar_resource_reservation("cpus", Cpus,
+                                                                   Role,
+                                                                   Principal),
+            Resource1 = [Resource | Resources],
+            {Res1, Resource1};
+        _Cpus ->
+            Res1 = Res#resources{cpus = ResCpus - Cpus},
+            Resource = erl_mesos_utils:scalar_resource("cpus", Cpus),
+            Resource1 = [Resource | Resources],
+            {Res1, Resource1}
+    end.
+
+apply_mem(Mem, Role, Principal, #resources{mem = ResMem} = Res,
+          Resources) ->
+    case Mem of
+        undefined ->
+            {Res, Resources};
+        _Mem when Role =/= undefined, Principal =/= undefined ->
+            Res1 = Res#resources{mem = ResMem - Mem},
+            Resource = erl_mesos_utils:scalar_resource_reservation("mem", Mem,
+                                                                   Role,
+                                                                   Principal),
+            Resource1 = [Resource | Resources],
+            {Res1, Resource1};
+        _Mem ->
+            Res1 = Res#resources{mem = ResMem - Mem},
+            Resource = erl_mesos_utils:scalar_resource("mem", Mem),
+            Resource1 = [Resource | Resources],
+            {Res1, Resource1}
+    end.
+
+apply_disk(Disk, Role, Principal, PersistenceId, ContainerPath,
+           #resources{disk = ResDisk} = Res, Resources) ->
+    case Disk of
+        undefined ->
+            {Res, Resources};
+        _Disk when Role =/= undefined, Principal =/= undefined,
+                   PersistenceId =/= undefined, ContainerPath =/= undefined ->
+            Res1 = Res#resources{disk = ResDisk - Disk},
+            Resource =
+                erl_mesos_utils:volume_resource_reservation(Disk, PersistenceId,
+                                                            ContainerPath, 'RW',
+                                                            Role, Principal),
+            Resource1 = [Resource | Resources],
+            {Res1, Resource1};
+        _Disk when Role =/= undefined, Principal =/= undefined ->
+            Res1 = Res#resources{disk = ResDisk - Disk},
+            Resource = erl_mesos_utils:scalar_resource_reservation("disk", Disk,
+                                                                   Role,
+                                                                   Principal),
+            Resource1 = [Resource | Resources],
+            {Res1, Resource1};
+        _Disk ->
+            Res1 = Res#resources{disk = ResDisk - Disk},
+            Resource = erl_mesos_utils:scalar_resource("disk", Disk),
+            Resource1 = [Resource | Resources],
+            {Res1, Resource1}
+    end.
+
+%% apply_ports(Ports, Role, Principal, #resources{cpus = ResCpus} = Res,
+%%             Resources) ->
+%%     case Cpus of
+%%         undefined ->
+%%             {Res, Resources};
+%%         _Cpus when Role =/= undefined, Principal =/= undefined ->
+%%             Res1 = Res#resources{cpus = ResCpus - Cpus},
+%%             Resource = erl_mesos_utils:scalar_resource_reservation("cpus", Cpus,
+%%                 Role,
+%%                 Principal),
+%%             Resource1 = [Resource | Resources],
+%%             {Res1, Resource1};
+%%         _Cpus ->
+%%             Res1 = Res#resources{cpus = ResCpus - Cpus},
+%%             Resource = erl_mesos_utils:scalar_resource("cpus", Cpus),
+%%             Resource1 = [Resource | Resources],
+%%             {Res1, Resource1}
+%%     end.

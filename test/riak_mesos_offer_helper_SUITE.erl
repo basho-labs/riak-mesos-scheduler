@@ -8,12 +8,14 @@
 
 -export([new/1,
          has_reservations/1,
-         has_volumes/1]).
+         has_volumes/1,
+         make_reservation/1]).
 
 all() ->
     [new,
      has_reservations,
-     has_volumes].
+     has_volumes,
+     make_reservation].
 
 new(_Config) ->
     OfferResources1 = [],
@@ -89,9 +91,7 @@ has_reservations(_Config) ->
     OfferResources5 = volume_resources_reservation() ++ OfferResources1,
     Offer5 = offer("offer_5", OfferResources5),
     OfferHelper5 = riak_mesos_offer_helper:new(Offer5),
-    true = riak_mesos_offer_helper:has_reservations(OfferHelper5),
-
-    ok.
+    true = riak_mesos_offer_helper:has_reservations(OfferHelper5).
 
 has_volumes(_Config) ->
     OfferResources1 = [],
@@ -103,6 +103,55 @@ has_volumes(_Config) ->
     Offer2 = offer("offer_2", OfferResources2),
     OfferHelper2 = riak_mesos_offer_helper:new(Offer2),
     true = riak_mesos_offer_helper:has_volumes(OfferHelper2).
+
+make_reservation(_Config) ->
+    OfferResources1 = cpus_resources_reservation() ++
+                      mem_resources_reservation() ++
+                      ports_resources_reservation() ++
+                      volume_resources_reservation() ++
+                      cpus_resources() ++
+                      mem_resources() ++
+                      ports_resources() ++
+                      volume_resources(),
+    Offer1 = offer("offer_1", OfferResources1),
+    OfferHelper1 = riak_mesos_offer_helper:new(Offer1),
+    Cpus = 0.1 + 0.2 + 0.3,
+    ReserveCpus = 0.4,
+    UnreservedCpus = Cpus - ReserveCpus,
+    Cpus = riak_mesos_offer_helper:get_unreserved_resources_cpus(OfferHelper1),
+    Mem = 128.0 + 256.0 + 512.0,
+    ReserveMem = 384.0,
+    UnreservedMem = Mem - ReserveMem,
+    Disk = 2048.0 + 4096.0,
+    ReserveDisk = 512.0,
+    UnreservedDisk = Disk - ReserveDisk,
+    OfferHelper2 = riak_mesos_offer_helper:make_reservation(ReserveCpus,
+                                                            ReserveMem,
+                                                            ReserveDisk,
+                                                            undefined, "*",
+                                                            "principal",
+                                                            OfferHelper1),
+    UnreservedCpus =
+        riak_mesos_offer_helper:get_unreserved_resources_cpus(OfferHelper2),
+    UnreservedMem =
+        riak_mesos_offer_helper:get_unreserved_resources_mem(OfferHelper2),
+    UnreservedDisk =
+        riak_mesos_offer_helper:get_unreserved_resources_disk(OfferHelper2),
+    CpusResourceToReserve =
+        erl_mesos_utils:scalar_resource_reservation("cpus", ReserveCpus, "*",
+                                                    "principal"),
+    MemResourceToReserve =
+        erl_mesos_utils:scalar_resource_reservation("mem", ReserveMem, "*",
+                                                    "principal"),
+    DiskResourceToReserve =
+        erl_mesos_utils:scalar_resource_reservation("disk", ReserveDisk, "*",
+                                                    "principal"),
+    [CpusResourceToReserve,
+     MemResourceToReserve,
+     DiskResourceToReserve] =
+        riak_mesos_offer_helper:get_resources_to_reserve(OfferHelper2),
+    ct:pal("OfferHelper2: ~p~n", [OfferHelper2]),
+    ok.
 
 cpus_resources_reservation() ->
     [erl_mesos_utils:scalar_resource_reservation("cpus", 0.2, "*",
