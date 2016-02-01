@@ -22,7 +22,7 @@
          has_volumes/1]).
 
 -export([make_reservation/7]).
-
+-export([list_to_ranges/3]).
 -record(offer_helper, {offer :: erl_mesos:'Offer'(),
                        offer_id_value :: string(),
                        persistence_ids = [] :: [string()],
@@ -171,7 +171,7 @@ get_ranges_resource_values(Name, true,
                                         ranges = #'Value.Ranges'{range =
                                                                      Ranges},
                                         reservation = Reservation} |
-                           Resources], Values)
+                            Resources], Values)
   when Reservation =/= undefined  ->
     Values1 = add_ranges_values(Ranges, Values),
     get_ranges_resource_values(Name, true, Resources, Values1);
@@ -278,21 +278,37 @@ apply_disk(Disk, Role, Principal, PersistenceId, ContainerPath,
             {Res1, Resource1}
     end.
 
-%% apply_ports(Ports, Role, Principal, #resources{cpus = ResCpus} = Res,
+%% apply_ports(Ports, Role, Principal, #resources{ports = Ports} = Res,
 %%             Resources) ->
-%%     case Cpus of
+%%     case Ports of
 %%         undefined ->
 %%             {Res, Resources};
-%%         _Cpus when Role =/= undefined, Principal =/= undefined ->
+%%         _Ports when Role =/= undefined, Principal =/= undefined ->
 %%             Res1 = Res#resources{cpus = ResCpus - Cpus},
+%%             {};
 %%             Resource = erl_mesos_utils:scalar_resource_reservation("cpus", Cpus,
 %%                 Role,
 %%                 Principal),
 %%             Resource1 = [Resource | Resources],
 %%             {Res1, Resource1};
-%%         _Cpus ->
+%%         _Ports ->
 %%             Res1 = Res#resources{cpus = ResCpus - Cpus},
 %%             Resource = erl_mesos_utils:scalar_resource("cpus", Cpus),
 %%             Resource1 = [Resource | Resources],
 %%             {Res1, Resource1}
 %%     end.
+
+%% remove_ports(Ports, Remove) ->
+%%     [Port || Port <- Ports, not lists:member(Port, Remove)].
+
+list_to_ranges([Begin | List], {undefined, undefined}, Ranges) ->
+    list_to_ranges(List, {Begin, Begin}, Ranges);
+list_to_ranges([End1 | List], {Begin, End}, Ranges)
+  when End1 == End + 1 ->
+    list_to_ranges(List, {Begin, End1}, Ranges);
+list_to_ranges([End1 | List], {Begin, End}, Ranges) ->
+    list_to_ranges(List, {End1, End1}, [{Begin, End} | Ranges]);
+list_to_ranges([], {undefined, undefined}, _Ranges) ->
+    [];
+list_to_ranges([], {Begin, End}, Ranges) ->
+    lists:reverse([{Begin, End} | Ranges]).
