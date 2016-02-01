@@ -100,8 +100,9 @@ resource_offers(SchedulerInfo, #'Event.Offers'{offers = Offers} = EventOffers,
 
                              case riak_mesos_offer_helper:offer_fits(OfferHelper) of
                                  true ->
+                                     scheduler_node_fsm_mgr:start_child(TaskIdValue),
                                      %% TODO - only take as much as we need, instead of
-                                     %% using the entire offer!
+                                     %% using the entire offer! Also accept disk resources?
                                      CPU = riak_mesos_offer_helper:resources_cpus(OfferHelper),
                                      Mem = riak_mesos_offer_helper:resource_mem(OfferHelper),
                                      ResourceCpu = erl_mesos_utils:scalar_resource("cpus", CPU),
