@@ -22,7 +22,7 @@
          has_volumes/1]).
 
 -export([make_reservation/7]).
--export([list_to_ranges/3]).
+
 -record(offer_helper, {offer :: erl_mesos:'Offer'(),
                        offer_id_value :: string(),
                        persistence_ids = [] :: [string()],
@@ -202,14 +202,15 @@ resources(Cpus, Mem, Disk, Ports) ->
                disk = Disk,
                ports = Ports}.
 
-apply(Cpus, Mem, Disk, _Ports, Role, Principal, PersistenceId, ContainerPath,
+apply(Cpus, Mem, Disk, Ports, Role, Principal, PersistenceId, ContainerPath,
       Res) ->
     Resources = [],
     {Res1, Resources1} = apply_cpus(Cpus, Role, Principal, Res, Resources),
     {Res2, Resources2} = apply_mem(Mem, Role, Principal, Res1, Resources1),
     {Res3, Resources3} = apply_disk(Disk, Role, Principal, PersistenceId,
                                     ContainerPath, Res2, Resources2),
-    {Res3, lists:reverse(Resources3)}.
+    {Res4, Resources4} = apply_ports(Ports, Role, Principal, Res3, Resources3),
+    {Res4, lists:reverse(Resources4)}.
 
 
 apply_cpus(Cpus, Role, Principal, #resources{cpus = ResCpus} = Res,
@@ -278,37 +279,36 @@ apply_disk(Disk, Role, Principal, PersistenceId, ContainerPath,
             {Res1, Resource1}
     end.
 
-%% apply_ports(Ports, Role, Principal, #resources{ports = Ports} = Res,
-%%             Resources) ->
-%%     case Ports of
-%%         undefined ->
-%%             {Res, Resources};
-%%         _Ports when Role =/= undefined, Principal =/= undefined ->
-%%             Res1 = Res#resources{cpus = ResCpus - Cpus},
-%%             {};
-%%             Resource = erl_mesos_utils:scalar_resource_reservation("cpus", Cpus,
-%%                 Role,
-%%                 Principal),
-%%             Resource1 = [Resource | Resources],
-%%             {Res1, Resource1};
-%%         _Ports ->
-%%             Res1 = Res#resources{cpus = ResCpus - Cpus},
-%%             Resource = erl_mesos_utils:scalar_resource("cpus", Cpus),
-%%             Resource1 = [Resource | Resources],
-%%             {Res1, Resource1}
-%%     end.
+apply_ports(Ports, Role, Principal, #resources{ports = ResPorts} = Res,
+            Resources) ->
+    case Ports of
+        undefined ->
+            {Res, Resources};
+        _Ports when Role =/= undefined, Principal =/= undefined ->
+            {PortsSlice, ResPorts1} = ports_slice(Ports, ResPorts),
+            Ranges = riak_mesos_utils:list_to_ranges(PortsSlice),
+            Res1 = Res#resources{ports = ResPorts1},
+            Resource = erl_mesos_utils:ranges_resource_reservation("ports",
+                                                                   Ranges,
+                                                                   Role,
+                                                                   Principal),
+            Resource1 = [Resource | Resources],
+            {Res1, Resource1};
+        _Ports ->
+            {PortsSlice, ResPorts1} = ports_slice(Ports, ResPorts),
+            Ranges = riak_mesos_utils:list_to_ranges(PortsSlice),
+            Res1 = Res#resources{ports = ResPorts1},
+            Resource = erl_mesos_utils:ranges_resource("ports", Ranges),
+            Resource1 = [Resource | Resources],
+            {Res1, Resource1}
+    end.
 
-%% remove_ports(Ports, Remove) ->
-%%     [Port || Port <- Ports, not lists:member(Port, Remove)].
+ports_slice(SliceLength, Ports) when SliceLength < length(Ports) ->
+    SliceStart = random:uniform(length(Ports) - SliceLength),
+    ports_slice(SliceStart, SliceLength, Ports);
+ports_slice(SliceLength, Ports) ->
+    ports_slice(1, SliceLength, Ports).
 
-list_to_ranges([Begin | List], {undefined, undefined}, Ranges) ->
-    list_to_ranges(List, {Begin, Begin}, Ranges);
-list_to_ranges([End1 | List], {Begin, End}, Ranges)
-  when End1 == End + 1 ->
-    list_to_ranges(List, {Begin, End1}, Ranges);
-list_to_ranges([End1 | List], {Begin, End}, Ranges) ->
-    list_to_ranges(List, {End1, End1}, [{Begin, End} | Ranges]);
-list_to_ranges([], {undefined, undefined}, _Ranges) ->
-    [];
-list_to_ranges([], {Begin, End}, Ranges) ->
-    lists:reverse([{Begin, End} | Ranges]).
+ports_slice(SliceStart, SliceLength, Ports) ->
+    PortsSlice = lists:sublist(Ports, SliceStart, SliceLength),
+    {PortsSlice, Ports -- PortsSlice}.

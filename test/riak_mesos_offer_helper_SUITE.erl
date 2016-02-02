@@ -57,7 +57,7 @@ new(_Config) ->
     Cpus = riak_mesos_offer_helper:get_unreserved_resources_cpus(OfferHelper2),
     Mem = 128.0 + 256.0 + 512.0,
     Mem = riak_mesos_offer_helper:get_unreserved_resources_mem(OfferHelper2),
-    Ports = lists:seq(7, 12),
+    Ports = lists:seq(7, 20),
     Ports =
         riak_mesos_offer_helper:get_unreserved_resources_ports(OfferHelper2),
     Volume = 2048.0 + 4096.0,
@@ -122,13 +122,19 @@ make_reservation(_Config) ->
     Mem = 128.0 + 256.0 + 512.0,
     ReserveMem = 384.0,
     UnreservedMem = Mem - ReserveMem,
+    Mem = riak_mesos_offer_helper:get_unreserved_resources_mem(OfferHelper1),
     Disk = 2048.0 + 4096.0,
     ReserveDisk = 512.0,
     UnreservedDisk = Disk - ReserveDisk,
+    Disk = riak_mesos_offer_helper:get_unreserved_resources_disk(OfferHelper1),
+    Ports = lists:seq(7, 20),
+    ReservePorts = 5,
+    Ports =
+        riak_mesos_offer_helper:get_unreserved_resources_ports(OfferHelper1),
     OfferHelper2 = riak_mesos_offer_helper:make_reservation(ReserveCpus,
                                                             ReserveMem,
                                                             ReserveDisk,
-                                                            undefined, "*",
+                                                            ReservePorts, "*",
                                                             "principal",
                                                             OfferHelper1),
     UnreservedCpus =
@@ -137,6 +143,8 @@ make_reservation(_Config) ->
         riak_mesos_offer_helper:get_unreserved_resources_mem(OfferHelper2),
     UnreservedDisk =
         riak_mesos_offer_helper:get_unreserved_resources_disk(OfferHelper2),
+    UnreservedPorts =
+        riak_mesos_offer_helper:get_unreserved_resources_ports(OfferHelper2),
     CpusResourceToReserve =
         erl_mesos_utils:scalar_resource_reservation("cpus", ReserveCpus, "*",
                                                     "principal"),
@@ -148,10 +156,20 @@ make_reservation(_Config) ->
                                                     "principal"),
     [CpusResourceToReserve,
      MemResourceToReserve,
-     DiskResourceToReserve] =
+     DiskResourceToReserve,
+     PortsResourceToReserve] =
         riak_mesos_offer_helper:get_resources_to_reserve(OfferHelper2),
-    ct:pal("OfferHelper2: ~p~n", [OfferHelper2]),
-    ok.
+    #'Resource'{name = "ports",
+                type = 'RANGES',
+                ranges = #'Value.Ranges'{range = PortsToReserveRanges}} =
+        PortsResourceToReserve,
+    [#'Value.Range'{'begin' = PortsToReserveBegin,
+                    'end' = PortsToReserveEnd}] = PortsToReserveRanges,
+    PortsToReserve = lists:seq(PortsToReserveBegin, PortsToReserveEnd),
+    PortsLength = length(Ports),
+    PortsToReserveLength = length(PortsToReserve),
+    UnreservedPortsLength = length(UnreservedPorts),
+    PortsLength = PortsToReserveLength + UnreservedPortsLength.
 
 cpus_resources_reservation() ->
     [erl_mesos_utils:scalar_resource_reservation("cpus", 0.2, "*",
@@ -193,7 +211,7 @@ mem_resources() ->
 
 ports_resources() ->
     [erl_mesos_utils:ranges_resource("ports", [{7, 9}]),
-     erl_mesos_utils:ranges_resource("ports", [{10, 12}])].
+     erl_mesos_utils:ranges_resource("ports", [{10, 12}, {13, 20}])].
 
 volume_resources() ->
     [erl_mesos_utils:volume_resource(2048.0, "id_1", "path_1", 'RW'),
