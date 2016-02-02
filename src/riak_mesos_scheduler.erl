@@ -24,6 +24,8 @@
 
 -include_lib("erl_mesos/include/scheduler_protobuf.hrl").
 
+-include("mesos_scheduler_data.hrl").
+
 -export([init/1,
          registered/3,
          reregistered/2,
@@ -86,50 +88,9 @@ resource_offers(SchedulerInfo, #'Event.Offers'{offers = Offers} = EventOffers,
     lager:info("Resource offers: ~p.", [EventOffers]),
     lager:info("Offer mode: ~p.", [State#state.offer_mode]),
 
-    HandleOfferFun = fun(Offer = #'Offer'{id = OfferId, agent_id = AgentId},
-                         {OfferIds, OfferOperations, NewTaskIdValues, OfferNum}) ->
+    HandlerFun = fun handle_resource_offer/2,
+    {OfferIds, Operations, NewTaskIdValues} = lists:foldl(HandlerFun, {[], [], []}, Offers),
 
-                             TaskIdValue = AgentId#'AgentID'.value ++ "-" ++ integer_to_list(
-                                                                               OfferNum),
-                             TaskId = erl_mesos_utils:task_id(TaskIdValue),
-
-                             OfferHelper = riak_mesos_offer_helper:new(Offer),
-
-                             CommandValue = "./ermf-executor.sh",
-                             CommandInfo = erl_mesos_utils:command_info(CommandValue),
-
-                             case riak_mesos_offer_helper:offer_fits(OfferHelper) of
-                                 true ->
-                                     scheduler_node_fsm_mgr:start_child(TaskIdValue),
-                                     %% TODO - only take as much as we need, instead of
-                                     %% using the entire offer! Also accept disk resources?
-                                     CPU = riak_mesos_offer_helper:resources_cpus(OfferHelper),
-                                     Mem = riak_mesos_offer_helper:resource_mem(OfferHelper),
-                                     ResourceCpu = erl_mesos_utils:scalar_resource("cpus", CPU),
-                                     ResourceMem = erl_mesos_utils:scalar_resource("mem", Mem),
-                                     TaskInfo = erl_mesos_utils:task_info("riak",
-                                                                          TaskId,
-                                                                          AgentId,
-                                                                          [ResourceCpu,
-                                                                          ResourceMem],
-                                                                          undefined,
-                                                                          CommandInfo),
-                                     OfferOperation = erl_mesos_utils:launch_offer_operation(
-                                                        [TaskInfo]),
-                                     {[OfferId | OfferIds],
-                                      [OfferOperation | OfferOperations],
-                                      [TaskIdValue | NewTaskIdValues],
-                                      OfferNum + 1};
-                                 false ->
-                                     {OfferIds,
-                                      OfferOperations,
-                                      NewTaskIdValues,
-                                      OfferNum + 1}
-                             end
-                     end,
-
-    {OfferIds, Operations, NewTaskIdValues, _} =
-        lists:foldl(HandleOfferFun, {[], [], [], 1}, Offers),
     ok = erl_mesos_scheduler:accept(SchedulerInfo, OfferIds, Operations),
     %% TODO: Manually returing to decline mode for now, but needs to be based on
     %% whether or not we have nodes to launch eventually.
@@ -201,3 +162,70 @@ offer_ids(Offers) ->
 
 call_reconcile_task(TaskId) ->
     #'Call.Reconcile.Task'{task_id = TaskId}.
+
+handle_resource_offer(Offer, Acc) ->
+    Acc1 = maybe_reserve_resources(Offer, Acc),
+    Acc2 = maybe_launch_nodes(Offer, Acc1),
+    Acc2.
+
+maybe_reserve_resources(Offer, Acc) ->
+    #'Offer'{
+       id = OfferId,
+       resources = Resources
+      } = Offer,
+    OfferHelper = riak_mesos_offer_helper:new(Offer),
+    OfferFits = riak_mesos_offer_helper:offer_fits(OfferHelper),
+
+    % TODO Figure out how to prioritize which node we choose:
+    RequestedNodes = [N || N <- mesos_scheduler_data:get_all_nodes(),
+                           N#rms_node.status =:= requested],
+
+    case {OfferFits, RequestedNodes} of
+        {true, [_Node | _]} ->
+            %% TODO - only take as much as we need, instead of using the entire offer?
+            UnreservedResources = [R || R <- Resources, R#'Resource'.reservation =:= undefined],
+            ReserveOp = erl_mesos_utils:reserve_offer_operation(UnreservedResources),
+
+            Disk = riak_mesos_offer_helper:get_unreserved_resources_disk(OfferHelper),
+            DiskResource = erl_mesos_utils:scalar_resource("disk", Disk),
+            CreateOp = erl_mesos_utils:create_offer_operation(DiskResource),
+            {OfferIdAcc, OperationAcc, TaskIdAcc} = Acc,
+            {[OfferId, OfferId | OfferIdAcc], [ReserveOp, CreateOp | OperationAcc], TaskIdAcc};
+        _ ->
+            Acc
+    end.
+
+maybe_launch_nodes(Offer, Acc) ->
+    #'Offer'{
+       id = OfferId,
+       agent_id = AgentId,
+       resources = Resources
+      } = Offer,
+
+    HasReservedResources = lists:any(fun(R) -> R#'Resource'.reservation =/= undefined end,
+                                     Resources),
+
+    % TODO Figure out how to prioritize which node we choose:
+    RequestedNodes = [N || N <- mesos_scheduler_data:get_all_nodes(),
+                           N#rms_node.status =:= requested],
+
+    case {HasReservedResources, RequestedNodes} of
+        {true, [Node | _]} ->
+            CommandValue = "./ermf-executor.sh",
+            CommandInfo = erl_mesos_utils:command_info(CommandValue),
+            TaskIdValue = binary_to_list(Node#rms_node.key),
+            TaskId = erl_mesos_utils:task_id(TaskIdValue),
+
+            ReservedResources = [R || R <- Resources, R#'Resource'.reservation =/= undefined],
+
+            TaskInfo = erl_mesos_utils:task_info("riak", TaskId, AgentId, ReservedResources,
+                                                 undefined, CommandInfo),
+            Operation = erl_mesos_utils:launch_offer_operation([TaskInfo]),
+
+            {OfferIdAcc, OperationAcc, TaskIdAcc} = Acc,
+            {[OfferId | OfferIdAcc],
+             [Operation | OperationAcc],
+             [TaskIdValue | TaskIdAcc]};
+        _ ->
+            Acc
+    end.

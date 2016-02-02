@@ -20,6 +20,8 @@
 -export([has_reservations/1,
          has_volumes/1]).
 
+-export([offer_fits/1]).
+
 -record(offer_helper, {offer :: erl_mesos:'Offer'(),
                        offer_id_value :: string(),
                        persistence_ids = [] :: [string()],
@@ -185,3 +187,12 @@ resources(Cpus, Mem, Disk, Ports) ->
                mem = Mem,
                disk = Disk,
                ports = Ports}.
+
+-spec offer_fits(#offer_helper{}) -> boolean().
+offer_fits(OfferHelper) ->
+    UnreservedResources = get_unreserved_resources(OfferHelper),
+    OfferedCPU = erl_mesos_utils:resources_cpus(UnreservedResources),
+    OfferedMem = erl_mesos_utils:resources_mem(UnreservedResources),
+    %% TODO check disk and ports as well?
+    %% TODO make these limits configurable?
+    OfferedCPU >= 1.0 andalso OfferedMem > 1024.
