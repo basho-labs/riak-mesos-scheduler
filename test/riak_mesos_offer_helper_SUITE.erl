@@ -9,13 +9,15 @@
 -export([new/1,
          has_reservations/1,
          has_volumes/1,
-         make_reservation/1]).
+         make_reservation/1,
+         make_volume/1]).
 
 all() ->
     [new,
      has_reservations,
      has_volumes,
-     make_reservation].
+     make_reservation,
+     make_volume].
 
 new(_Config) ->
     OfferResources1 = [],
@@ -159,9 +161,7 @@ make_reservation(_Config) ->
      DiskResourceToReserve,
      PortsResourceToReserve] =
         riak_mesos_offer_helper:get_resources_to_reserve(OfferHelper2),
-    #'Resource'{name = "ports",
-                type = 'RANGES',
-                ranges = #'Value.Ranges'{range = PortsToReserveRanges}} =
+    #'Resource'{ranges = #'Value.Ranges'{range = PortsToReserveRanges}} =
         PortsResourceToReserve,
     [#'Value.Range'{'begin' = PortsToReserveBegin,
                     'end' = PortsToReserveEnd}] = PortsToReserveRanges,
@@ -170,6 +170,36 @@ make_reservation(_Config) ->
     PortsToReserveLength = length(PortsToReserve),
     UnreservedPortsLength = length(UnreservedPorts),
     PortsLength = PortsToReserveLength + UnreservedPortsLength.
+
+make_volume(_Config) ->
+    OfferResources1 = cpus_resources_reservation() ++
+                      mem_resources_reservation() ++
+                      ports_resources_reservation() ++
+                      volume_resources_reservation() ++
+                      cpus_resources() ++
+                      mem_resources() ++
+                      ports_resources() ++
+                      volume_resources(),
+    Offer1 = offer("offer_1", OfferResources1),
+    OfferHelper1 = riak_mesos_offer_helper:new(Offer1),
+    VolumeDisk1 = 128.0,
+    VolumeResource1 =
+        erl_mesos_utils:volume_resource_reservation(VolumeDisk1, "id_1",
+                                                    "path_1", 'RW', "*",
+                                                    "principal"),
+    VolumeDisk2 = 256.0,
+    VolumeResource2 =
+        erl_mesos_utils:volume_resource_reservation(VolumeDisk2, "id_2",
+                                                    "path_2", 'RW', "*",
+                                                    "principal"),
+    OfferHelper2 = riak_mesos_offer_helper:make_volume(VolumeDisk1, "*",
+                                                       "principal", "id_1",
+                                                       "path_1", OfferHelper1),
+    OfferHelper3 = riak_mesos_offer_helper:make_volume(VolumeDisk2, "*",
+                                                       "principal", "id_2",
+                                                       "path_2", OfferHelper2),
+    [VolumeResource1, VolumeResource2] =
+        riak_mesos_offer_helper:get_volumes_to_create(OfferHelper3).
 
 cpus_resources_reservation() ->
     [erl_mesos_utils:scalar_resource_reservation("cpus", 0.2, "*",

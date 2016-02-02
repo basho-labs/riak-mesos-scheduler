@@ -16,12 +16,17 @@
          get_unreserved_resources_mem/1,
          get_unreserved_resources_disk/1,
          get_unreserved_resources_ports/1,
-         get_resources_to_reserve/1]).
+         get_resources_to_reserve/1,
+         get_resources_to_unreserve/1,
+         get_volumes_to_create/1,
+         get_volumes_to_destroy/1,
+         get_tasks_to_launch/1]).
 
 -export([has_reservations/1,
          has_volumes/1]).
 
--export([make_reservation/7]).
+-export([make_reservation/7,
+         make_volume/6]).
 
 -record(offer_helper, {offer :: erl_mesos:'Offer'(),
                        offer_id_value :: string(),
@@ -29,7 +34,7 @@
                        reserved_resources :: erl_mesos_utils:resources(),
                        unreserved_resources :: erl_mesos_utils:resources(),
                        resources_to_reserve = [] :: [erl_mesos:'Resource'()],
-                       resources_to_uneserve = [] :: [erl_mesos:'Resource'()],
+                       resources_to_unreserve = [] :: [erl_mesos:'Resource'()],
                        volumes_to_create = [] :: [erl_mesos:'Resource'()],
                        volumes_to_destroy = [] :: [erl_mesos:'Resource'()],
                        tasks_to_launch = [] :: [erl_mesos:'TaskInfo'()]}).
@@ -100,6 +105,19 @@ get_resources_to_reserve(#offer_helper{resources_to_reserve =
                                        ResourcesToReserve}) ->
     ResourcesToReserve.
 
+get_resources_to_unreserve(#offer_helper{resources_to_unreserve =
+                                         ResourcesToUnreserve}) ->
+    ResourcesToUnreserve.
+
+get_volumes_to_create(#offer_helper{volumes_to_create = VolumesToCreate}) ->
+    VolumesToCreate.
+
+get_volumes_to_destroy(#offer_helper{volumes_to_destroy = VolumesToDestroy}) ->
+    VolumesToDestroy.
+
+get_tasks_to_launch(#offer_helper{tasks_to_launch = TasksToLaunch}) ->
+    TasksToLaunch.
+
 has_reservations(OfferHelper) ->
     get_reserved_resources_cpus(OfferHelper) > 0.0 orelse
     get_reserved_resources_mem(OfferHelper) > 0.0 orelse
@@ -110,13 +128,22 @@ has_volumes(OfferHelper) ->
     length(get_persistence_ids(OfferHelper)) > 0.
 
 make_reservation(Cpus, Mem, Disk, Ports, Role, Principal,
-                 #offer_helper{unreserved_resources = UnreservedResources} =
+                 #offer_helper{unreserved_resources = UnreservedResources,
+                               resources_to_reserve = Resources} =
                  OfferHelper) ->
-    {UnreservedResources1, Resources} =
+    {UnreservedResources1, Resources1} =
         apply(Cpus, Mem, Disk, Ports, Role, Principal, undefined, undefined,
               UnreservedResources),
     OfferHelper#offer_helper{unreserved_resources = UnreservedResources1,
-                             resources_to_reserve = Resources}.
+                             resources_to_reserve = Resources ++ Resources1}.
+
+make_volume(Disk, Role, Principal, PersistenceId, ContainerPath,
+            #offer_helper{unreserved_resources = UnreservedResources,
+                          volumes_to_create = Volumes} = OfferHelper) ->
+    {_, Volumes1} =
+        apply_disk(Disk, Role, Principal, PersistenceId, ContainerPath,
+                   UnreservedResources, []),
+    OfferHelper#offer_helper{volumes_to_create = Volumes ++ Volumes1}.
 
 %% ====================================================================
 %% Private
