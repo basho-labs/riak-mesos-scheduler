@@ -28,6 +28,9 @@
 -export([make_reservation/7,
          make_volume/6]).
 
+-export([apply_reserved_resources/9,
+         apply_unreserved_resources/5]).
+
 -record(offer_helper, {offer :: erl_mesos:'Offer'(),
                        offer_id_value :: string(),
                        persistence_ids = [] :: [string()],
@@ -144,6 +147,24 @@ make_volume(Disk, Role, Principal, PersistenceId, ContainerPath,
         apply_disk(Disk, Role, Principal, PersistenceId, ContainerPath,
                    UnreservedResources, []),
     OfferHelper#offer_helper{volumes_to_create = Volumes ++ Volumes1}.
+
+apply_reserved_resources(Cpus, Mem, Disk, Ports, Role, Principal, PersistenceId,
+                         ContainerPath,
+                         #offer_helper{reserved_resources = ReservedResources} =
+                         OfferHelper) ->
+    {ReservedResources1, _} =
+        apply(Cpus, Mem, Disk, Ports, Role, Principal, PersistenceId,
+              ContainerPath, ReservedResources),
+    OfferHelper#offer_helper{reserved_resources = ReservedResources1}.
+
+apply_unreserved_resources(Cpus, Mem, Disk, Ports,
+                           #offer_helper{unreserved_resources =
+                                             UnreservedResources} =
+                           OfferHelper) ->
+    {UnreservedResources1, _} =
+        apply(Cpus, Mem, Disk, Ports, undefined, undefined, undefined,
+              undefined, UnreservedResources),
+    OfferHelper#offer_helper{unreserved_resources = UnreservedResources1}.
 
 %% ====================================================================
 %% Private

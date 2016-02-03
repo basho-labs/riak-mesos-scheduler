@@ -10,14 +10,16 @@
          has_reservations/1,
          has_volumes/1,
          make_reservation/1,
-         make_volume/1]).
+         make_volume/1,
+         apply_resources/1]).
 
 all() ->
     [new,
      has_reservations,
      has_volumes,
      make_reservation,
-     make_volume].
+     make_volume,
+     apply_resources].
 
 new(_Config) ->
     OfferResources1 = [],
@@ -200,6 +202,71 @@ make_volume(_Config) ->
                                                        "path_2", OfferHelper2),
     [VolumeResource1, VolumeResource2] =
         riak_mesos_offer_helper:get_volumes_to_create(OfferHelper3).
+
+apply_resources(_Config) ->
+    OfferResources1 = cpus_resources_reservation() ++
+                      mem_resources_reservation() ++
+                      ports_resources_reservation() ++
+                      volume_resources_reservation() ++
+                      cpus_resources() ++
+                      mem_resources() ++
+                      ports_resources() ++
+                      volume_resources(),
+    Offer1 = offer("offer_1", OfferResources1),
+    OfferHelper1 = riak_mesos_offer_helper:new(Offer1),
+    CpusReservation = 0.2 + 0.3 + 0.4,
+    ApplyCpusReservation = 0.5,
+    AfterApplyCpusReservation = CpusReservation - ApplyCpusReservation,
+    MemReservation = 256.0 + 512.0 + 1024.0,
+    ApplyMemReservation = 256.0 + 512.0,
+    AfterApplyMemReservation = MemReservation - ApplyMemReservation,
+    VolumeReservation = 1024.0 + 2048.0,
+    ApplyVolumeReservation = 512.0 + 1024.0,
+    AfterApplyVolumeReservation = VolumeReservation - ApplyVolumeReservation,
+    PortsReservation = lists:seq(1, 6),
+    ApplyPortsReservationLength = 2,
+    AfterApplyPortsReservationLength =
+        length(PortsReservation) - ApplyPortsReservationLength,
+    OfferHelper2 =
+        riak_mesos_offer_helper:apply_reserved_resources(
+            ApplyCpusReservation, ApplyMemReservation,
+            AfterApplyVolumeReservation, ApplyPortsReservationLength, "*",
+            "principal", "id", "path", OfferHelper1),
+    AfterApplyCpusReservation =
+        riak_mesos_offer_helper:get_reserved_resources_cpus(OfferHelper2),
+    AfterApplyMemReservation =
+        riak_mesos_offer_helper:get_reserved_resources_mem(OfferHelper2),
+    AfterApplyVolumeReservation =
+        riak_mesos_offer_helper:get_reserved_resources_disk(OfferHelper2),
+    AfterApplyPortsReservation =
+        riak_mesos_offer_helper:get_reserved_resources_ports(OfferHelper2),
+    AfterApplyPortsReservationLength = length(AfterApplyPortsReservation),
+    Cpus = 0.1 + 0.2 + 0.3,
+    ApplyCpus = 0.5,
+    AfterApplyCpus = Cpus - ApplyCpus,
+    Mem = 128.0 + 256.0 + 512.0,
+    ApplyMem = 384.0,
+    AfterApplyMem = Mem - ApplyMem,
+    Volume = 2048.0 + 4096.0,
+    ApplyVolume = 1024.0 + 2048.0,
+    AfterApplyVolume = Volume - ApplyVolume,
+    Ports = lists:seq(7, 20),
+    ApplyPortsLength = 5,
+    AfterApplyPortsLength = length(Ports) - ApplyPortsLength,
+    OfferHelper3 =
+        riak_mesos_offer_helper:apply_unreserved_resources(ApplyCpus, ApplyMem,
+                                                           ApplyVolume,
+                                                           ApplyPortsLength,
+                                                           OfferHelper1),
+    AfterApplyCpus =
+        riak_mesos_offer_helper:get_unreserved_resources_cpus(OfferHelper3),
+    AfterApplyMem =
+        riak_mesos_offer_helper:get_unreserved_resources_mem(OfferHelper3),
+    AfterApplyVolume =
+        riak_mesos_offer_helper:get_unreserved_resources_disk(OfferHelper3),
+    AfterApplyPorts =
+        riak_mesos_offer_helper:get_unreserved_resources_ports(OfferHelper3),
+    AfterApplyPortsLength = length(AfterApplyPorts).
 
 cpus_resources_reservation() ->
     [erl_mesos_utils:scalar_resource_reservation("cpus", 0.2, "*",
