@@ -22,14 +22,19 @@
          get_volumes_to_destroy/1,
          get_tasks_to_launch/1]).
 
--export([has_reservations/1,
-         has_volumes/1]).
+-export([add_task_to_launch/2]).
 
--export([make_reservation/7,
-         make_volume/6]).
+-export([has_reservations/1, has_volumes/1]).
 
--export([apply_reserved_resources/9,
-         apply_unreserved_resources/5]).
+-export([make_reservation/7, make_volume/6]).
+
+-export([apply_reserved_resources/9, apply_unreserved_resources/5]).
+
+-export([can_fit_reserved/5, can_fit_unreserved/5]).
+
+-export([has_persistence_id/2]).
+
+-export([operations/1]).
 
 -record(offer_helper, {offer :: erl_mesos:'Offer'(),
                        offer_id_value :: string(),
@@ -121,6 +126,10 @@ get_volumes_to_destroy(#offer_helper{volumes_to_destroy = VolumesToDestroy}) ->
 get_tasks_to_launch(#offer_helper{tasks_to_launch = TasksToLaunch}) ->
     TasksToLaunch.
 
+add_task_to_launch(TaskInfo, #offer_helper{tasks_to_launch = TasksToLaunch} =
+                   OfferHelper) ->
+    OfferHelper#offer_helper{tasks_to_launch = [TaskInfo | TasksToLaunch]}.
+
 has_reservations(OfferHelper) ->
     get_reserved_resources_cpus(OfferHelper) > 0.0 orelse
     get_reserved_resources_mem(OfferHelper) > 0.0 orelse
@@ -165,6 +174,38 @@ apply_unreserved_resources(Cpus, Mem, Disk, Ports,
         apply(Cpus, Mem, Disk, Ports, undefined, undefined, undefined,
               undefined, UnreservedResources),
     OfferHelper#offer_helper{unreserved_resources = UnreservedResources1}.
+
+can_fit_reserved(Cpus, Mem, Disk, Ports, OfferHelper) ->
+    get_reserved_resources_cpus(OfferHelper) >= Cpus andalso
+    get_reserved_resources_mem(OfferHelper) >= Mem andalso
+    get_reserved_resources_disk(OfferHelper) >= Disk andalso
+    length(get_reserved_resources_ports(OfferHelper)) >= Ports.
+
+can_fit_unreserved(Cpus, Mem, Disk, Ports, OfferHelper) ->
+    get_unreserved_resources_cpus(OfferHelper) >= Cpus andalso
+    get_unreserved_resources_mem(OfferHelper) >= Mem andalso
+    get_unreserved_resources_disk(OfferHelper) >= Disk andalso
+    length(get_unreserved_resources_ports(OfferHelper)) >= Ports.
+
+has_persistence_id(PersistenceId,
+                   #offer_helper{persistence_ids = PersistenceIds}) ->
+    lists:member(PersistenceId, PersistenceIds).
+
+operations(#offer_helper{resources_to_reserve = ResourcesToReserve,
+                         resources_to_unreserve = ResourcesToUnreserve,
+                         volumes_to_create = VolumesToCreate,
+                         volumes_to_destroy = VolumesToDestroy,
+                         tasks_to_launch = TasksToLaunch}) ->
+    [erl_mesos_utils:reserve_offer_operation(Resource) ||
+     Resource <- ResourcesToReserve] ++
+    [erl_mesos_utils:unreserve_offer_operation(Resource) ||
+     Resource <- ResourcesToUnreserve] ++
+    [erl_mesos_utils:create_offer_operation(Volume) ||
+     Volume <- VolumesToCreate] ++
+    [erl_mesos_utils:destroy_offer_operation(Volume) ||
+     Volume <- VolumesToDestroy] ++
+    [erl_mesos_utils:launch_offer_operation(TaskInfo) ||
+     TaskInfo <- TasksToLaunch].
 
 %% ====================================================================
 %% Private
