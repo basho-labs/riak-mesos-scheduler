@@ -94,7 +94,7 @@ resource_offers(SchedulerInfo, #'Event.Offers'{offers = Offers} = EventOffers,
     ok = erl_mesos_scheduler:accept(SchedulerInfo, OfferIds, Operations),
     %% TODO: Manually returing to decline mode for now, but needs to be based on
     %% whether or not we have nodes to launch eventually.
-    {ok, State#state{offer_mode = decline,
+    {ok, State#state{offer_mode = accept,
                      task_id_values = TaskIdValues ++ NewTaskIdValues}};
 resource_offers(SchedulerInfo, #'Event.Offers'{offers = Offers},
                 State=#state{offer_mode = decline}) ->
@@ -181,16 +181,30 @@ maybe_reserve_resources(Offer, Acc) ->
                            N#rms_node.status =:= requested],
 
     case {OfferFits, RequestedNodes} of
-        {true, [_Node | _]} ->
+        {true, [Node | _]} ->
+            lager:info("Reserving resources for node ~p", [Node]),
             %% TODO - only take as much as we need, instead of using the entire offer?
             UnreservedResources = [R || R <- Resources, R#'Resource'.reservation =:= undefined],
-            ReserveOp = erl_mesos_utils:reserve_offer_operation(UnreservedResources),
+            ReservationRequestResources = [erl_mesos_utils:add_resource_reservation(
+                                             R, "riak", "riak") ||
+                                           R <- UnreservedResources],
+            ReserveOp = erl_mesos_utils:reserve_offer_operation(ReservationRequestResources),
 
             Disk = riak_mesos_offer_helper:get_unreserved_resources_disk(OfferHelper),
-            DiskResource = erl_mesos_utils:scalar_resource("disk", Disk),
-            CreateOp = erl_mesos_utils:create_offer_operation(DiskResource),
+            DiskResource = erl_mesos_utils:add_resource_reservation(
+                             erl_mesos_utils:scalar_resource("disk", Disk), "riak", "riak"),
+            CreateOp = erl_mesos_utils:create_offer_operation([DiskResource]),
+
+            %% FIXME handle error results here.
+            %% FIXME also handle case where we crash or launch message is lost, so we
+            %% don't get stuck with a zombie node in the "reserving" state forever
+            ok = mesos_scheduler_data:set_node_status(Node#rms_node.key, reserving),
+
+            lager:info("Sending reserve operation ~p", [ReserveOp]),
+            lager:info("Sending create operation ~p", [CreateOp]),
+
             {OfferIdAcc, OperationAcc, TaskIdAcc} = Acc,
-            {[OfferId, OfferId | OfferIdAcc], [ReserveOp, CreateOp | OperationAcc], TaskIdAcc};
+            {[OfferId | OfferIdAcc], [ReserveOp, CreateOp | OperationAcc], TaskIdAcc};
         _ ->
             Acc
     end.
@@ -206,21 +220,47 @@ maybe_launch_nodes(Offer, Acc) ->
                                      Resources),
 
     % TODO Figure out how to prioritize which node we choose:
-    RequestedNodes = [N || N <- mesos_scheduler_data:get_all_nodes(),
-                           N#rms_node.status =:= requested],
+    ReservingNodes = [N || N <- mesos_scheduler_data:get_all_nodes(),
+                           N#rms_node.status =:= reserving],
 
-    case {HasReservedResources, RequestedNodes} of
+    case {HasReservedResources, ReservingNodes} of
         {true, [Node | _]} ->
-            CommandValue = "./ermf-executor.sh",
-            CommandInfo = erl_mesos_utils:command_info(CommandValue),
+            lager:info("Launching node ~p", [Node]),
+
+            UrlBase = "file:///home/vagrant/riak-mesos-erlang",
+            ExecutorUrlStr = UrlBase ++ "/framework/riak-mesos-executor/packages/"
+            ++ "riak_mesos_executor-0.1.2-amd64.tar.gz",
+            RiakExplorerUrlStr = UrlBase ++ "/framework/riak_explorer/packages/"
+            ++ "riak_explorer-0.1.1.patch-amd64.tar.gz",
+            RiakUrlStr = UrlBase ++ "/riak/packages/riak-2.1.3-amd64.tar.gz",
+
+            ExecutorUrl = erl_mesos_utils:command_info_uri(ExecutorUrlStr, false, true),
+            RiakExplorerUrl = erl_mesos_utils:command_info_uri(RiakExplorerUrlStr, false, true),
+            RiakUrl = erl_mesos_utils:command_info_uri(RiakUrlStr, false, true),
+
+            CommandInfoValue = "./riak_mesos_executor/bin/ermf-executor",
+            UrlList = [ExecutorUrl, RiakExplorerUrl, RiakUrl],
+
+            CommandInfo = erl_mesos_utils:command_info(CommandInfoValue, UrlList),
+
             TaskIdValue = binary_to_list(Node#rms_node.key),
             TaskId = erl_mesos_utils:task_id(TaskIdValue),
 
             ReservedResources = [R || R <- Resources, R#'Resource'.reservation =/= undefined],
 
+            ExecutorId = erl_mesos_utils:executor_id("riak"),
+            ExecutorInfo = erl_mesos_utils:executor_info(ExecutorId, CommandInfo),
+
             TaskInfo = erl_mesos_utils:task_info("riak", TaskId, AgentId, ReservedResources,
-                                                 undefined, CommandInfo),
+                                                 ExecutorInfo, undefined),
             Operation = erl_mesos_utils:launch_offer_operation([TaskInfo]),
+
+            %% FIXME handle error results here.
+            %% FIXME also handle case where we crash or launch message is lost, so we
+            %% don't get stuck with a zombie node in the "starting" state forever
+            ok = mesos_scheduler_data:set_node_status(Node#rms_node.key, starting),
+
+            lager:info("Sending launch operation ~p", [Operation]),
 
             {OfferIdAcc, OperationAcc, TaskIdAcc} = Acc,
             {[OfferId | OfferIdAcc],
