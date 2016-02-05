@@ -216,8 +216,8 @@ maybe_launch_nodes(Offer, Acc) ->
        resources = Resources
       } = Offer,
 
-    HasReservedResources = lists:any(fun(R) -> R#'Resource'.reservation =/= undefined end,
-                                     Resources),
+    ReservedResources = [R || R <- Resources, R#'Resource'.reservation =/= undefined],
+    HasReservedResources = (ReservedResources =/= []),
 
     % TODO Figure out how to prioritize which node we choose:
     ReservingNodes = [N || N <- mesos_scheduler_data:get_all_nodes(),
@@ -246,13 +246,34 @@ maybe_launch_nodes(Offer, Acc) ->
             TaskIdValue = binary_to_list(Node#rms_node.key),
             TaskId = erl_mesos_utils:task_id(TaskIdValue),
 
-            ReservedResources = [R || R <- Resources, R#'Resource'.reservation =/= undefined],
+            OfferHelper = riak_mesos_offer_helper:new(Offer),
+            ReservedPorts = riak_mesos_offer_helper:get_reserved_resources_ports(OfferHelper),
+            %% FIXME Make sure we actually have 3 ports available!
+            [HTTPPort, PBPort, DisterlPort | _Unused] = ReservedPorts,
+
+            FrameworkInfo = framework_info(),
+            FrameworkName = list_to_binary(FrameworkInfo#'FrameworkInfo'.name),
+            NodeName = <<(Node#rms_node.key)/binary, "@ubuntu.local">>, %% FIXME host name
+            TaskData = [
+                        {<<"FullyQualifiedNodeName">>, NodeName},
+                        {<<"Host">>,                   <<"localhost">>},
+                        {<<"Zookeepers">>,             [<<"master.mesos:2181">>]},
+                        {<<"FrameworkName">>,          FrameworkName},
+                        {<<"URI">>,                    <<"localhost:9090">>},
+                        {<<"ClusterName">>,            Node#rms_node.cluster},
+                        {<<"HTTPPort">>,               HTTPPort},
+                        {<<"PBPort">>,                 PBPort},
+                        {<<"HandoffPort">>,            0},
+                        {<<"DisterlPort">>,            DisterlPort}],
+            TaskDataBin = iolist_to_binary(mochijson2:encode(TaskData)),
 
             ExecutorId = erl_mesos_utils:executor_id("riak"),
-            ExecutorInfo = erl_mesos_utils:executor_info(ExecutorId, CommandInfo),
+            ExecutorInfo0 = erl_mesos_utils:executor_info(ExecutorId, CommandInfo),
+            ExecutorInfo = ExecutorInfo0#'ExecutorInfo'{source = "riak"},
 
-            TaskInfo = erl_mesos_utils:task_info("riak", TaskId, AgentId, ReservedResources,
-                                                 ExecutorInfo, undefined),
+            TaskInfo0 = erl_mesos_utils:task_info("riak", TaskId, AgentId, ReservedResources,
+                                                  ExecutorInfo, undefined),
+            TaskInfo = TaskInfo0#'TaskInfo'{data = TaskDataBin},
             Operation = erl_mesos_utils:launch_offer_operation([TaskInfo]),
 
             %% FIXME handle error results here.
@@ -266,6 +287,17 @@ maybe_launch_nodes(Offer, Acc) ->
             {[OfferId | OfferIdAcc],
              [Operation | OperationAcc],
              [TaskIdValue | TaskIdAcc]};
+        {true, []} ->
+            %% Somehow we got into a state where we have reserved resources but no nodes
+            %% that actually need those resources. Go ahead and unreserve:
+            lager:info("Got reserved resource offer, but no nodes in 'reserving' state"),
+
+            Operation = erl_mesos_utils:unreserve_offer_operation(ReservedResources),
+
+            {OfferIdAcc, OperationAcc, TaskIdAcc} = Acc,
+            {[OfferId | OfferIdAcc],
+             [Operation | OperationAcc],
+             TaskIdAcc};
         _ ->
             Acc
     end.
