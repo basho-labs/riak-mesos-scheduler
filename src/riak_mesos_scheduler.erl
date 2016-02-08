@@ -233,13 +233,15 @@ maybe_launch_nodes(Offer, Acc) ->
             RiakExplorerUrlStr = UrlBase ++ "/framework/riak_explorer/packages/"
             ++ "riak_explorer-0.1.1.patch-amd64.tar.gz",
             RiakUrlStr = UrlBase ++ "/riak/packages/riak-2.1.3-amd64.tar.gz",
+            CepmdUrlStr = "file:///home/vagrant/cepmd_linux_amd64",
 
             ExecutorUrl = erl_mesos_utils:command_info_uri(ExecutorUrlStr, false, true),
             RiakExplorerUrl = erl_mesos_utils:command_info_uri(RiakExplorerUrlStr, false, true),
             RiakUrl = erl_mesos_utils:command_info_uri(RiakUrlStr, false, true),
+            CepmdUrl = erl_mesos_utils:command_info_uri(CepmdUrlStr, false, true),
 
             CommandInfoValue = "./riak_mesos_executor/bin/ermf-executor",
-            UrlList = [ExecutorUrl, RiakExplorerUrl, RiakUrl],
+            UrlList = [ExecutorUrl, RiakExplorerUrl, RiakUrl, CepmdUrl],
 
             CommandInfo = erl_mesos_utils:command_info(CommandInfoValue, UrlList),
 
