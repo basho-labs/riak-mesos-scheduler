@@ -245,7 +245,7 @@ maybe_launch_nodes(Offer, Acc) ->
 
             CommandInfo = erl_mesos_utils:command_info(CommandInfoValue, UrlList),
 
-            TaskIdValue = binary_to_list(Node#rms_node.key),
+            TaskIdValue = Node#rms_node.key,
             TaskId = erl_mesos_utils:task_id(TaskIdValue),
 
             OfferHelper = riak_mesos_offer_helper:new(Offer),
@@ -255,14 +255,14 @@ maybe_launch_nodes(Offer, Acc) ->
 
             FrameworkInfo = framework_info(),
             FrameworkName = list_to_binary(FrameworkInfo#'FrameworkInfo'.name),
-            NodeName = <<(Node#rms_node.key)/binary, "@ubuntu.local">>, %% FIXME host name
+            NodeName = iolist_to_binary([Node#rms_node.key, "@ubuntu.local"]), %% FIXME host name
             TaskData = [
                         {<<"FullyQualifiedNodeName">>, NodeName},
                         {<<"Host">>,                   <<"localhost">>},
                         {<<"Zookeepers">>,             [<<"master.mesos:2181">>]},
                         {<<"FrameworkName">>,          FrameworkName},
-                        {<<"URI">>,                    <<"localhost:9090">>},
-                        {<<"ClusterName">>,            Node#rms_node.cluster},
+                        {<<"URI">>,                    <<"192.168.1.4:9090">>}, %% FIXME URI
+                        {<<"ClusterName">>,            list_to_binary(Node#rms_node.cluster)},
                         {<<"HTTPPort">>,               HTTPPort},
                         {<<"PBPort">>,                 PBPort},
                         {<<"HandoffPort">>,            0},
