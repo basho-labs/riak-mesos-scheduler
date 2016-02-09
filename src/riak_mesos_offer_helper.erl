@@ -193,6 +193,15 @@ offer_fits(OfferHelper) ->
     UnreservedResources = get_unreserved_resources(OfferHelper),
     OfferedCPU = erl_mesos_utils:resources_cpus(UnreservedResources),
     OfferedMem = erl_mesos_utils:resources_mem(UnreservedResources),
-    %% TODO check disk and ports as well?
-    %% TODO make these limits configurable?
-    OfferedCPU >= 1.0 andalso OfferedMem > 1024.
+    OfferedDisk = erl_mesos_utils:resources_disk(UnreservedResources),
+    OfferedPorts = erl_mesos_utils:resources_ports(UnreservedResources),
+
+    MinCPU = riak_mesos_scheduler_config:get_value(node_cpu, 1, integer),
+    MinMem = riak_mesos_scheduler_config:get_value(node_mem, 16000, integer),
+    MinDisk = riak_mesos_scheduler_config:get_value(node_disk, 20000, integer),
+    MinPorts = 3, %% Maybe compute this in a more dynamic way, in case we need more ports in future?
+
+    (OfferedCPU >= MinCPU andalso
+     OfferedMem >= MinMem andalso
+     OfferedDisk >= MinDisk andalso
+     length(OfferedPorts) >= MinPorts).
