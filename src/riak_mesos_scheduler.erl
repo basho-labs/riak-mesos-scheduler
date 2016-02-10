@@ -43,11 +43,6 @@
 -record(state, {offer_mode = reconcile :: accept | reconcile | decline,
                 task_id_values = [] :: [string()]}).
 
-%% FIXME These should be configurable (and probably higher)
--define(MIN_CPU, 1).
--define(MIN_RAM, 1024).
--define(MIN_DISK, 4096).
-
 %%%===================================================================
 %%% Callbacks
 %%%===================================================================
