@@ -92,8 +92,7 @@ resource_offers(SchedulerInfo, #'Event.Offers'{offers = Offers} = EventOffers,
     {OfferIds, Operations, NewTaskIdValues} = lists:foldl(HandlerFun, {[], [], []}, Offers),
 
     ok = erl_mesos_scheduler:accept(SchedulerInfo, OfferIds, Operations),
-    %% TODO: Manually returing to decline mode for now, but needs to be based on
-    %% whether or not we have nodes to launch eventually.
+
     {ok, State#state{offer_mode = accept,
                      task_id_values = TaskIdValues ++ NewTaskIdValues}};
 resource_offers(SchedulerInfo, #'Event.Offers'{offers = Offers},
