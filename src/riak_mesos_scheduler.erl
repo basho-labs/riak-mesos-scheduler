@@ -303,3 +303,14 @@ maybe_launch_nodes(Offer, Acc) ->
         _ ->
             Acc
     end.
+
+port_list_to_port_resource(PortList) ->
+    Ranges = lists:foldl(fun port_to_range_fold/2, [], lists:sort(PortList)),
+    erl_mesos_utils:ranges_resource("ports", Ranges).
+
+port_to_range_fold(Port, []) ->
+    [{Port, Port}];
+port_to_range_fold(Port, [{RangeStart, RangeEnd} | Rest]) when Port =:= (RangeEnd + 1) ->
+    [{RangeStart, Port} | Rest];
+port_to_range_fold(Port, Ranges) ->
+    [{Port, Port} | Ranges].
