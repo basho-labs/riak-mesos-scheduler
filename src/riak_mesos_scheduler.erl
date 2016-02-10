@@ -227,13 +227,13 @@ maybe_launch_nodes(Offer, Acc) ->
         {true, [Node | _]} ->
             lager:info("Launching node ~p", [Node]),
 
-            UrlBase = "file:///home/vagrant/riak-mesos-erlang",
+            UrlBase = "file:///vagrant/riak-mesos-erlang",
             ExecutorUrlStr = UrlBase ++ "/framework/riak-mesos-executor/packages/"
             ++ "riak_mesos_executor-0.1.2-amd64.tar.gz",
             RiakExplorerUrlStr = UrlBase ++ "/framework/riak_explorer/packages/"
             ++ "riak_explorer-0.1.1.patch-amd64.tar.gz",
             RiakUrlStr = UrlBase ++ "/riak/packages/riak-2.1.3-amd64.tar.gz",
-            CepmdUrlStr = "file:///home/vagrant/cepmd_linux_amd64",
+            CepmdUrlStr = "file:///vagrant/cepmd_linux_amd64",
 
             ExecutorUrl = erl_mesos_utils:command_info_uri(ExecutorUrlStr, false, true),
             RiakExplorerUrl = erl_mesos_utils:command_info_uri(RiakExplorerUrlStr, false, true),
