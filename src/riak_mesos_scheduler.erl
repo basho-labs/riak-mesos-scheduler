@@ -168,10 +168,7 @@ handle_resource_offer(Offer, Acc) ->
     Acc2.
 
 maybe_reserve_resources(Offer, Acc) ->
-    #'Offer'{
-       id = OfferId,
-       resources = Resources
-      } = Offer,
+    OfferId = Offer#'Offer'.id,
     OfferHelper = riak_mesos_offer_helper:new(Offer),
     OfferFits = riak_mesos_offer_helper:offer_fits(OfferHelper),
 
@@ -180,19 +177,23 @@ maybe_reserve_resources(Offer, Acc) ->
                            N#rms_node.status =:= requested],
 
     case {OfferFits, RequestedNodes} of
-        {true, [Node | _]} ->
+        {{ok, {NodeCPU, NodeMem, NodeDisk, NodePorts}}, [Node | _]} ->
             lager:info("Reserving resources for node ~p", [Node]),
-            %% TODO - only take as much as we need, instead of using the entire offer?
-            UnreservedResources = [R || R <- Resources, R#'Resource'.reservation =:= undefined],
+
+            CpuResource = erl_mesos_utils:scalar_resource("cpus", NodeCPU),
+            MemResource = erl_mesos_utils:scalar_resource("mem", NodeMem),
+            DiskResource = erl_mesos_utils:scalar_resource("disk", NodeDisk),
+            PortResource = port_list_to_port_resource(NodePorts),
+
+            UnreservedResources = [CpuResource, MemResource, DiskResource, PortResource],
             ReservationRequestResources = [erl_mesos_utils:add_resource_reservation(
                                              R, "riak", "riak") ||
                                            R <- UnreservedResources],
             ReserveOp = erl_mesos_utils:reserve_offer_operation(ReservationRequestResources),
 
-            Disk = riak_mesos_offer_helper:get_unreserved_resources_disk(OfferHelper),
-            DiskResource = erl_mesos_utils:add_resource_reservation(
-                             erl_mesos_utils:scalar_resource("disk", Disk), "riak", "riak"),
-            CreateOp = erl_mesos_utils:create_offer_operation([DiskResource]),
+            DiskResourceReserved = erl_mesos_utils:add_resource_reservation(
+                                     DiskResource, "riak", "riak"),
+            CreateOp = erl_mesos_utils:create_offer_operation([DiskResourceReserved]),
 
             %% FIXME handle error results here.
             %% FIXME also handle case where we crash or launch message is lost, so we

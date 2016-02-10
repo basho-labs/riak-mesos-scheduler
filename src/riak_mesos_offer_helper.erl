@@ -188,7 +188,7 @@ resources(Cpus, Mem, Disk, Ports) ->
                disk = Disk,
                ports = Ports}.
 
--spec offer_fits(#offer_helper{}) -> boolean().
+-spec offer_fits(#offer_helper{}) -> {ok, {number(), number(), number(), [integer()]}} | false.
 offer_fits(OfferHelper) ->
     UnreservedResources = get_unreserved_resources(OfferHelper),
     OfferedCPU = erl_mesos_utils:resources_cpus(UnreservedResources),
@@ -196,12 +196,18 @@ offer_fits(OfferHelper) ->
     OfferedDisk = erl_mesos_utils:resources_disk(UnreservedResources),
     OfferedPorts = erl_mesos_utils:resources_ports(UnreservedResources),
 
-    MinCPU = riak_mesos_scheduler_config:get_value(node_cpu, 1, integer),
-    MinMem = riak_mesos_scheduler_config:get_value(node_mem, 16000, integer),
+    MinCPU = riak_mesos_scheduler_config:get_value(node_cpus, 1, integer),
+    MinMem = riak_mesos_scheduler_config:get_value(node_mem, 4096, integer),
     MinDisk = riak_mesos_scheduler_config:get_value(node_disk, 20000, integer),
-    MinPorts = 3, %% Maybe compute this in a more dynamic way, in case we need more ports in future?
+    MinPorts = 5, %% Maybe compute this in a more dynamic way, in case we need more ports in future?
 
-    (OfferedCPU >= MinCPU andalso
-     OfferedMem >= MinMem andalso
-     OfferedDisk >= MinDisk andalso
-     length(OfferedPorts) >= MinPorts).
+    OfferFits = (OfferedCPU >= MinCPU andalso
+                 OfferedMem >= MinMem andalso
+                 OfferedDisk >= MinDisk andalso
+                 length(OfferedPorts) >= MinPorts),
+    case OfferFits of
+        true ->
+            {ok, {MinCPU, MinMem, MinDisk, lists:sublist(OfferedPorts, MinPorts)}};
+        false ->
+            false
+    end.
