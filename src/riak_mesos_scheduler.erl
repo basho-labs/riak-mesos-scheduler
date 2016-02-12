@@ -100,8 +100,17 @@ offer_rescinded(_SchedulerInfo, #'Event.Rescind'{} = EventRescind, State) ->
     lager:info("Offer rescinded: ~p.", [EventRescind]),
     {ok, State}.
 
-status_update(_SchedulerInfo, #'Event.Update'{} = EventUpdate, State) ->
-    lager:info("Status update: ~p.", [EventUpdate]),
+status_update(SchedulerInfo, #'Event.Update'{} = EventUpdate, State) ->
+    #'TaskStatus'{
+       agent_id = AgentId,
+       task_id = TaskId,
+       uuid = Uuid
+      } = EventUpdate#'Event.Update'.status,
+    TaskIdValue = TaskId#'TaskID'.value,
+
+    %% FIXME might not want to crash if send_msg doesn't return ok...?
+    ok = scheduler_node_fsm:send_msg(TaskIdValue, EventUpdate),
+    erl_mesos_scheduler:acknowledge(SchedulerInfo, AgentId, TaskId, Uuid),
     {ok, State}.
 
 framework_message(_SchedulerInfo, #'Event.Message'{} = EventMessage, State) ->
@@ -167,7 +176,6 @@ maybe_reserve_resources(Offer, Acc) ->
     OfferHelper = riak_mesos_offer_helper:new(Offer),
     OfferFits = riak_mesos_offer_helper:offer_fits(OfferHelper),
 
-    % TODO Figure out how to prioritize which node we choose:
     RequestedNodes = [N || N <- mesos_scheduler_data:get_all_nodes(),
                            N#rms_node.status =:= requested],
 
@@ -190,11 +198,6 @@ maybe_reserve_resources(Offer, Acc) ->
                                      DiskResource, "riak", "riak"),
             CreateOp = erl_mesos_utils:create_offer_operation([DiskResourceReserved]),
 
-            %% FIXME handle error results here.
-            %% FIXME also handle case where we crash or launch message is lost, so we
-            %% don't get stuck with a zombie node in the "reserving" state forever
-            ok = mesos_scheduler_data:set_node_status(Node#rms_node.key, reserving),
-
             lager:info("Sending reserve operation ~p", [ReserveOp]),
             lager:info("Sending create operation ~p", [CreateOp]),
 
@@ -214,11 +217,10 @@ maybe_launch_nodes(Offer, Acc) ->
     ReservedResources = [R || R <- Resources, R#'Resource'.reservation =/= undefined],
     HasReservedResources = (ReservedResources =/= []),
 
-    % TODO Figure out how to prioritize which node we choose:
-    ReservingNodes = [N || N <- mesos_scheduler_data:get_all_nodes(),
-                           N#rms_node.status =:= reserving],
+    RequestedNodes = [N || N <- mesos_scheduler_data:get_all_nodes(),
+                           N#rms_node.status =:= requested],
 
-    case {HasReservedResources, ReservingNodes} of
+    case {HasReservedResources, RequestedNodes} of
         {true, [Node | _]} ->
             lager:info("Launching node ~p", [Node]),
 
@@ -273,10 +275,9 @@ maybe_launch_nodes(Offer, Acc) ->
             TaskInfo = TaskInfo0#'TaskInfo'{data = TaskDataBin},
             Operation = erl_mesos_utils:launch_offer_operation([TaskInfo]),
 
-            %% FIXME handle error results here.
-            %% FIXME also handle case where we crash or launch message is lost, so we
-            %% don't get stuck with a zombie node in the "starting" state forever
+            %% FIXME handle error results here?
             ok = mesos_scheduler_data:set_node_status(Node#rms_node.key, starting),
+            {ok, _Pid} = scheduler_node_fsm_mgr:start_child(TaskIdValue),
 
             lager:info("Sending launch operation ~p", [Operation]),
 
@@ -287,7 +288,7 @@ maybe_launch_nodes(Offer, Acc) ->
         {true, []} ->
             %% Somehow we got into a state where we have reserved resources but no nodes
             %% that actually need those resources. Go ahead and unreserve:
-            lager:info("Got reserved resource offer, but no nodes in 'reserving' state"),
+            lager:info("Got reserved resource offer, but no nodes in 'requested' state"),
 
             Operation = erl_mesos_utils:unreserve_offer_operation(ReservedResources),
 

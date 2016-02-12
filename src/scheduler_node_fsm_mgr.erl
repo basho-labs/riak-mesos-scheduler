@@ -33,10 +33,14 @@ init(State) ->
     {ok, State}.
 
 handle_call({start_child, Id}, _From, State) ->
-    {ok, Pid} = supervisor:start_child(scheduler_node_fsm_child_sup, [Id]),
-    erlang:monitor(process, Pid),
-    ets:insert(?MODULE, {Id, Pid}),
-    {reply, ok, State}.
+    case supervisor:start_child(scheduler_node_fsm_child_sup, [Id]) of
+        {ok, Pid} ->
+            erlang:monitor(process, Pid),
+            ets:insert(?MODULE, {Id, Pid}),
+            {reply, {ok, Pid}, State};
+        Error ->
+            {reply, Error, State}
+    end.
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
