@@ -10,5 +10,8 @@ rel/riak_mesos_scheduler
 .concrete/DEV_MODE
 .rebar
 log/
+logs/
+packages/
 .vagrant
 Vagrantfile
+provision.sh
