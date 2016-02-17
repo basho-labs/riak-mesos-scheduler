@@ -108,8 +108,8 @@ status_update(SchedulerInfo, #'Event.Update'{} = EventUpdate, State) ->
       } = EventUpdate#'Event.Update'.status,
     TaskIdValue = TaskId#'TaskID'.value,
 
-    %% FIXME might not want to crash if send_msg doesn't return ok...?
-    ok = scheduler_node_fsm:send_msg(TaskIdValue, EventUpdate),
+    %% FIXME might not want to crash if status_update returns not_found?
+    ok = scheduler_node_fsm:status_update(TaskIdValue, EventUpdate),
     erl_mesos_scheduler:acknowledge(SchedulerInfo, AgentId, TaskId, Uuid),
     {ok, State}.
 
