@@ -307,7 +307,7 @@ noop_create_node(RD) ->
 
 delete_node(RD) ->
     NodeKey = wrq:path_info(node, RD),
-    Body = build_response(mesos_scheduler_data:delete_node(NodeKey)),
+    Body = build_response(scheduler_node_fsm:stop_node(NodeKey)),
     {true, wrq:append_to_response_body(mochijson2:encode(Body), RD)}.
 
 get_node(RD) ->

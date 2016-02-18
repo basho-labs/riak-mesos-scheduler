@@ -277,7 +277,7 @@ maybe_launch_nodes(Offer, Acc) ->
 
             %% FIXME handle error results here?
             ok = mesos_scheduler_data:set_node_status(Node#rms_node.key, starting),
-            {ok, _Pid} = scheduler_node_fsm_mgr:start_child(TaskIdValue),
+            {ok, _Pid} = scheduler_node_fsm_mgr:start_child(TaskIdValue, AgentId),
 
             lager:info("Sending launch operation ~p", [Operation]),
 

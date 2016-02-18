@@ -7,8 +7,9 @@
 -define(START_TIMEOUT, 30000).
 
 %% API functions
--export([start_link/1,
-         status_update/2
+-export([start_link/2,
+         status_update/2,
+         stop_node/1
         ]).
 
 %% Required gen_fsm callbacks
@@ -22,18 +23,20 @@
 
 %% gen_fsm state functions
 -export([starting/2,
-         running/2
+         running/2,
+         stopping/2
         ]).
 
 -record(state, {
-          task_id :: string()
+          task_id :: string(),
+          agent_id :: erl_mesos:'AgentID'()
          }).
 
 %% public API
 
--spec start_link(string()) -> {ok, pid()}.
-start_link(TaskId) ->
-    gen_fsm:start_link(?MODULE, [TaskId], []).
+-spec start_link(string(), erl_mesos:'AgentID'()) -> {ok, pid()}.
+start_link(TaskId, AgentId) ->
+    gen_fsm:start_link(?MODULE, [TaskId, AgentId], []).
 
 -spec status_update(string(), term()) -> ok | {error, not_found}.
 status_update(TaskId, Event) ->
@@ -45,11 +48,19 @@ status_update(TaskId, Event) ->
             send_all_state_event(TaskId, {status_update, Status})
     end.
 
+stop_node(TaskId) ->
+    sync_send_all_state_event(TaskId, stop_node).
+
+%% Utility functions for passing events in to the FSM
+
 send_event(TaskId, Event) ->
     do_send_event(TaskId, Event, fun gen_fsm:send_event/2).
 
 send_all_state_event(TaskId, Event) ->
     do_send_event(TaskId, Event, fun gen_fsm:send_all_state_event/2).
+
+sync_send_all_state_event(TaskId, Event) ->
+    do_send_event(TaskId, Event, fun gen_fsm:sync_send_all_state_event/2).
 
 do_send_event(TaskId, Event, SendFun) ->
     case scheduler_node_fsm_mgr:get_pid(TaskId) of
@@ -61,14 +72,27 @@ do_send_event(TaskId, Event, SendFun) ->
 
 %% gen_fsm required callbacks
 
-init([TaskId]) ->
+init([TaskId, AgentId]) ->
     lager:md([{task_id, TaskId}]),
-    StateData = #state{task_id = TaskId},
+    StateData = #state{task_id = TaskId, agent_id = AgentId},
     {ok, starting, StateData, ?START_TIMEOUT}.
 
 handle_event(Event, StateName, StateData) ->
     lager:warning("Unhandled all-state event ~p at state ~p!", [Event, StateName]),
     {next_state, StateName, StateData}.
+
+handle_sync_event(stop_node, _From, _StateName, StateData) ->
+    lager:info("Got stop_node message. Stopping..."),
+
+    %% TODO handle errors here instead of matching on 'ok':
+    ok = mesos_scheduler_data:set_node_status(StateData#state.task_id, stopping),
+
+    SchedulerInfo = erl_mesos_scheduler:get_scheduler_info(),
+    AgentId = StateData#state.agent_id,
+    ExecutorId = erl_mesos_utils:executor_id("riak"),
+    erl_mesos_scheduler:message(SchedulerInfo, AgentId, ExecutorId, <<"finish">>),
+
+    {reply, ok, stopping, StateData};
 
 handle_sync_event(Event, _From, StateName, StateData) ->
     lager:warning("Unhandled all-state sync event ~p at state ~p!", [Event, StateName]),
@@ -112,12 +136,19 @@ running({status_update, Status}, StateData) ->
     lager:info("Got status update ~p", [Status]),
     {next_state, running, StateData}.
 
+%% --- 'stopping' state functions ---
+
+stopping({status_update, 'TASK_KILLED'}, StateData) ->
+    lager:info("Got 'TASK_KILLED' update for stopping node. Deleting node from metadata."),
+    ok = mesos_scheduler_data:delete_node(StateData#state.task_id),
+    {stop, normal, StateData}.
+
 %% Misc helper functions
 
 is_all_state_status('TASK_STAGING')  -> false;
 is_all_state_status('TASK_STARTING') -> false;
 is_all_state_status('TASK_RUNNING')  -> false;
-is_all_state_status('TASK_FINISHED') -> false;
+is_all_state_status('TASK_KILLED') -> false;
 is_all_state_status(_) -> true.
 
 die(StateData) ->

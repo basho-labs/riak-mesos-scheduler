@@ -3,7 +3,7 @@
 -behavior(gen_server).
 
 -export([start_link/0,
-         start_child/1,
+         start_child/2,
          get_pid/1
         ]).
 
@@ -13,11 +13,13 @@
 
 %% public API
 
+-spec start_link() -> {ok, pid()}.
 start_link() ->
     gen_server:start_link({local,?MODULE}, ?MODULE, #state{}, []).
 
-start_child(Id) ->
-    gen_server:call(?MODULE, {start_child, Id}).
+-spec start_child(string(), erl_mesos:'AgentID'()) -> {ok, pid()} | {error, term()}.
+start_child(Id, AgentId) ->
+    gen_server:call(?MODULE, {start_child, Id, AgentId}).
 
 -spec get_pid(term()) -> {ok, pid()} | {error, not_found}.
 get_pid(Id) ->
@@ -32,8 +34,8 @@ init(State) ->
     ets:new(?MODULE, [protected, named_table]),
     {ok, State}.
 
-handle_call({start_child, Id}, _From, State) ->
-    case supervisor:start_child(scheduler_node_fsm_child_sup, [Id]) of
+handle_call({start_child, Id, AgentId}, _From, State) ->
+    case supervisor:start_child(scheduler_node_fsm_child_sup, [Id, AgentId]) of
         {ok, Pid} ->
             erlang:monitor(process, Pid),
             ets:insert(?MODULE, {Id, Pid}),
