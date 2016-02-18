@@ -15,10 +15,26 @@
          get_unreserved_resources_cpus/1,
          get_unreserved_resources_mem/1,
          get_unreserved_resources_disk/1,
-         get_unreserved_resources_ports/1]).
+         get_unreserved_resources_ports/1,
+         get_resources_to_reserve/1,
+         get_resources_to_unreserve/1,
+         get_volumes_to_create/1,
+         get_volumes_to_destroy/1,
+         get_tasks_to_launch/1]).
 
--export([has_reservations/1,
-         has_volumes/1]).
+-export([add_task_to_launch/2]).
+
+-export([has_reservations/1, has_volumes/1]).
+
+-export([make_reservation/7, make_volume/6]).
+
+-export([apply_reserved_resources/9, apply_unreserved_resources/5]).
+
+-export([can_fit_reserved/5, can_fit_unreserved/5]).
+
+-export([has_persistence_id/2]).
+
+-export([operations/1]).
 
 -export([offer_fits/1]).
 
@@ -28,7 +44,7 @@
                        reserved_resources :: erl_mesos_utils:resources(),
                        unreserved_resources :: erl_mesos_utils:resources(),
                        resources_to_reserve = [] :: [erl_mesos:'Resource'()],
-                       resources_to_uneserve = [] :: [erl_mesos:'Resource'()],
+                       resources_to_unreserve = [] :: [erl_mesos:'Resource'()],
                        volumes_to_create = [] :: [erl_mesos:'Resource'()],
                        volumes_to_destroy = [] :: [erl_mesos:'Resource'()],
                        tasks_to_launch = [] :: [erl_mesos:'TaskInfo'()]}).
@@ -95,6 +111,27 @@ get_unreserved_resources_disk(OfferHelper) ->
 get_unreserved_resources_ports(OfferHelper) ->
     erl_mesos_utils:resources_ports(get_unreserved_resources(OfferHelper)).
 
+get_resources_to_reserve(#offer_helper{resources_to_reserve =
+                                       ResourcesToReserve}) ->
+    ResourcesToReserve.
+
+get_resources_to_unreserve(#offer_helper{resources_to_unreserve =
+                                         ResourcesToUnreserve}) ->
+    ResourcesToUnreserve.
+
+get_volumes_to_create(#offer_helper{volumes_to_create = VolumesToCreate}) ->
+    VolumesToCreate.
+
+get_volumes_to_destroy(#offer_helper{volumes_to_destroy = VolumesToDestroy}) ->
+    VolumesToDestroy.
+
+get_tasks_to_launch(#offer_helper{tasks_to_launch = TasksToLaunch}) ->
+    TasksToLaunch.
+
+add_task_to_launch(TaskInfo, #offer_helper{tasks_to_launch = TasksToLaunch} =
+                   OfferHelper) ->
+    OfferHelper#offer_helper{tasks_to_launch = [TaskInfo | TasksToLaunch]}.
+
 has_reservations(OfferHelper) ->
     get_reserved_resources_cpus(OfferHelper) > 0.0 orelse
     get_reserved_resources_mem(OfferHelper) > 0.0 orelse
@@ -103,6 +140,74 @@ has_reservations(OfferHelper) ->
 
 has_volumes(OfferHelper) ->
     length(get_persistence_ids(OfferHelper)) > 0.
+
+make_reservation(Cpus, Mem, Disk, Ports, Role, Principal,
+                 #offer_helper{unreserved_resources = UnreservedResources,
+                               resources_to_reserve = Resources} =
+                 OfferHelper) ->
+    {UnreservedResources1, Resources1} =
+        apply(Cpus, Mem, Disk, Ports, Role, Principal, undefined, undefined,
+              UnreservedResources),
+    OfferHelper#offer_helper{unreserved_resources = UnreservedResources1,
+                             resources_to_reserve = Resources ++ Resources1}.
+
+make_volume(Disk, Role, Principal, PersistenceId, ContainerPath,
+            #offer_helper{unreserved_resources = UnreservedResources,
+                          volumes_to_create = Volumes} = OfferHelper) ->
+    {_, Volumes1} =
+        apply_disk(Disk, Role, Principal, PersistenceId, ContainerPath,
+                   UnreservedResources, []),
+    OfferHelper#offer_helper{volumes_to_create = Volumes ++ Volumes1}.
+
+apply_reserved_resources(Cpus, Mem, Disk, Ports, Role, Principal, PersistenceId,
+                         ContainerPath,
+                         #offer_helper{reserved_resources = ReservedResources} =
+                         OfferHelper) ->
+    {ReservedResources1, _} =
+        apply(Cpus, Mem, Disk, Ports, Role, Principal, PersistenceId,
+              ContainerPath, ReservedResources),
+    OfferHelper#offer_helper{reserved_resources = ReservedResources1}.
+
+apply_unreserved_resources(Cpus, Mem, Disk, Ports,
+                           #offer_helper{unreserved_resources =
+                                             UnreservedResources} =
+                           OfferHelper) ->
+    {UnreservedResources1, _} =
+        apply(Cpus, Mem, Disk, Ports, undefined, undefined, undefined,
+              undefined, UnreservedResources),
+    OfferHelper#offer_helper{unreserved_resources = UnreservedResources1}.
+
+can_fit_reserved(Cpus, Mem, Disk, Ports, OfferHelper) ->
+    get_reserved_resources_cpus(OfferHelper) >= Cpus andalso
+    get_reserved_resources_mem(OfferHelper) >= Mem andalso
+    get_reserved_resources_disk(OfferHelper) >= Disk andalso
+    length(get_reserved_resources_ports(OfferHelper)) >= Ports.
+
+can_fit_unreserved(Cpus, Mem, Disk, Ports, OfferHelper) ->
+    get_unreserved_resources_cpus(OfferHelper) >= Cpus andalso
+    get_unreserved_resources_mem(OfferHelper) >= Mem andalso
+    get_unreserved_resources_disk(OfferHelper) >= Disk andalso
+    length(get_unreserved_resources_ports(OfferHelper)) >= Ports.
+
+has_persistence_id(PersistenceId,
+                   #offer_helper{persistence_ids = PersistenceIds}) ->
+    lists:member(PersistenceId, PersistenceIds).
+
+operations(#offer_helper{resources_to_reserve = ResourcesToReserve,
+                         resources_to_unreserve = ResourcesToUnreserve,
+                         volumes_to_create = VolumesToCreate,
+                         volumes_to_destroy = VolumesToDestroy,
+                         tasks_to_launch = TasksToLaunch}) ->
+    [erl_mesos_utils:reserve_offer_operation(Resource) ||
+     Resource <- ResourcesToReserve] ++
+    [erl_mesos_utils:unreserve_offer_operation(Resource) ||
+     Resource <- ResourcesToUnreserve] ++
+    [erl_mesos_utils:create_offer_operation(Volume) ||
+     Volume <- VolumesToCreate] ++
+    [erl_mesos_utils:destroy_offer_operation(Volume) ||
+     Volume <- VolumesToDestroy] ++
+    [erl_mesos_utils:launch_offer_operation(TaskInfo) ||
+     TaskInfo <- TasksToLaunch].
 
 %% ====================================================================
 %% Private
@@ -157,7 +262,7 @@ get_ranges_resource_values(Name, true,
                                         ranges = #'Value.Ranges'{range =
                                                                      Ranges},
                                         reservation = Reservation} |
-                           Resources], Values)
+                            Resources], Values)
   when Reservation =/= undefined  ->
     Values1 = add_ranges_values(Ranges, Values),
     get_ranges_resource_values(Name, true, Resources, Values1);
@@ -211,3 +316,114 @@ offer_fits(OfferHelper) ->
         false ->
             false
     end.
+
+apply(Cpus, Mem, Disk, Ports, Role, Principal, PersistenceId, ContainerPath,
+      Res) ->
+    Resources = [],
+    {Res1, Resources1} = apply_cpus(Cpus, Role, Principal, Res, Resources),
+    {Res2, Resources2} = apply_mem(Mem, Role, Principal, Res1, Resources1),
+    {Res3, Resources3} = apply_disk(Disk, Role, Principal, PersistenceId,
+                                    ContainerPath, Res2, Resources2),
+    {Res4, Resources4} = apply_ports(Ports, Role, Principal, Res3, Resources3),
+    {Res4, lists:reverse(Resources4)}.
+
+
+apply_cpus(Cpus, Role, Principal, #resources{cpus = ResCpus} = Res,
+           Resources) ->
+    case Cpus of
+        undefined ->
+            {Res, Resources};
+        _Cpus when Role =/= undefined, Principal =/= undefined ->
+            Res1 = Res#resources{cpus = ResCpus - Cpus},
+            Resource = erl_mesos_utils:scalar_resource_reservation("cpus", Cpus,
+                                                                   Role,
+                                                                   Principal),
+            Resource1 = [Resource | Resources],
+            {Res1, Resource1};
+        _Cpus ->
+            Res1 = Res#resources{cpus = ResCpus - Cpus},
+            Resource = erl_mesos_utils:scalar_resource("cpus", Cpus),
+            Resource1 = [Resource | Resources],
+            {Res1, Resource1}
+    end.
+
+apply_mem(Mem, Role, Principal, #resources{mem = ResMem} = Res,
+          Resources) ->
+    case Mem of
+        undefined ->
+            {Res, Resources};
+        _Mem when Role =/= undefined, Principal =/= undefined ->
+            Res1 = Res#resources{mem = ResMem - Mem},
+            Resource = erl_mesos_utils:scalar_resource_reservation("mem", Mem,
+                                                                   Role,
+                                                                   Principal),
+            Resource1 = [Resource | Resources],
+            {Res1, Resource1};
+        _Mem ->
+            Res1 = Res#resources{mem = ResMem - Mem},
+            Resource = erl_mesos_utils:scalar_resource("mem", Mem),
+            Resource1 = [Resource | Resources],
+            {Res1, Resource1}
+    end.
+
+apply_disk(Disk, Role, Principal, PersistenceId, ContainerPath,
+           #resources{disk = ResDisk} = Res, Resources) ->
+    case Disk of
+        undefined ->
+            {Res, Resources};
+        _Disk when Role =/= undefined, Principal =/= undefined,
+                   PersistenceId =/= undefined, ContainerPath =/= undefined ->
+            Res1 = Res#resources{disk = ResDisk - Disk},
+            Resource =
+                erl_mesos_utils:volume_resource_reservation(Disk, PersistenceId,
+                                                            ContainerPath, 'RW',
+                                                            Role, Principal),
+            Resource1 = [Resource | Resources],
+            {Res1, Resource1};
+        _Disk when Role =/= undefined, Principal =/= undefined ->
+            Res1 = Res#resources{disk = ResDisk - Disk},
+            Resource = erl_mesos_utils:scalar_resource_reservation("disk", Disk,
+                                                                   Role,
+                                                                   Principal),
+            Resource1 = [Resource | Resources],
+            {Res1, Resource1};
+        _Disk ->
+            Res1 = Res#resources{disk = ResDisk - Disk},
+            Resource = erl_mesos_utils:scalar_resource("disk", Disk),
+            Resource1 = [Resource | Resources],
+            {Res1, Resource1}
+    end.
+
+apply_ports(Ports, Role, Principal, #resources{ports = ResPorts} = Res,
+            Resources) ->
+    case Ports of
+        undefined ->
+            {Res, Resources};
+        _Ports when Role =/= undefined, Principal =/= undefined ->
+            {PortsSlice, ResPorts1} = ports_slice(Ports, ResPorts),
+            Ranges = riak_mesos_utils:list_to_ranges(PortsSlice),
+            Res1 = Res#resources{ports = ResPorts1},
+            Resource = erl_mesos_utils:ranges_resource_reservation("ports",
+                                                                   Ranges,
+                                                                   Role,
+                                                                   Principal),
+            Resource1 = [Resource | Resources],
+            {Res1, Resource1};
+        _Ports ->
+            {PortsSlice, ResPorts1} = ports_slice(Ports, ResPorts),
+            Ranges = riak_mesos_utils:list_to_ranges(PortsSlice),
+            Res1 = Res#resources{ports = ResPorts1},
+            Resource = erl_mesos_utils:ranges_resource("ports", Ranges),
+            Resource1 = [Resource | Resources],
+            {Res1, Resource1}
+    end.
+
+ports_slice(SliceLength, Ports) when SliceLength < length(Ports) ->
+    SliceStart = random:uniform(length(Ports) - SliceLength),
+    ports_slice(SliceStart, SliceLength, Ports);
+ports_slice(SliceLength, Ports) ->
+    ports_slice(1, SliceLength, Ports).
+
+ports_slice(SliceStart, SliceLength, Ports) ->
+    PortsSlice = lists:sublist(Ports, SliceStart, SliceLength),
+    {PortsSlice, Ports -- PortsSlice}.
