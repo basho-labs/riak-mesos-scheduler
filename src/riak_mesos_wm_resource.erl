@@ -118,11 +118,11 @@ routes() ->
     #route{path=["clusters", cluster, "restart"],
            methods=['POST'], exists={?MODULE, cluster_exists},
            accepts=?accept_text, accept={?MODULE, restart_cluster}},
-    #route{path=["clusters", cluster, "riak.conf"],
+    #route{path=["clusters", cluster, "config"],
            methods=['GET', 'PUT'], exists={?MODULE, cluster_exists},
            provides=?provide_text, content={?MODULE, riak_conf},
            accepts=?accept_text,   accept={?MODULE, set_riak_conf}},
-    #route{path=["clusters", cluster, "advanced.config"],
+    #route{path=["clusters", cluster, "advancedConfig"],
            methods=['GET', 'PUT'], exists={?MODULE, cluster_exists},
            provides=?provide_text, content={?MODULE, advanced_config},
            accepts=?accept_text,   accept={?MODULE, set_advanced_config}},
@@ -307,7 +307,7 @@ noop_create_node(RD) ->
 
 delete_node(RD) ->
     NodeKey = wrq:path_info(node, RD),
-    Body = build_response(mesos_scheduler_data:delete_node(NodeKey)),
+    Body = build_response(scheduler_node_fsm:stop_node(NodeKey)),
     {true, wrq:append_to_response_body(mochijson2:encode(Body), RD)}.
 
 get_node(RD) ->

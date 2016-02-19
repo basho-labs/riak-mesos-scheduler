@@ -55,8 +55,8 @@ list_clusters() ->
     ?assertEqual({struct, [{<<"clusters">>, [<<?C1>>]}]}, ClusterList2).
 
 set_get_cluster_config() ->
-    RiakConfUrl = url("/clusters/" ++ ?C1 ++ "/riak.conf"),
-    AdvancedConfUrl = url("/clusters/" ++ ?C1 ++ "/advanced.config"),
+    RiakConfUrl = url("/clusters/" ++ ?C1 ++ "/config"),
+    AdvancedConfUrl = url("/clusters/" ++ ?C1 ++ "/advancedConfig"),
 
     GetRiakConfRequest = {RiakConfUrl, []},
     GetAdvancedConfRequest = {AdvancedConfUrl, []},
@@ -67,7 +67,7 @@ set_get_cluster_config() ->
     add_cluster(?C1),
 
     %% Getting config should succeed now, but actual config contents
-    %% are undefined (in practice will probably default to "").
+    %% are whatever we default to, which we don't need to test here.
     verify_http_request(get, GetRiakConfRequest, 200),
     verify_http_request(get, GetAdvancedConfRequest, 200),
 

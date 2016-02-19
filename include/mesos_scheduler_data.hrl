@@ -1,8 +1,8 @@
 -record(rms_cluster, {
           key :: mesos_scheduler_data:cluster_key(),
 
-          riak_conf = "" :: string(),
-          advanced_config = "" :: string(),
+          riak_conf = riak_mesos_config:get_default_riak_conf() :: string(),
+          advanced_config = riak_mesos_config:get_default_advanced_config() :: string(),
 
           status = requested :: mesos_scheduler_data:cluster_status(),
           nodes = [] :: [mesos_scheduler_data:node_key()]
