@@ -18,9 +18,12 @@
 %%
 %% -------------------------------------------------------------------
 
--module(riak_mesos_sup).
+-module(rms_sup).
+
 -behaviour(supervisor).
+
 -export([start_link/0]).
+
 -export([init/1]).
 
 
@@ -37,7 +40,8 @@ start_link() ->
 
 init([]) ->
     Ip = riak_mesos_scheduler_config:get_value(ip, "0.0.0.0"),
-    Port = riak_mesos_scheduler_config:get_value(port, 9090, integer), %% TODO: Will need to get this dynamically... somehow
+    %% TODO: Will need to get this dynamically... somehow.
+    Port = riak_mesos_scheduler_config:get_value(port, 9090, integer),
     WebConfig = riak_mesos_wm_resource:dispatch(Ip, Port),
 
     ZooKeeperHost = riak_mesos_scheduler_config:get_value(zk_host, "localhost"),
@@ -46,14 +50,17 @@ init([]) ->
     %% TODO: need to turn this into a list if it contains commas
     Master = riak_mesos_scheduler_config:get_value(master, <<"localhost:5050">>, binary),
 
-    Ref = {riak_mesos, scheduler},
-    Scheduler = riak_mesos_scheduler,
+    Ref = riak_mesos_scheduler,
+    Scheduler = rms_scheduler,
     SchedulerOptions = [],
     Options = [{master_hosts, [Master]}],
 
-    SchedulerSpec = {riak_mesos_scheduler,
-                     {erl_mesos, start_scheduler, [Ref, Scheduler, SchedulerOptions, Options]},
-                     permanent, 5000, worker, [riak_mesos_scheduler]},
+    SchedulerSpec = {rms_scheduler,
+                        {erl_mesos, start_scheduler, [Ref, Scheduler,
+                                                      SchedulerOptions,
+                                                      Options]},
+                        permanent, 5000, worker, [rms_scheduler]},
+
     WebmachineSpec = {webmachine_mochiweb,
                       {webmachine_mochiweb, start, [WebConfig]},
                       permanent, 5000, worker, [mochiweb_socket_server]},
@@ -68,6 +75,6 @@ init([]) ->
                   {scheduler_node_fsm_sup, start_link, []},
                   permanent, 5000, worker, [scheduler_node_fsm_sup]},
 
-    Processes = [MdMgrSpec, SchedulerDataSpec, NodeFsmSup, SchedulerSpec, WebmachineSpec],
+    Specs = [MdMgrSpec, SchedulerDataSpec, NodeFsmSup, SchedulerSpec, WebmachineSpec],
 
-    {ok, { {one_for_one, 10, 10}, Processes} }.
+    {ok, {{one_for_one, 10, 10}, Specs}}.

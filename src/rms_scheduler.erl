@@ -18,7 +18,7 @@
 %%
 %% -------------------------------------------------------------------
 
--module(riak_mesos_scheduler).
+-module(rms_scheduler).
 
 -behaviour(erl_mesos_scheduler).
 

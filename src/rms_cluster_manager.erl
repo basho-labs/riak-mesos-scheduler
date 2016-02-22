@@ -18,21 +18,8 @@
 %%
 %% -------------------------------------------------------------------
 
--module(riak_mesos_scheduler_app).
--behaviour(application).
+-module(rms_cluster_manager).
 
--export([start/2, stop/1]).
 
-%%%===================================================================
-%%% API
-%%%===================================================================
 
-start(_Type, _StartArgs) ->
-    application:ensure_started(erl_mesos),
-    {ok, Pid} = riak_mesos_sup:start_link(),
-    %%riak_mesos_cli:load_schema(),
-    %%riak_mesos_cli:register(),
-    {ok, Pid}.
 
-stop(_State) ->
-    ok.

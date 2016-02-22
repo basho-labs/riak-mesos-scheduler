@@ -1,3 +1,5 @@
+%% TODO: remove this file.
+
 -record(rms_cluster, {
           key :: mesos_scheduler_data:cluster_key(),
 

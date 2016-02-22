@@ -1,7 +1,7 @@
 %% -*- erlang -*-
-{application, riak_mesos_scheduler,
+{application, rms,
  [
-  {description, ""},
+  {description, "Riak Mesos Scheduler"},
   {vsn, git},
   {registered, []},
   {modules, []},
@@ -15,6 +15,6 @@
                   webmachine,
                   erl_mesos
                  ]},
-  {mod, { riak_mesos_scheduler_app, []}},
+  {mod, {rms_app, []}},
   {env, []}
  ]}.
