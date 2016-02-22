@@ -47,13 +47,20 @@ init([]) ->
     ZooKeeperHost = riak_mesos_scheduler_config:get_value(zk_host, "localhost"),
     ZooKeeperPort = riak_mesos_scheduler_config:get_value(zk_port, 2181),
 
-    %% TODO: need to turn this into a list if it contains commas
+    %% TODO: need to turn this into a list if it contains commas.
     Master = riak_mesos_scheduler_config:get_value(master, <<"localhost:5050">>, binary),
 
     Ref = riak_mesos_scheduler,
     Scheduler = rms_scheduler,
     SchedulerOptions = [],
     Options = [{master_hosts, [Master]}],
+
+    ClusterSupSpec = {rms_cluster_sup,
+                          {rms_cluster_sup, start_link, []},
+                          permanent, 5000, supervisor, [rms_cluster_sup]},
+    NodeSupSpec = {rms_node_sup,
+                       {rms_node_sup, start_link, []},
+                       permanent, 5000, supervisor, [rms_node_sup]},
 
     SchedulerSpec = {rms_scheduler,
                         {erl_mesos, start_scheduler, [Ref, Scheduler,
@@ -75,6 +82,7 @@ init([]) ->
                   {scheduler_node_fsm_sup, start_link, []},
                   permanent, 5000, worker, [scheduler_node_fsm_sup]},
 
-    Specs = [MdMgrSpec, SchedulerDataSpec, NodeFsmSup, SchedulerSpec, WebmachineSpec],
+    Specs = [ClusterSupSpec, NodeSupSpec, MdMgrSpec, SchedulerDataSpec,
+             NodeFsmSup, SchedulerSpec, WebmachineSpec],
 
     {ok, {{one_for_one, 10, 10}, Specs}}.

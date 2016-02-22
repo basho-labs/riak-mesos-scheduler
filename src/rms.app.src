@@ -1,20 +1,15 @@
-%% -*- erlang -*-
 {application, rms,
- [
-  {description, "Riak Mesos Scheduler"},
-  {vsn, git},
-  {registered, []},
-  {modules, []},
-  {applications, [
-                  kernel,
-                  stdlib,
-                  inets,
-                  crypto,
-                  lager,
-                  erlzk,
-                  webmachine,
-                  erl_mesos
-                 ]},
-  {mod, {rms_app, []}},
-  {env, []}
- ]}.
+    [{description, "Riak Mesos Scheduler"},
+     {vsn, "0.0.1"},
+     {registered, []},
+     {modules, []},
+     {applications, [kernel,
+                     stdlib,
+                     inets,
+                     crypto,
+                     lager,
+                     erlzk,
+                     webmachine,
+                     erl_mesos]},
+     {mod, {rms_app, []}},
+     {env, []}]}.

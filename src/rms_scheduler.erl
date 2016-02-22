@@ -43,19 +43,17 @@
 -record(state, {offer_mode = reconcile :: accept | reconcile | decline,
                 task_id_values = [] :: [string()]}).
 
-%%%===================================================================
-%%% Callbacks
-%%%===================================================================
+%% erl_mesos_scheduler callback functions.
 
 init(Options) ->
+    lager:info("Scheduler options: ~p.", [Options]),
+    %% TODO: check if framework id exist in metadata manager.
     FrameworkInfo = framework_info(),
-    lager:info("Options: ~p.", [Options]),
-    lager:info("FrameworkInfo: ~p.", [FrameworkInfo]),
-    %% We should always start up in reconcile mode to ensure that
-    %% we have the latest update information before acting on offers.
+    lager:info("Start scheduler with framework info: ~p.", [FrameworkInfo]),
     {ok, FrameworkInfo, true, #state{offer_mode = reconcile}}.
 
 registered(_SchedulerInfo, EventSubscribed, State) ->
+    %%
     lager:info("Registered: ~p.", [EventSubscribed]),
     {ok, State}.
 
@@ -149,16 +147,14 @@ framework_info() ->
     Principal = riak_mesos_scheduler_config:get_value(principal, "riak", string),
 
     #'FrameworkInfo'{user = User,
-                    name = Name,
-                    role = Role,
-                    hostname = Hostname,
-                    principal = Principal,
-                    checkpoint = undefined, %% TODO: We will want to enable checkpointing
-                    id = undefined, %% TODO: Will need to check ZK for this for reregistration
-                    webui_url = undefined, %% TODO: Get this from webmachine helper probably
-                    failover_timeout = undefined, %% TODO: Add this to configurable options
-                    %%capabilities = undefined,
-                    labels = undefined}.
+                     name = Name,
+                     role = Role,
+                     hostname = Hostname,
+                     principal = Principal,
+                     checkpoint = undefined, %% TODO: We will want to enable checkpointing
+                     id = undefined, %% TODO: Will need to check ZK for this for reregistration
+                     webui_url = undefined, %% TODO: Get this from webmachine helper probably
+                     failover_timeout = undefined}. %% TODO: Add this to configurable options
 
 offer_ids(Offers) ->
     [OfferId || #'Offer'{id = OfferId} <- Offers].
