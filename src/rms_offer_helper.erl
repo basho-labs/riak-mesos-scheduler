@@ -1,4 +1,4 @@
--module(riak_mesos_offer_helper).
+-module(rms_offer_helper).
 
 -include_lib("erl_mesos/include/scheduler_protobuf.hrl").
 
@@ -401,7 +401,7 @@ apply_ports(Ports, Role, Principal, #resources{ports = ResPorts} = Res,
             {Res, Resources};
         _Ports when Role =/= undefined, Principal =/= undefined ->
             {PortsSlice, ResPorts1} = ports_slice(Ports, ResPorts),
-            Ranges = riak_mesos_utils:list_to_ranges(PortsSlice),
+            Ranges = rms_utils:list_to_ranges(PortsSlice),
             Res1 = Res#resources{ports = ResPorts1},
             Resource = erl_mesos_utils:ranges_resource_reservation("ports",
                                                                    Ranges,
@@ -411,7 +411,7 @@ apply_ports(Ports, Role, Principal, #resources{ports = ResPorts} = Res,
             {Res1, Resource1};
         _Ports ->
             {PortsSlice, ResPorts1} = ports_slice(Ports, ResPorts),
-            Ranges = riak_mesos_utils:list_to_ranges(PortsSlice),
+            Ranges = rms_utils:list_to_ranges(PortsSlice),
             Res1 = Res#resources{ports = ResPorts1},
             Resource = erl_mesos_utils:ranges_resource("ports", Ranges),
             Resource1 = [Resource | Resources],
