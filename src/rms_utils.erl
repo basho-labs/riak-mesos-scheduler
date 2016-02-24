@@ -24,6 +24,8 @@
 
 %% External functions.
 
+-spec list_to_ranges([non_neg_integer()]) ->
+    [{non_neg_integer(), non_neg_integer()}].
 list_to_ranges([]) ->
     [];
 list_to_ranges([Begin | List]) ->
@@ -31,6 +33,10 @@ list_to_ranges([Begin | List]) ->
 
 %% Internal functions.
 
+-spec list_to_ranges([non_neg_integer()],
+                     {non_neg_integer(), non_neg_integer()},
+                     [{non_neg_integer(), non_neg_integer()}]) ->
+    [{non_neg_integer(), non_neg_integer()}].
 list_to_ranges([End1 | List], {Begin, End}, Ranges)
   when End1 == End + 1 ->
     list_to_ranges(List, {Begin, End1}, Ranges);
