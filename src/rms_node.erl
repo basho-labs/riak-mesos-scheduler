@@ -32,3 +32,5 @@
 
 -type node() :: #rms_node{}.
 -export_type([node/0]).
+
+%% External functions.
