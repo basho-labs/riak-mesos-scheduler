@@ -6,6 +6,8 @@
 
 -export([new/1,
          get_offer_id_value/1,
+         get_agent_id_value/1,
+         get_hostname/1,
          get_persistence_ids/1,
          get_reserved_resources/1,
          get_reserved_resources_cpus/1,
@@ -22,6 +24,8 @@
          get_volumes_to_destroy/1,
          get_tasks_to_launch/1]).
 
+-export([resources_to_list/1]).
+
 -export([add_task_to_launch/2]).
 
 -export([has_reservations/1, has_volumes/1]).
@@ -36,10 +40,7 @@
 
 -export([operations/1]).
 
--export([offer_fits/1]).
-
 -record(offer_helper, {offer :: erl_mesos:'Offer'(),
-                       offer_id_value :: string(),
                        persistence_ids = [] :: [string()],
                        reserved_resources :: erl_mesos_utils:resources(),
                        unreserved_resources :: erl_mesos_utils:resources(),
@@ -55,8 +56,7 @@
 %% External functions.
 
 -spec new(erl_mesos:'Offer'()) -> offer_helper().
-new(#'Offer'{id = #'OfferID'{value = OfferIdValue},
-             resources = Resources} = Offer) ->
+new(#'Offer'{resources = Resources} = Offer) ->
     PersistenceIds = get_persistence_ids(Resources, []),
     ReservedCpus = get_scalar_resource_value("cpus", true, Resources),
     ReservedMem = get_scalar_resource_value("mem", true, Resources),
@@ -71,14 +71,23 @@ new(#'Offer'{id = #'OfferID'{value = OfferIdValue},
     UnreservedResources = resources(UnreservedCpus, UnreservedMem,
                                     UnreservedDisk, UnreservedPorts),
     #offer_helper{offer = Offer,
-                  offer_id_value = OfferIdValue,
                   persistence_ids = PersistenceIds,
                   reserved_resources = ReservedResources,
                   unreserved_resources = UnreservedResources}.
 
 -spec get_offer_id_value(offer_helper()) -> string().
-get_offer_id_value(#offer_helper{offer_id_value = OfferIdValue}) ->
+get_offer_id_value(#offer_helper{offer = #'Offer'{id = OfferId}}) ->
+    #'OfferID'{value = OfferIdValue} = OfferId,
     OfferIdValue.
+
+-spec get_agent_id_value(offer_helper()) -> string().
+get_agent_id_value(#offer_helper{offer = #'Offer'{agent_id = AgentId}}) ->
+    #'AgentID'{value = AgentIdValue} = AgentId,
+    AgentIdValue.
+
+-spec get_hostname(offer_helper()) -> string().
+get_hostname(#offer_helper{offer = #'Offer'{hostname = Hostname}}) ->
+    Hostname.
 
 -spec get_persistence_ids(offer_helper()) -> [string()].
 get_persistence_ids(#offer_helper{persistence_ids = PersistenceIds}) ->
@@ -260,30 +269,27 @@ operations(#offer_helper{resources_to_reserve = ResourcesToReserve,
     [erl_mesos_utils:launch_offer_operation(TaskInfo) ||
      TaskInfo <- TasksToLaunch].
 
-%% TODO: remove this function.
--spec offer_fits(#offer_helper{}) -> {ok, {number(), number(), number(), [integer()]}} | false.
-offer_fits(OfferHelper) ->
-    UnreservedResources = get_unreserved_resources(OfferHelper),
-    OfferedCPU = erl_mesos_utils:resources_cpus(UnreservedResources),
-    OfferedMem = erl_mesos_utils:resources_mem(UnreservedResources),
-    OfferedDisk = erl_mesos_utils:resources_disk(UnreservedResources),
-    OfferedPorts = erl_mesos_utils:resources_ports(UnreservedResources),
-
-    MinCPU = riak_mesos_scheduler_config:get_value(node_cpus, 1, integer),
-    MinMem = riak_mesos_scheduler_config:get_value(node_mem, 4096, integer),
-    MinDisk = riak_mesos_scheduler_config:get_value(node_disk, 20000, integer),
-    MinPorts = 5, %% Maybe compute this in a more dynamic way, in case we need more ports in future?
-
-    OfferFits = (OfferedCPU >= MinCPU andalso
-        OfferedMem >= MinMem andalso
-        OfferedDisk >= MinDisk andalso
-        length(OfferedPorts) >= MinPorts),
-    case OfferFits of
-        true ->
-            {ok, {MinCPU, MinMem, MinDisk, lists:sublist(OfferedPorts, MinPorts)}};
-        false ->
-            false
-    end.
+-spec resources_to_list(offer_helper()) ->
+    [{reserved | unreserved, [{atom(), term()}]}].
+resources_to_list(OfferHelper) ->
+    ReservedCpus = get_reserved_resources_cpus(OfferHelper),
+    ReservedMem = get_reserved_resources_mem(OfferHelper),
+    ReservedDisk = get_reserved_resources_disk(OfferHelper),
+    ReservedNumPorts = length(get_reserved_resources_ports(OfferHelper)),
+    ReservedNumPersistenceIds = length(get_persistence_ids(OfferHelper)),
+    UnreservedCpus = get_unreserved_resources_cpus(OfferHelper),
+    UnreservedMem = get_unreserved_resources_mem(OfferHelper),
+    UnreservedDisk = get_unreserved_resources_disk(OfferHelper),
+    UnreservedNumPorts = length(get_unreserved_resources_ports(OfferHelper)),
+    [{reserved, [{cpus, ReservedCpus},
+                 {mem, ReservedMem},
+                 {disk, ReservedDisk},
+                 {num_ports, ReservedNumPorts},
+                 {num_persistence_ids, ReservedNumPersistenceIds}],
+      unreserved, [{cpus, UnreservedCpus},
+                   {mem, UnreservedMem},
+                   {disk, UnreservedDisk},
+                   {num_ports, UnreservedNumPorts}]}].
 
 %% Internal functions.
 
