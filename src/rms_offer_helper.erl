@@ -5,7 +5,9 @@
 -include_lib("erl_mesos/include/utils.hrl").
 
 -export([new/1,
+         get_offer_id/1,
          get_offer_id_value/1,
+         get_agent_id/1,
          get_agent_id_value/1,
          get_hostname/1,
          get_persistence_ids/1,
@@ -75,14 +77,22 @@ new(#'Offer'{resources = Resources} = Offer) ->
                   reserved_resources = ReservedResources,
                   unreserved_resources = UnreservedResources}.
 
+-spec get_offer_id(offer_helper()) -> erl_mesos:'OfferID'().
+get_offer_id(#offer_helper{offer = #'Offer'{id = OfferId}}) ->
+    OfferId.
+
 -spec get_offer_id_value(offer_helper()) -> string().
-get_offer_id_value(#offer_helper{offer = #'Offer'{id = OfferId}}) ->
-    #'OfferID'{value = OfferIdValue} = OfferId,
+get_offer_id_value(OfferHelper) ->
+    #'OfferID'{value = OfferIdValue} = get_offer_id(OfferHelper),
     OfferIdValue.
 
+-spec get_agent_id(offer_helper()) -> erl_mesos:'AgentID'().
+get_agent_id(#offer_helper{offer = #'Offer'{agent_id = AgentId}}) ->
+    AgentId.
+
 -spec get_agent_id_value(offer_helper()) -> string().
-get_agent_id_value(#offer_helper{offer = #'Offer'{agent_id = AgentId}}) ->
-    #'AgentID'{value = AgentIdValue} = AgentId,
+get_agent_id_value(OfferHelper) ->
+    #'AgentID'{value = AgentIdValue} = get_agent_id(OfferHelper),
     AgentIdValue.
 
 -spec get_hostname(offer_helper()) -> string().
@@ -252,22 +262,17 @@ has_persistence_id(PersistenceId,
                    #offer_helper{persistence_ids = PersistenceIds}) ->
     lists:member(PersistenceId, PersistenceIds).
 
--spec operations(offer_helper()) -> erl_mesos:'Offer.Operation'().
+-spec operations(offer_helper()) -> [erl_mesos:'Offer.Operation'()].
 operations(#offer_helper{resources_to_reserve = ResourcesToReserve,
                          resources_to_unreserve = ResourcesToUnreserve,
                          volumes_to_create = VolumesToCreate,
                          volumes_to_destroy = VolumesToDestroy,
                          tasks_to_launch = TasksToLaunch}) ->
-    [erl_mesos_utils:reserve_offer_operation(Resource) ||
-     Resource <- ResourcesToReserve] ++
-    [erl_mesos_utils:unreserve_offer_operation(Resource) ||
-     Resource <- ResourcesToUnreserve] ++
-    [erl_mesos_utils:create_offer_operation(Volume) ||
-     Volume <- VolumesToCreate] ++
-    [erl_mesos_utils:destroy_offer_operation(Volume) ||
-     Volume <- VolumesToDestroy] ++
-    [erl_mesos_utils:launch_offer_operation(TaskInfo) ||
-     TaskInfo <- TasksToLaunch].
+    [erl_mesos_utils:reserve_offer_operation(ResourcesToReserve),
+     erl_mesos_utils:unreserve_offer_operation(ResourcesToUnreserve),
+     erl_mesos_utils:create_offer_operation(VolumesToCreate),
+     erl_mesos_utils:destroy_offer_operation(VolumesToDestroy),
+     erl_mesos_utils:launch_offer_operation(TasksToLaunch)].
 
 -spec resources_to_list(offer_helper()) ->
     [{reserved | unreserved, [{atom(), term()}]}].
