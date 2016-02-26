@@ -91,8 +91,10 @@ resource_offers(SchedulerInfo, #'Event.Offers'{offers = Offers},
                 #state{node_data = NodeData} = State) ->
     {OfferIds, Operations} = apply_offers(Offers, NodeData),
     lager:info("~n~nOfferIds: ~p.~n~n", [OfferIds]),
-    lager:info("~n~nOperations: ~p~n~n.", [length(Operations)]),
-    ok = accept_offers(SchedulerInfo, OfferIds, Operations),
+    lager:info("~n~nOperations: ~p.~n~n", [Operations]),
+    Filters = #'Filters'{refuse_seconds = ?OFFER_INTERVAL},
+    ok = erl_mesos_scheduler:accept(SchedulerInfo, OfferIds, Operations,
+                                    Filters),
     {ok, State}.
 
 %%     [apply_offer(Offer, NodeData) || Offer <- Offers],
@@ -218,15 +220,6 @@ apply_offer(Offer, NodeData) ->
     OfferId = rms_offer_helper:get_offer_id(OfferHelper1),
     Operations = rms_offer_helper:operations(OfferHelper1),
     {OfferId, Operations}.
-
--spec accept_offers(erl_mesos_scheduler:scheduler_info(),
-                    [erl_mesos:'OfferID'()], [erl_mesos:'Offer.Operation'()]) ->
-    ok | {error, term()}.
-accept_offers(SchedulerInfo, OfferIds, Operations) ->
-    Filters = #'Filters'{refuse_seconds = ?OFFER_INTERVAL},
-    erl_mesos_scheduler:accept(SchedulerInfo, OfferIds, Operations, Filters).
-
-
 
 %% offer_ids(Offers) ->
 %%     [OfferId || #'Offer'{id = OfferId} <- Offers].
