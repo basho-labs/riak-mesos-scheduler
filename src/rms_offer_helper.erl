@@ -38,7 +38,7 @@
 
 -export([has_persistence_id/2, has_tasks_to_launch/1]).
 
--export([unreserve_resources/1]).
+-export([unreserve_resources/1, unreserve_volumes/1]).
 
 -export([operations/1]).
 
@@ -271,10 +271,18 @@ has_tasks_to_launch(#offer_helper{tasks_to_launch = TasksToLaunch}) ->
 -spec unreserve_resources(offer_helper()) -> offer_helper().
 unreserve_resources(#offer_helper{offer = #'Offer'{resources = Resources},
                                   resources_to_unreserve =
-                                      ResourcesToUnreserve} = OfferHelper) ->
+                                      ResourcesToUnreserve} =
+                    OfferHelper) ->
     ResourcesToUnreserve1 = ResourcesToUnreserve ++
                                 unreserve_resources(Resources, []),
     OfferHelper#offer_helper{resources_to_unreserve = ResourcesToUnreserve1}.
+
+-spec unreserve_volumes(offer_helper()) -> offer_helper().
+unreserve_volumes(#offer_helper{offer = #'Offer'{resources = Resources},
+                                volumes_to_destroy = VolumesToDestroy} =
+                  OfferHelper) ->
+    VolumesToDestroy1 = VolumesToDestroy ++ unreserve_volumes(Resources, []),
+    OfferHelper#offer_helper{volumes_to_destroy = VolumesToDestroy1}.
 
 -spec operations(offer_helper()) -> [erl_mesos:'Offer.Operation'()].
 operations(#offer_helper{resources_to_reserve = ResourcesToReserve,
@@ -553,14 +561,42 @@ unreserve_resources([#'Resource'{name = Name,
                                  type = 'SCALAR',
                                  scalar = #'Value.Scalar'{value = Value},
                                  role = Role,
-                                 reservation = Reservation} |
-                     Resources], ResourcesToUnreserver)
+                                 reservation = Reservation} | Resources],
+                    ResourcesToUnreserver)
   when Role =/= undefined, Reservation =/= undefined ->
     #'Resource.ReservationInfo'{principal = Principal} = Reservation,
-    Resource = erl_mesos_utils:scalar_resource_reservation(Name, Value, Role,
-                                                           Principal),
-    unreserve_resources(Resources, [Resource | ResourcesToUnreserver]);
+    ResourceToUnreserver =
+        erl_mesos_utils:scalar_resource_reservation(Name, Value, Role,
+                                                    Principal),
+    ResourcesToUnreserver1 = [ResourceToUnreserver | ResourcesToUnreserver],
+    unreserve_resources(Resources, ResourcesToUnreserver1);
 unreserve_resources([_Resource | Resources], ResourcesToUnreserver) ->
     unreserve_resources(Resources, ResourcesToUnreserver);
 unreserve_resources([], ResourcesToUnreserver) ->
     ResourcesToUnreserver.
+
+-spec unreserve_volumes([erl_mesos:'Resource'()], [erl_mesos:'Resource'()]) ->
+    [erl_mesos:'Resource'()].
+unreserve_volumes([#'Resource'{name = "disk",
+                               type = 'SCALAR',
+                               scalar = #'Value.Scalar'{value = Value},
+                               role = Role,
+                               reservation = Reservation,
+                               disk = Disk} | Resources],
+                  VolumesToDestroy)
+  when Role =/= undefined, Reservation =/= undefined, Disk =/= undefined ->
+    #'Resource.ReservationInfo'{principal = Principal} = Reservation,
+    #'Resource.DiskInfo'{persistence = Persistence,
+                         volume = Volume} = Disk,
+    #'Resource.DiskInfo.Persistence'{id = PersistenceId} = Persistence,
+    #'Volume'{container_path = ContainerPath} = Volume,
+    VolumeToDestroy =
+        erl_mesos_utils:volume_resource_reservation(Value, PersistenceId,
+                                                    ContainerPath, 'RW', Role,
+                                                    Principal),
+    VolumesToDestroy1 = [VolumeToDestroy | VolumesToDestroy],
+    unreserve_volumes(Resources, VolumesToDestroy1);
+unreserve_volumes([_Resource | Resources], VolumesToDestroy) ->
+    unreserve_volumes(Resources, VolumesToDestroy);
+unreserve_volumes([], VolumesToDestroy) ->
+    VolumesToDestroy.
