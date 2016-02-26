@@ -26,8 +26,6 @@
          get_volumes_to_destroy/1,
          get_tasks_to_launch/1]).
 
--export([resources_to_list/1]).
-
 -export([add_task_to_launch/2]).
 
 -export([has_reservations/1, has_volumes/1]).
@@ -38,9 +36,13 @@
 
 -export([can_fit_reserved/5, can_fit_unreserved/5]).
 
--export([has_persistence_id/2]).
+-export([has_persistence_id/2, has_tasks_to_launch/1]).
+
+-export([unreserve_resources/1]).
 
 -export([operations/1]).
+
+-export([resources_to_list/1]).
 
 -record(offer_helper, {offer :: erl_mesos:'Offer'(),
                        persistence_ids = [] :: [string()],
@@ -261,6 +263,18 @@ can_fit_unreserved(Cpus, Mem, Disk, NumPorts, OfferHelper) ->
 has_persistence_id(PersistenceId,
                    #offer_helper{persistence_ids = PersistenceIds}) ->
     lists:member(PersistenceId, PersistenceIds).
+
+-spec has_tasks_to_launch(offer_helper()) -> boolean().
+has_tasks_to_launch(#offer_helper{tasks_to_launch = TasksToLaunch}) ->
+    length(TasksToLaunch) > 0.
+
+-spec unreserve_resources(offer_helper()) -> offer_helper().
+unreserve_resources(#offer_helper{offer = #'Offer'{resources = Resources},
+                                  resources_to_unreserve =
+                                      ResourcesToUnreserve} = OfferHelper) ->
+    ResourcesToUnreserve1 = ResourcesToUnreserve ++
+                                unreserve_resources(Resources, []),
+    OfferHelper#offer_helper{resources_to_unreserve = ResourcesToUnreserve1}.
 
 -spec operations(offer_helper()) -> [erl_mesos:'Offer.Operation'()].
 operations(#offer_helper{resources_to_reserve = ResourcesToReserve,
@@ -532,3 +546,21 @@ ports_slice(NumPorts, Ports) ->
 ports_slice(SliceStart, NumPorts, Ports) ->
     PortsSlice = lists:sublist(Ports, SliceStart, NumPorts),
     {PortsSlice, Ports -- PortsSlice}.
+
+-spec unreserve_resources([erl_mesos:'Resource'()], [erl_mesos:'Resource'()]) ->
+    [erl_mesos:'Resource'()].
+unreserve_resources([#'Resource'{name = Name,
+                                 type = 'SCALAR',
+                                 scalar = #'Value.Scalar'{value = Value},
+                                 role = Role,
+                                 reservation = Reservation} |
+                     Resources], ResourcesToUnreserver)
+  when Role =/= undefined, Reservation =/= undefined ->
+    #'Resource.ReservationInfo'{principal = Principal} = Reservation,
+    Resource = erl_mesos_utils:scalar_resource_reservation(Name, Value, Role,
+                                                           Principal),
+    unreserve_resources(Resources, [Resource | ResourcesToUnreserver]);
+unreserve_resources([_Resource | Resources], ResourcesToUnreserver) ->
+    unreserve_resources(Resources, ResourcesToUnreserver);
+unreserve_resources([], ResourcesToUnreserver) ->
+    ResourcesToUnreserver.
