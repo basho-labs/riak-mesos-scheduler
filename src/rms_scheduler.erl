@@ -49,6 +49,8 @@
 -type scheduler() :: #scheduler{}.
 -export_type([scheduler/0]).
 
+-define(OFFER_INTERVAL, 5).
+
 %% -record(state, {offer_mode = reconcile :: accept | reconcile | decline,
 %%                 task_id_values = [] :: [string()]}).
 
@@ -65,8 +67,8 @@ init(Options) ->
 %%     NodeMem = rms_config:get_value(node_mem, 16000, float),
 %%     NodeDisk = rms_config:get_value(node_disk, 20000, float),
     NodeCpus = rms_config:get_value(node_cpus, 1.0, float),
-    NodeMem = rms_config:get_value(node_mem, 3000, float),
-    NodeDisk = rms_config:get_value(node_disk, 4000, float),
+    NodeMem = rms_config:get_value(node_mem, 1024.0, float),
+    NodeDisk = rms_config:get_value(node_disk, 4000.0, float),
     NodeData = rms_node_manager:node_data(NodeCpus, NodeMem, NodeDisk, Role,
                                           Principal),
     lager:info("Start scheduler with framework info: ~p.", [FrameworkInfo]),
@@ -85,10 +87,12 @@ disconnected(SchedulerInfo, State) ->
     lager:warning("Disconnected: ~p.", [SchedulerInfo]),
     {ok, State}.
 
-resource_offers(_SchedulerInfo, #'Event.Offers'{offers = Offers},
+resource_offers(SchedulerInfo, #'Event.Offers'{offers = Offers},
                 #state{node_data = NodeData} = State) ->
-    Operations = apply_offers(Offers, NodeData),
-    lager:info("OPERATIONS: ~p.", [Operations]),
+    {OfferIds, Operations} = apply_offers(Offers, NodeData),
+    lager:info("~n~nOfferIds: ~p.~n~n", [OfferIds]),
+    lager:info("~n~nOperations: ~p~n~n.", [length(Operations)]),
+    ok = accept_offers(SchedulerInfo, OfferIds, Operations),
     {ok, State}.
 
 %%     [apply_offer(Offer, NodeData) || Offer <- Offers],
@@ -186,22 +190,43 @@ framework_info() ->
                      webui_url = undefined, %% TODO: Get this from webmachine helper probably
                      failover_timeout = undefined}. %% TODO: Add this to configurable options
 
+-spec apply_offers([erl_mesos:'Offer'()], rms_node_manager:node_data()) ->
+    {[erl_mesos:'OfferID'()], [erl_mesos:'Offer.Operation'()]}.
 apply_offers(Offers, NodeData) ->
-    apply_offers(Offers, NodeData, []).
+    apply_offers(Offers, NodeData, [], []).
 
-apply_offers([Offer | Offers], NodeData, Operations) ->
-    Operations1 = apply_offer(Offer, NodeData),
-    apply_offers(Offers, NodeData, Operations ++ Operations1);
-apply_offers([], _NodeData, Operations) ->
-    Operations.
+-spec apply_offers([erl_mesos:'Offer'()], rms_node_manager:node_data(),
+                   [erl_mesos:'OfferID'()], [erl_mesos:'Offer.Operation'()]) ->
+    {[erl_mesos:'OfferID'()], [erl_mesos:'Offer.Operation'()]}.
+apply_offers([Offer | Offers], NodeData, OfferIds, Operations) ->
+    {OfferId, Operations1} = apply_offer(Offer, NodeData),
+    apply_offers(Offers, NodeData, [OfferId | OfferIds],
+                 Operations ++ Operations1);
+apply_offers([], _NodeData, OfferIds, Operations) ->
+    {OfferIds, Operations}.
 
+-spec apply_offer(erl_mesos:'Offer'(), rms_node_manager:node_data()) ->
+    {erl_mesos:'OfferID'(), [erl_mesos:'Offer.Operation'()]}.
 apply_offer(Offer, NodeData) ->
     OfferHelper = rms_offer_helper:new(Offer),
-    lager:info("Scheduler recevied offer. Offer id: ~s. Resources: ~p.",
+    lager:info("Scheduler recevied offer. "
+               "Offer id: ~s. "
+               "Resources: ~p.",
                [rms_offer_helper:get_offer_id_value(OfferHelper),
                 rms_offer_helper:resources_to_list(OfferHelper)]),
     OfferHelper1 = rms_cluster_manager:apply_offer(OfferHelper, NodeData),
-    rms_offer_helper:operations(OfferHelper1).
+    OfferId = rms_offer_helper:get_offer_id(OfferHelper1),
+    Operations = rms_offer_helper:operations(OfferHelper1),
+    {OfferId, Operations}.
+
+-spec accept_offers(erl_mesos_scheduler:scheduler_info(),
+                    [erl_mesos:'OfferID'()], [erl_mesos:'Offer.Operation'()]) ->
+    ok | {error, term()}.
+accept_offers(SchedulerInfo, OfferIds, Operations) ->
+    Filters = #'Filters'{refuse_seconds = ?OFFER_INTERVAL},
+    erl_mesos_scheduler:accept(SchedulerInfo, OfferIds, Operations, Filters).
+
+
 
 %% offer_ids(Offers) ->
 %%     [OfferId || #'Offer'{id = OfferId} <- Offers].
