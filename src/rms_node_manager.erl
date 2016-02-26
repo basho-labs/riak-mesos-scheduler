@@ -63,19 +63,28 @@ node_data(Cpus, Mem, Disk, Role, Principal) ->
 
 -spec node_keys() -> [rms_node:key()].
 node_keys() ->
-    ["test_1", "test_2", "test_3"].
+    %% Tmp solution for testing the resource managment.
+    ["test_1"].
 
 -spec node_needs_to_be_reconciled(rms_node:key()) -> boolean().
 node_needs_to_be_reconciled(_NodeKey) ->
+    %% Tmp solution for testing the resource managment.
     false.
 
 -spec node_can_be_scheduled(rms_node:key()) -> boolean().
 node_can_be_scheduled(_NodeKey) ->
+    %% Tmp solution for testing the resource managment.
     true.
 
 -spec node_has_reservation(rms_node:key()) -> boolean().
 node_has_reservation(_NodeKey) ->
-    false.
+    %% Tmp solution for testing the resource managment.
+    case get(reg) of
+        undefined ->
+            false;
+        _ ->
+            true
+    end.
 
 -spec apply_unreserved_offer(rms_node:key(), rms_offer_helper:offer_helper(),
                              node_data()) ->
@@ -111,6 +120,9 @@ apply_unreserved_offer(_NodeKey, OfferHelper,
                 rms_offer_helper:make_volume(NodeDisk, Role, Principal,
                                              PersistenceId, ContainerPath,
                                              OfferHelper2),
+            %% Tmp solution for testing the resource managment.
+            put(reg, true),
+
             %% TODO:
             %% AgentIdValue = rms_offer_helper:get_agent_id_value(OfferHelper3),
             %% Hostname = rms_offer_helper:get_hostname(OfferHelper3),
