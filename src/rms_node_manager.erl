@@ -28,7 +28,7 @@
          node_can_be_scheduled/1,
          node_has_reservation/1]).
 
--export([apply_unreserved_offer/3]).
+-export([apply_unreserved_offer/3, apply_reserved_offer/3]).
 
 -record(node_data, {cpus :: float(),
                     mem :: float(),
@@ -63,22 +63,22 @@ node_data(Cpus, Mem, Disk, Role, Principal) ->
 
 -spec node_keys() -> [rms_node:key()].
 node_keys() ->
-    %% Tmp solution for testing the resource managment.
+    %% Tmp solution for testing the resource management.
     ["test_1"].
 
 -spec node_needs_to_be_reconciled(rms_node:key()) -> boolean().
 node_needs_to_be_reconciled(_NodeKey) ->
-    %% Tmp solution for testing the resource managment.
+    %% Tmp solution for testing the resource management.
     false.
 
 -spec node_can_be_scheduled(rms_node:key()) -> boolean().
 node_can_be_scheduled(_NodeKey) ->
-    %% Tmp solution for testing the resource managment.
+    %% Tmp solution for testing the resource management.
     true.
 
 -spec node_has_reservation(rms_node:key()) -> boolean().
 node_has_reservation(_NodeKey) ->
-    %% Tmp solution for testing the resource managment.
+    %% Tmp solution for testing the resource management.
     case get(reg) of
         undefined ->
             false;
@@ -120,7 +120,7 @@ apply_unreserved_offer(_NodeKey, OfferHelper,
                 rms_offer_helper:make_volume(NodeDisk, Role, Principal,
                                              PersistenceId, ContainerPath,
                                              OfferHelper2),
-            %% Tmp solution for testing the resource managment.
+            %% Tmp solution for testing the resource management.
             put(reg, true),
 
             %% TODO:
@@ -133,8 +133,89 @@ apply_unreserved_offer(_NodeKey, OfferHelper,
             {error, not_enophe_resources}
     end.
 
+-spec apply_reserved_offer(rms_node:key(), rms_offer_helper:offer_helper(),
+    node_data()) ->
+    {ok, rms_offer_helper:offer_helper()} | {error, not_enophe_resources}.
+apply_reserved_offer(_NodeKey, OfferHelper,
+                     #node_data{cpus = NodeCpus,
+                                mem = NodeMem,
+                                disk = NodeDisk,
+                                num_ports = NodeNumPorts,
+                                role = _Role,
+                                principal = _Principal,
+                                container_path = _ContainerPath}) ->
+    CanFitReserved = rms_offer_helper:can_fit_reserved(NodeCpus, NodeMem,
+                                                       NodeDisk, undefined,
+                                                       OfferHelper),
+    CanFitUnreserved = rms_offer_helper:can_fit_unreserved(?CPUS_PER_EXECUTOR,
+                                                           ?MEM_PER_EXECUTOR,
+                                                           undefined,
+                                                           NodeNumPorts,
+                                                           OfferHelper),
+
+
+%%             lager:info("Launching node ~p", [Node]),
+%%
+%%             UrlBase = "file:///vagrant/riak-mesos-erlang",
+%%             ExecutorUrlStr = UrlBase ++ "/framework/riak-mesos-executor/packages/"
+%%             ++ "riak_mesos_executor-0.1.2-amd64.tar.gz",
+%%             RiakExplorerUrlStr = UrlBase ++ "/framework/riak_explorer/packages/"
+%%             ++ "riak_explorer-0.1.1.patch-amd64.tar.gz",
+%%             RiakUrlStr = UrlBase ++ "/riak/packages/riak-2.1.3-amd64.tar.gz",
+%%             CepmdUrlStr = "file:///vagrant/cepmd_linux_amd64",
+%%
+%%             ExecutorUrl = erl_mesos_utils:command_info_uri(ExecutorUrlStr, false, true),
+%%             RiakExplorerUrl = erl_mesos_utils:command_info_uri(RiakExplorerUrlStr, false, true),
+%%             RiakUrl = erl_mesos_utils:command_info_uri(RiakUrlStr, false, true),
+%%             CepmdUrl = erl_mesos_utils:command_info_uri(CepmdUrlStr, false, true),
+%%
+%%             CommandInfoValue = "./riak_mesos_executor/bin/ermf-executor",
+%%             UrlList = [ExecutorUrl, RiakExplorerUrl, RiakUrl, CepmdUrl],
+%%
+%%             CommandInfo = erl_mesos_utils:command_info(CommandInfoValue, UrlList),
+%%
+%%             TaskIdValue = Node#rms_node.key,
+%%             TaskId = erl_mesos_utils:task_id(TaskIdValue),
+%%
+%%             OfferHelper = riak_mesos_offer_helper:new(Offer),
+%%             ReservedPorts = riak_mesos_offer_helper:get_reserved_resources_ports(OfferHelper),
+%%             %% FIXME Make sure we actually have 3 ports available!
+%%             [HTTPPort, PBPort, DisterlPort | _Unused] = ReservedPorts,
+%%
+%%             FrameworkInfo = framework_info(),
+%%             FrameworkName = list_to_binary(FrameworkInfo#'FrameworkInfo'.name),
+%%             NodeName = iolist_to_binary([Node#rms_node.key, "@ubuntu.local"]), %% FIXME host name
+%%             TaskData = [
+%%                         {<<"FullyQualifiedNodeName">>, NodeName},
+%%                         {<<"Host">>,                   <<"localhost">>},
+%%                         {<<"Zookeepers">>,             [<<"master.mesos:2181">>]},
+%%                         {<<"FrameworkName">>,          FrameworkName},
+%%                         {<<"URI">>,                    <<"192.168.1.4:9090">>}, %% FIXME URI
+%%                         {<<"ClusterName">>,            list_to_binary(Node#rms_node.cluster)},
+%%                         {<<"HTTPPort">>,               HTTPPort},
+%%                         {<<"PBPort">>,                 PBPort},
+%%                         {<<"HandoffPort">>,            0},
+%%                         {<<"DisterlPort">>,            DisterlPort}],
+%%             TaskDataBin = iolist_to_binary(mochijson2:encode(TaskData)),
+%%
+%%             ExecutorId = erl_mesos_utils:executor_id("riak"),
+%%             ExecutorInfo0 = erl_mesos_utils:executor_info(ExecutorId, CommandInfo),
+%%             ExecutorInfo = ExecutorInfo0#'ExecutorInfo'{source = "riak"},
+%%
+%%             TaskInfo0 = erl_mesos_utils:task_info("riak", TaskId, AgentId, ReservedResources,
+%%                                                   ExecutorInfo, undefined),
+%%             TaskInfo = TaskInfo0#'TaskInfo'{data = TaskDataBin},
+%%             Operation = erl_mesos_utils:launch_offer_operation([TaskInfo]),
+    case CanFitReserved and CanFitUnreserved of
+        true ->
+            {ok, OfferHelper};
+        false ->
+            {error, not_enophe_resources}
+    end.
+
 %% Internal functions.
 
+-spec node_persistence_id() -> string().
 node_persistence_id() ->
     %% Generate uuid here.
     "uuid".
