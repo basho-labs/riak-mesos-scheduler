@@ -30,6 +30,12 @@
          update_cluster/2,
          delete_cluster/1]).
 
+-export([get_nodes/0,
+         get_node/1,
+         add_node/1,
+         update_node/2,
+         delete_node/1]).
+
 -export([init/1,
          handle_call/3,
          handle_cast/2,
@@ -64,7 +70,7 @@
 start_link() ->
     gen_server:start_link({local,?MODULE}, ?MODULE, {}, []).
 
--spec get_clusters() -> [{string(), [{atom(), term()}]}].
+-spec get_clusters() -> [{string(), cluster()}].
 get_clusters() ->
     ets:tab2list(?CLUSTER_TAB).
 
@@ -89,6 +95,31 @@ update_cluster(Key, Cluster) ->
 delete_cluster(Key) ->
     gen_server:call(?MODULE, {delete_cluster, Key}).
 
+-spec get_nodes() -> [{string(), node()}].
+get_nodes() ->
+    ets:tab2list(?NODE_TAB).
+
+-spec get_node(string()) -> {ok, node()} | {error, not_found}.
+get_node(Key) ->
+    case ets:lookup(?NODE_TAB, Key) of
+        [{_Key, Node}] ->
+            {ok, Node};
+        [] ->
+            {error, not_found}
+    end.
+
+-spec add_node(node()) -> ok | {error, term()}.
+add_node(Node) ->
+    gen_server:call(?MODULE, {add_node, Node}).
+
+-spec update_node(string(), node()) -> ok | {error, term()}.
+update_node(Key, Node) ->
+    gen_server:call(?MODULE, {update_node, Key, Node}).
+
+-spec delete_node(string()) -> ok | {error, term()}.
+delete_node(Key) ->
+    gen_server:call(?MODULE, {delete_node, Key}).
+
 %% gen_server callback functions.
 
 -spec init({}) -> state().
@@ -98,6 +129,7 @@ init({}) ->
     {ok, RootNode, _Data} = mesos_metadata_manager:get_root_node(),
     State = #state{root_node = RootNode},
     restore_clusters(State),
+    restore_nodes(State),
     {ok, State}.
 
 handle_call({add_cluster, Cluster}, _From, State) ->
@@ -106,6 +138,12 @@ handle_call({update_cluster, Key, Cluster}, _From, State) ->
     {reply, update_cluster(Key, Cluster, State), State};
 handle_call({delete_cluster, Key}, _From, State) ->
     {reply, delete_cluster(Key, State), State};
+handle_call({add_node, Node}, _From, State) ->
+    {reply, add_node(Node, State), State};
+handle_call({update_node, Key, Node}, _From, State) ->
+    {reply, update_node(Key, Node, State), State};
+handle_call({delete_node, Key}, _From, State) ->
+    {reply, delete_node(Key, State), State};
 handle_call(_Request, _From, State) ->
     {noreply, State}.
 
@@ -137,7 +175,21 @@ restore_clusters(#state{root_node = RootNode} = State) ->
             ok
     end.
 
--spec add_cluster(cluster(), state()) -> ok | {error, cluster_exists | term()}.
+-spec restore_nodes(state()) -> ok.
+restore_nodes(#state{root_node = RootNode} = State) ->
+    Path = [RootNode, "/", ?ZK_NODE_NODE],
+    case mesos_metadata_manager:get_children(Path) of
+        {error, no_node} ->
+            ok;
+        {ok, Keys} ->
+            [begin
+                 {ok, Node} = get_node_data(Key, State),
+                 ets:insert(?NODE_TAB, {Key, Node})
+             end || Key <- Keys],
+            ok
+    end.
+
+-spec add_cluster(cluster(), state()) -> ok | {error, exists | term()}.
 add_cluster(Cluster, State) ->
     Key = proplists:get_value(key, Cluster),
     case ets:lookup(?CLUSTER_TAB, Key) of
@@ -150,7 +202,7 @@ add_cluster(Cluster, State) ->
                     {error, Reason}
             end;
         [_Cluster] ->
-            {error, cluster_exists}
+            {error, exists}
     end.
 
 -spec update_cluster(string(), cluster(), state()) ->
@@ -179,8 +231,55 @@ delete_cluster(Key, State) ->
                 ok ->
                     ets:delete(?CLUSTER_TAB, Key),
                     ok;
-                {error, Error} ->
-                    {error, Error}
+                {error, Reason} ->
+                    {error, Reason}
+            end
+    end.
+
+-spec add_node(node(), state()) -> ok | {error, exists | term()}.
+add_node(Node, State) ->
+    Key = proplists:get_value(key, Node),
+    case ets:lookup(?NODE_TAB, Key) of
+        [] ->
+            case set_node_data(Key, Node, State) of
+                ok ->
+                    ets:insert(?NODE_TAB, {Key, Node}),
+                    ok;
+                {error, Reason} ->
+                    {error, Reason}
+            end;
+        [_Node] ->
+            {error, exists}
+    end.
+
+-spec update_node(string(), node(), state()) ->
+    ok | {error, not_found | term()}.
+update_node(Key, Node, State) ->
+    case ets:lookup(?NODE_TAB, Key) of
+        [_Node] ->
+            case set_node_data(Key, Node, State) of
+                ok ->
+                    ets:insert(?NODE_TAB, {Key, Node}),
+                    ok;
+                {error, Reason} ->
+                    {error, Reason}
+            end;
+        [] ->
+            {error, not_found}
+    end.
+
+-spec delete_node(string(), state()) -> ok | {errro, not_found | term()}.
+delete_node(Key, State) ->
+    case ets:lookup(?NODE_TAB, Key) of
+        [] ->
+            {error, not_found};
+        [_Cluster] ->
+            case delete_node_data(Key, State) of
+                ok ->
+                    ets:delete(?NODE_TAB, Key),
+                    ok;
+                {error, Reason} ->
+                    {error, Reason}
             end
     end.
 
@@ -188,9 +287,9 @@ delete_cluster(Key, State) ->
 get_cluster_data(Key, State) ->
     get_data(?ZK_CLUSTER_NODE, Key, State).
 
-%%-spec get_node_data(string(), state()) -> {ok, node()} | {error, term()}.
-%%get_node_data(Key, State) ->
-%%    get_data(?ZK_NODE_NODE, Key, State).
+-spec get_node_data(string(), state()) -> {ok, node()} | {error, term()}.
+get_node_data(Key, State) ->
+    get_data(?ZK_NODE_NODE, Key, State).
 
 -spec get_data(string(), string(), state()) -> {ok, term()} | {error, term()}.
 get_data(Node, Key, #state{root_node = RootNode}) ->
@@ -207,9 +306,9 @@ get_data(Node, Key, #state{root_node = RootNode}) ->
 set_cluster_data(Key, Cluster, State) ->
     set_data(?ZK_CLUSTER_NODE, Key, Cluster, State).
 
-%%-spec set_node_data(string(), node(), state()) -> ok | {error, term()}.
-%%set_node_data(Key, Node, State) ->
-%%    set_data(?ZK_NODE_NODE, Key, Node, State).
+-spec set_node_data(string(), node(), state()) -> ok | {error, term()}.
+set_node_data(Key, Node, State) ->
+    set_data(?ZK_NODE_NODE, Key, Node, State).
 
 -spec set_data(string(), string(), term(), state()) -> ok | {error, term()}.
 set_data(Node, Key, Data, #state{root_node = RootNode}) ->
@@ -226,9 +325,9 @@ set_data(Node, Key, Data, #state{root_node = RootNode}) ->
 delete_cluster_data(Key, State) ->
     delete_data(?ZK_CLUSTER_NODE, Key, State).
 
-%%-spec delete_node_data(string(), state()) -> ok | {error, term()}.
-%%delete_node_data(Key, State) ->
-%%    delete_data(?ZK_NODE_NODE, Key, State).
+-spec delete_node_data(string(), state()) -> ok | {error, term()}.
+delete_node_data(Key, State) ->
+    delete_data(?ZK_NODE_NODE, Key, State).
 
 -spec delete_data(string(), string(), state()) -> ok | {error, term()}.
 delete_data(Node, Key, #state{root_node = RootNode}) ->
