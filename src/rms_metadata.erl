@@ -24,6 +24,8 @@
 
 -export([start_link/0]).
 
+-export([get_scheduler/0, set_scheduler/1]).
+
 -export([get_clusters/0,
          get_cluster/1,
          add_cluster/1,
@@ -60,6 +62,8 @@
 
 -define(NODE_TAB, rms_metadata_nodes).
 
+-define(ZK_SCHEDULER_NODE, "scheduler").
+
 -define(ZK_CLUSTER_NODE, "clusters").
 
 -define(ZK_NODE_NODE, "nodes").
@@ -69,6 +73,14 @@
 -spec start_link() -> {ok, pid()}.
 start_link() ->
     gen_server:start_link({local,?MODULE}, ?MODULE, {}, []).
+
+-spec get_scheduler() -> ok | {error, term()}.
+get_scheduler() ->
+    gen_server:call(?MODULE, get_scheduler).
+
+-spec set_scheduler(scheduler()) -> ok | {error, term()}.
+set_scheduler(Scheduler) ->
+    gen_server:call(?MODULE, {set_scheduler, Scheduler}).
 
 -spec get_clusters() -> [{string(), cluster()}].
 get_clusters() ->
@@ -132,6 +144,10 @@ init({}) ->
     restore_nodes(State),
     {ok, State}.
 
+handle_call(get_scheduler, _From, State) ->
+    {reply, get_scheduler(State), State};
+handle_call({set_scheduler, Scheduler}, _From, State) ->
+    {reply, set_scheduler(Scheduler, State), State};
 handle_call({add_cluster, Cluster}, _From, State) ->
     {reply, add_cluster(Cluster, State), State};
 handle_call({update_cluster, Key, Cluster}, _From, State) ->
@@ -160,6 +176,31 @@ code_change(_OldVersion, State, _Extra) ->
     {ok, State}.
 
 %% Internal functions.
+
+-spec get_scheduler(state()) -> {ok, scheduler()} | {error, term()}.
+get_scheduler(#state{root_node = RootNode}) ->
+    Path = [RootNode, "/", ?ZK_SCHEDULER_NODE],
+    case mesos_metadata_manager:get_node(Path) of
+        {ok, _Path, BinaryData} ->
+            Data = binary_to_term(BinaryData),
+            {ok, Data};
+        {error, no_node} ->
+            {error, not_found};
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+-spec set_scheduler(scheduler(), state()) -> ok | {error, term()}.
+set_scheduler(Scheduler, #state{root_node = RootNode}) ->
+    BinaryData = term_to_binary(Scheduler),
+    case mesos_metadata_manager:create_or_set(RootNode, ?ZK_SCHEDULER_NODE,
+                                              BinaryData) of
+        {ok, _Path, _Data} ->
+            ok;
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
 
 -spec restore_clusters(state()) -> ok.
 restore_clusters(#state{root_node = RootNode} = State) ->
