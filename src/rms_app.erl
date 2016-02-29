@@ -29,7 +29,6 @@
 %%%===================================================================
 
 start(_Type, _StartArgs) ->
-    application:ensure_started(erl_mesos),
     rms_sup:start_link().
 
 stop(_State) ->

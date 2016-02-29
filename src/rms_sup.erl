@@ -63,9 +63,9 @@ init([]) ->
                        permanent, 5000, supervisor, [rms_node_sup]},
 
     SchedulerSpec = {rms_scheduler,
-                        {erl_mesos, start_scheduler, [Ref, Scheduler,
-                                                      SchedulerOptions,
-                                                      Options]},
+                        {erl_mesos_scheduler, start_link, [Ref, Scheduler,
+                                                           SchedulerOptions,
+                                                           Options]},
                         permanent, 5000, worker, [rms_scheduler]},
 
     WebmachineSpec = {webmachine_mochiweb,
