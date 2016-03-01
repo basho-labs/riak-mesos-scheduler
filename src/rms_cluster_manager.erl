@@ -20,23 +20,33 @@
 
 -module(rms_cluster_manager).
 
-%-behaviour(gen_server).
+-behaviour(supervisor).
 
 -export([start_link/0]).
+
+-export([add_cluster/3]).
 
 -export([apply_offer/2]).
 
 -export([init/1]).
 
--record(state, {}).
-
-%-type state() :: #state{}.
-
 %% External functions.
 
 -spec start_link() -> {ok, pid()}.
 start_link() ->
-    gen_server:start_link({local, ?MODULE}, ?MODULE, {}, []).
+    supervisor:start_link({local, ?MODULE}, ?MODULE, {}).
+
+add_cluster(Key, RiakConfig, AdvancedConfig) ->
+    ClusterSpec = {Key,
+                       {rms_cluster, start_link, [{add, Key, RiakConfig,
+                                                  AdvancedConfig}]},
+                       transient, 5000, worker, [rms_cluster]},
+    case supervisor:start_child(?MODULE, ClusterSpec) of
+        {ok, _Pid} ->
+            ok;
+        {error, Reason} ->
+            {error, Reason}
+    end.
 
 -spec apply_offer(rms_offer_helper:offer_helper(),
                   rms_node_manager:node_data()) ->
@@ -55,10 +65,14 @@ apply_offer(OfferHelper, NodeData) ->
             end
     end.
 
-%% gen_server callback functions.
+%% supervisor callback function.
 
 init({}) ->
-    {ok, #state{}}.
+    Specs = [{Key,
+                 {rms_cluster, start_link, [{restore, Key}]},
+                 transient, 5000, worker, [rms_cluster]} ||
+                 {Key, _} <- rms_metadata:get_clusters()],
+    {ok, {{one_for_one, 10, 10}, Specs}}.
 
 %% Internal functions.
 
