@@ -51,9 +51,6 @@
 
 -define(OFFER_INTERVAL, 5).
 
-%% -record(state, {offer_mode = reconcile :: accept | reconcile | decline,
-%%                 task_id_values = [] :: [string()]}).
-
 %% erl_mesos_scheduler callback functions.
 
 init(Options) ->
@@ -93,7 +90,9 @@ offer_rescinded(_SchedulerInfo, #'Event.Rescind'{} = EventRescind, State) ->
                [EventRescind]),
     {ok, State}.
 
-status_update(_SchedulerInfo, _EventUpdate, State) ->
+status_update(_SchedulerInfo, EventUpdate, State) ->
+    lager:info("Scheduler received stauts update event. "
+               "Update: ~p~n", [EventUpdate]),
     {ok, State}.
 
 framework_message(_SchedulerInfo, EventMessage, State) ->
