@@ -33,7 +33,7 @@
                   status = requested :: status(),
                   riak_config = "" :: string(),
                   advanced_config = "" :: string(),
-                  nodes = [] :: [rms_node:key()],
+                  node_keys = [] :: [rms_node:key()],
                   generation = 1 :: pos_integer()}).
 
 -type key() :: string().
@@ -47,29 +47,27 @@
 
 %% External functions.
 
--spec start_link({add, key(), string(), string()} | {restore, key()}) ->
+-spec start_link({add, key()} | {restore, key()}) ->
     {ok, pid()} | {error, term()}.
 start_link(Init) ->
     gen_server:start_link(?MODULE, Init, []).
 
 %% gen_server callback functions.
 
-init({add, Key, RiakConfig, AdvancedConfig}) ->
-    Cluster = #cluster{key = Key,
-                       riak_config = RiakConfig,
-                       advanced_config = AdvancedConfig},
+init({add, Key}) ->
+    Cluster = #cluster{key = Key},
     case add_cluster(Cluster) of
         ok ->
             {ok, Cluster};
         {error, Reason} ->
-            {stop,Reason}
+            {stop, Reason}
     end;
 init({restore, Key}) ->
     case get_cluster(Key) of
         {ok, Cluster} ->
             {ok, Cluster};
         {error, Reason} ->
-            {stop,Reason}
+            {stop, Reason}
     end.
 
 handle_call(_Request, _From, State) ->
@@ -109,7 +107,7 @@ from_list(ClusterList) ->
              riak_config = proplists:get_value(riak_conf, ClusterList),
              advanced_config = proplists:get_value(advanced_config,
                                                    ClusterList),
-             nodes = proplists:get_value(nodes, ClusterList),
+             node_keys = proplists:get_value(node_keys, ClusterList),
              generation = proplists:get_value(generation, ClusterList)}.
 
 -spec to_list(cluster()) -> rms_metadata:cluster().
@@ -117,11 +115,11 @@ to_list(#cluster{key = Key,
                  status = Status,
                  riak_config = RiakConf,
                  advanced_config = AdvancedConfig,
-                 nodes = Nodes,
+                 node_keys = NodeKeys,
                  generation = Generation}) ->
     [{key, Key},
      {status, Status},
      {riak_config, RiakConf},
      {advanced_config, AdvancedConfig},
-     {nodes, Nodes},
+     {node_keys, NodeKeys},
      {generation, Generation}].
