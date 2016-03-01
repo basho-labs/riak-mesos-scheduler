@@ -18,15 +18,16 @@
 %%
 %% -------------------------------------------------------------------
 
--module(rms_app).
+-module(rms).
 
 -behaviour(application).
 
 -export([start/2, stop/1]).
 
-%%%===================================================================
-%%% API
-%%%===================================================================
+-type options() :: [{atom(), term()}].
+-export_type([options/0]).
+
+%% application callback functions.
 
 start(_Type, _StartArgs) ->
     rms_sup:start_link().

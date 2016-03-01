@@ -20,9 +20,23 @@
 
 -module(rms_cluster_manager).
 
+%-behaviour(gen_server).
+
+-export([start_link/0]).
+
 -export([apply_offer/2]).
 
+-export([init/1]).
+
+-record(state, {}).
+
+%-type state() :: #state{}.
+
 %% External functions.
+
+-spec start_link() -> {ok, pid()}.
+start_link() ->
+    gen_server:start_link({local, ?MODULE}, ?MODULE, {}, []).
 
 -spec apply_offer(rms_offer_helper:offer_helper(),
                   rms_node_manager:node_data()) ->
@@ -40,6 +54,11 @@ apply_offer(OfferHelper, NodeData) ->
                     unreserve_volumes(unreserve_resources(OfferHelper1))
             end
     end.
+
+%% gen_server callback functions.
+
+init({}) ->
+    {ok, #state{}}.
 
 %% Internal functions.
 

@@ -11,5 +11,5 @@
                      erlzk,
                      webmachine,
                      erl_mesos]},
-     {mod, {rms_app, []}},
+     {mod, {rms, []}},
      {env, []}]}.

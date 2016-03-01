@@ -22,7 +22,14 @@
 
 -include("rms_cluster.hrl").
 
--export([]).
+-export([new/3]).
+
+-record(cluster, {key :: rms_cluster:key(),
+                  status = requested :: status(),
+                  riak_conf = "" :: string(),
+                  advanced_config = "" :: string(),
+                  nodes = [] :: [rms_node:key()],
+                  generation = 1 :: pos_integer()}).
 
 -type key() :: string().
 -export_type([key/0]).
@@ -32,3 +39,9 @@
 
 -type cluster() :: #rms_cluster{}.
 -export_type([cluster/0]).
+
+-spec new(key(), string(), string()) -> cluster().
+new(Key, RiakConf, AdvancedConfig) ->
+    #cluster{key = Key,
+             riak_conf = RiakConf,
+             advanced_config = AdvancedConfig}.

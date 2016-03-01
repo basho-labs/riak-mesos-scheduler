@@ -50,9 +50,26 @@ init([]) ->
     %% TODO: need to turn this into a list if it contains commas.
     Master = riak_mesos_scheduler_config:get_value(master, <<"localhost:5050">>, binary),
 
+    %% TODO: move all possible options init to rms:start/2.
+    FrameworkUser = rms_config:get_value(user, "root"),
+    FrameworkName = rms_config:get_value(name, "riak", string),
+    FrameworkRole = rms_config:get_value(role, "riak", string),
+    FrameworkHostname = rms_config:get_value(hostname, undefined, string),
+    FrameworkPrincipal = rms_config:get_value(principal, "riak", string),
+    NodeCpus = rms_config:get_value(node_cpus, 1.0, float),
+    NodeMem = rms_config:get_value(node_mem, 1024.0, float),
+    NodeDisk = rms_config:get_value(node_disk, 4000.0, float),
+
     Ref = riak_mesos_scheduler,
     Scheduler = rms_scheduler,
-    SchedulerOptions = [],
+    SchedulerOptions = [{framework_user, FrameworkUser},
+                        {framework_name, FrameworkName},
+                        {framework_role, FrameworkRole},
+                        {framework_hostname, FrameworkHostname},
+                        {framework_principal, FrameworkPrincipal},
+                        {node_cpus, NodeCpus},
+                        {node_mem, NodeMem},
+                        {node_disk, NodeDisk}],
     Options = [{master_hosts, [Master]}],
 
     MetadataManagerSpec = {mesos_metadata_manager,
@@ -96,5 +113,5 @@ init([]) ->
              SchedulerDataSpec, NodeFsmSup,
              SchedulerSpec,
              WebmachineSpec],
-
+    ets:new(rms_clusters, [ordered_set, public, named_table]),
     {ok, {{one_for_one, 10, 10}, Specs}}.

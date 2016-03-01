@@ -59,18 +59,8 @@
 init(Options) ->
     lager:info("Scheduler options: ~p.", [Options]),
     %% TODO: check if framework id exist in metadata manager.
-    FrameworkInfo = framework_info(),
-    #'FrameworkInfo'{role = Role,
-                     principal = Principal} = FrameworkInfo,
-    %% TODO: read node data from config in rms_sup and get it here from options.
-%%     NodeCpus = rms_config:get_value(node_cpus, 1.0, float),
-%%     NodeMem = rms_config:get_value(node_mem, 16000, float),
-%%     NodeDisk = rms_config:get_value(node_disk, 20000, float),
-    NodeCpus = rms_config:get_value(node_cpus, 1.0, float),
-    NodeMem = rms_config:get_value(node_mem, 1024.0, float),
-    NodeDisk = rms_config:get_value(node_disk, 4000.0, float),
-    NodeData = rms_node_manager:node_data(NodeCpus, NodeMem, NodeDisk, Role,
-                                          Principal),
+    FrameworkInfo = framework_info(Options),
+    NodeData = rms_node_manager:node_data(Options),
     lager:info("Start scheduler with framework info: ~p.", [FrameworkInfo]),
     {ok, FrameworkInfo, true, #state{node_data = NodeData,
                                      framework_info = FrameworkInfo}}.
@@ -103,21 +93,21 @@ offer_rescinded(_SchedulerInfo, #'Event.Rescind'{} = EventRescind, State) ->
                [EventRescind]),
     {ok, State}.
 
-status_update(_SchedulerInfo, #'Event.Update'{} = _EventUpdate, State) ->
+status_update(_SchedulerInfo, _EventUpdate, State) ->
     {ok, State}.
 
-framework_message(_SchedulerInfo, #'Event.Message'{} = EventMessage, State) ->
+framework_message(_SchedulerInfo, EventMessage, State) ->
     lager:info("Scheduler received framework message. "
                "Framework message: ~p.",
                [EventMessage]),
     {ok, State}.
 
-slave_lost(_SchedulerInfo, #'Event.Failure'{} = EventFailure, State) ->
+slave_lost(_SchedulerInfo, EventFailure, State) ->
     lager:info("Scheduler received slave lost event. Failure: ~p.",
                [EventFailure]),
     {ok, State}.
 
-executor_lost(_SchedulerInfo, #'Event.Failure'{} = EventFailure, State) ->
+executor_lost(_SchedulerInfo, EventFailure, State) ->
     lager:info("Scheduler received executor lost event. Failure: ~p.",
                [EventFailure]),
     {ok, State}.
@@ -136,22 +126,23 @@ terminate(_SchedulerInfo, Reason, _State) ->
 
 %% Internal functions.
 
-framework_info() ->
-    User = riak_mesos_scheduler_config:get_value(user, "root"),
-    Name = riak_mesos_scheduler_config:get_value(name, "riak", string),
-    Role = riak_mesos_scheduler_config:get_value(role, "riak", string),
-    Hostname = riak_mesos_scheduler_config:get_value(hostname, undefined, string),
-    Principal = riak_mesos_scheduler_config:get_value(principal, "riak", string),
-
-    #'FrameworkInfo'{user = User,
-                     name = Name,
-                     role = Role,
-                     hostname = Hostname,
-                     principal = Principal,
-                     checkpoint = undefined, %% TODO: We will want to enable checkpointing
-                     id = undefined, %% TODO: Will need to check ZK for this for reregistration
-                     webui_url = undefined, %% TODO: Get this from webmachine helper probably
-                     failover_timeout = undefined}. %% TODO: Add this to configurable options
+-spec framework_info(rms:options()) -> erl_mesos:'FrameworkInfo'().
+framework_info(Options) ->
+    #'FrameworkInfo'{user = proplists:get_value(framework_user, Options),
+                     name = proplists:get_value(framework_name, Options),
+                     role = proplists:get_value(framework_role, Options),
+                     hostname =
+                         proplists:get_value(framework_hostname, Options),
+                     principal =
+                         proplists:get_value(framework_principal, Options),
+                     %% TODO: We will want to enable checkpoint.
+                     checkpoint = undefined,
+                     %% TODO: Will need to check ZK for this for reregistration.
+                     id = undefined,
+                     %% TODO: Get this from wm helper probably.
+                     webui_url = undefined,
+                     %% TODO: Add this to configurable options.
+                     failover_timeout = undefined}.
 
 -spec apply_offers([erl_mesos:'Offer'()], rms_node_manager:node_data()) ->
     {[erl_mesos:'OfferID'()], [erl_mesos:'Offer.Operation'()]}.

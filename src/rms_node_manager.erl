@@ -20,7 +20,7 @@
 
 -module(rms_node_manager).
 
--export([node_data/5]).
+-export([node_data/1]).
 
 -export([node_keys/0]).
 
@@ -51,14 +51,14 @@
 
 %% External functions.
 
--spec node_data(float(), float(), float(), string(), string()) -> node_data().
-node_data(Cpus, Mem, Disk, Role, Principal) ->
-    #node_data{cpus = Cpus,
-               mem = Mem,
-               disk = Disk,
+-spec node_data(rms:options()) -> node_data().
+node_data(Options) ->
+    #node_data{cpus = proplists:get_value(node_cpus, Options),
+               mem = proplists:get_value(node_mem, Options),
+               disk = proplists:get_value(node_disk, Options),
                num_ports = ?NODE_NUM_PORTS,
-               role = Role,
-               principal = Principal,
+               role = proplists:get_value(framework_role, Options),
+               principal = proplists:get_value(framework_principal, Options),
                container_path = ?NODE_CONTAINER_PATH}.
 
 -spec node_keys() -> [rms_node:key()].
