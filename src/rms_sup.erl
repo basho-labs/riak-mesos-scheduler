@@ -39,16 +39,16 @@ start_link() ->
 %%%===================================================================
 
 init([]) ->
-    Ip = riak_mesos_scheduler_config:get_value(ip, "0.0.0.0"),
+    Ip = rms_config:get_value(ip, "0.0.0.0"),
     %% TODO: Will need to get this dynamically... somehow.
-    Port = riak_mesos_scheduler_config:get_value(port, 9090, integer),
-    WebConfig = riak_mesos_wm_resource:dispatch(Ip, Port),
+    Port = rms_config:get_value(port, 9090, integer),
+    WebConfig = rms_wm_resource:dispatch(Ip, Port),
 
-    ZooKeeperHost = riak_mesos_scheduler_config:get_value(zk_host, "localhost"),
-    ZooKeeperPort = riak_mesos_scheduler_config:get_value(zk_port, 2181),
+    ZooKeeperHost = rms_config:get_value(zk_host, "localhost"),
+    ZooKeeperPort = rms_config:get_value(zk_port, 2181),
 
     %% TODO: need to turn this into a list if it contains commas.
-    Master = riak_mesos_scheduler_config:get_value(master, <<"localhost:5050">>, binary),
+    Master = rms_config:get_value(master, <<"localhost:5050">>, binary),
 
     %% TODO: move all possible options init to rms:start/2.
     FrameworkUser = rms_config:get_value(user, "root"),
@@ -72,6 +72,8 @@ init([]) ->
                         {node_disk, NodeDisk}],
     Options = [{master_hosts, [Master]}],
 
+
+
     MetadataManagerSpec = {mesos_metadata_manager,
                                {mesos_metadata_manager, start_link,
                                [[{ZooKeeperHost, ZooKeeperPort}],
@@ -85,9 +87,6 @@ init([]) ->
                               {rms_cluster_manager, start_link, []},
                               permanent, 5000, supervisor,
                               [rms_cluster_manager]},
-%%    NodeSupSpec = {rms_node_sup,
-%%                       {rms_node_sup, start_link, []},
-%%                       permanent, 5000, supervisor, [rms_node_sup]},
     _SchedulerSpec = {rms_scheduler,
                         {erl_mesos_scheduler, start_link, [Ref, Scheduler,
                                                            SchedulerOptions,
@@ -103,15 +102,16 @@ init([]) ->
 %%                 {mesos_metadata_manager, start_link,
 %%                  [[{ZooKeeperHost, ZooKeeperPort}], "riak_mesos_scheduler"]},
 %%                 permanent, 5000, worker, [mesos_metadata_manager]},
+    %% TODO: remove SchedulerDataSpec.
     SchedulerDataSpec = {mesos_scheduler_data,
                          {mesos_scheduler_data, start_link, []},
                          permanent, 5000, worker, [mesos_scheduler_data]},
-    NodeFsmSup = {scheduler_node_fsm_sup,
-                  {scheduler_node_fsm_sup, start_link, []},
-                  permanent, 5000, worker, [scheduler_node_fsm_sup]},
+%%    NodeFsmSup = {scheduler_node_fsm_sup,
+%%                  {scheduler_node_fsm_sup, start_link, []},
+%%                  permanent, 5000, worker, [scheduler_node_fsm_sup]},
 
     Specs = [MetadataManagerSpec, MetadataSpec, ClusterManagerSpec,
-             SchedulerDataSpec, NodeFsmSup,
-             %SchedulerSpec,
+             SchedulerDataSpec,
+
              WebmachineSpec],
     {ok, {{one_for_one, 10, 10}, Specs}}.
