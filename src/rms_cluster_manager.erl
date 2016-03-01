@@ -24,7 +24,9 @@
 
 -export([start_link/0]).
 
--export([add_cluster/3]).
+-export([get_cluster_keys/0,
+         get_cluster/1,
+         add_cluster/1]).
 
 -export([apply_offer/2]).
 
@@ -36,14 +38,25 @@
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, {}).
 
-add_cluster(Key, RiakConfig, AdvancedConfig) ->
+-spec get_cluster_keys() -> [rms_cluster:key()].
+get_cluster_keys() ->
+    [Key || {Key, _} <- rms_metadata:get_clusters()].
+
+-spec get_cluster(rms_cluster:key()) ->
+    {ok, rms_metadata:cluster()} | {error, term()}.
+get_cluster(Key) ->
+    rms_metadata:get_cluster(Key).
+
+-spec add_cluster(rms_cluster:key()) -> ok | {error, term()}.
+add_cluster(Key) ->
     ClusterSpec = {Key,
-                       {rms_cluster, start_link, [{add, Key, RiakConfig,
-                                                  AdvancedConfig}]},
+                       {rms_cluster, start_link, [{add, Key}]},
                        transient, 5000, worker, [rms_cluster]},
     case supervisor:start_child(?MODULE, ClusterSpec) of
         {ok, _Pid} ->
             ok;
+        {error, {already_started, _Pid}} ->
+            {error, exists};
         {error, Reason} ->
             {error, Reason}
     end.
