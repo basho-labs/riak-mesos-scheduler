@@ -22,6 +22,8 @@
 
 -export([start_link/1]).
 
+-export([delete/1]).
+
 -export([init/1,
          handle_call/3,
          handle_cast/2,
@@ -39,7 +41,7 @@
 -type key() :: string().
 -export_type([key/0]).
 
--type status() :: requested.
+-type status() :: undefined | requested | shutting_down.
 -export_type([status/0]).
 
 -type cluster() :: #cluster{}.
@@ -47,29 +49,41 @@
 
 %% External functions.
 
--spec start_link({add, key()} | {restore, key()}) ->
+-spec start_link(key()) ->
     {ok, pid()} | {error, term()}.
-start_link(Init) ->
-    gen_server:start_link(?MODULE, Init, []).
+start_link(Key) ->
+    gen_server:start_link(?MODULE, Key, []).
+
+-spec delete(pid()) -> ok | {error, term()}.
+delete(Pid) ->
+    gen_server:call(Pid, delete).
 
 %% gen_server callback functions.
 
-init({add, Key}) ->
-    Cluster = #cluster{key = Key},
-    case add_cluster(Cluster) of
-        ok ->
-            {ok, Cluster};
-        {error, Reason} ->
-            {stop, Reason}
-    end;
-init({restore, Key}) ->
+init(Key) ->
     case get_cluster(Key) of
         {ok, Cluster} ->
             {ok, Cluster};
+        {error, not_found} ->
+            Cluster = #cluster{key = Key},
+            case add_cluster(Cluster) of
+                ok ->
+                    {ok, Cluster};
+                {error, Reason} ->
+                    {stop, Reason}
+            end;
         {error, Reason} ->
             {stop, Reason}
     end.
 
+handle_call(delete, _From, #cluster{key = Key} = Cluster) ->
+    Cluster1 = Cluster#cluster{status = shutting_down},
+    case update_cluster(Key, Cluster1) of
+        ok ->
+            {reply, ok, Cluster1};
+        {error, Reason} ->
+            {reply, {error, Reason}, Cluster}
+    end;
 handle_call(_Request, _From, State) ->
     {noreply, State}.
 
@@ -99,6 +113,10 @@ get_cluster(Key) ->
 -spec add_cluster(cluster()) -> ok | {error, term()}.
 add_cluster(Cluster) ->
     rms_metadata:add_cluster(to_list(Cluster)).
+
+-spec update_cluster(key(), cluster()) -> ok | {error, term()}.
+update_cluster(Key, Cluster) ->
+    rms_metadata:update_cluster(Key, to_list(Cluster)).
 
 -spec from_list(rms_metadata:cluster()) -> cluster().
 from_list(ClusterList) ->
