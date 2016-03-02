@@ -90,11 +90,12 @@ routes() ->
             content = {?MODULE, get_cluster},
             accepts = ?ACCEPT_TEXT,
             accept = {?MODULE, add_cluster},
-            delete = {?MODULE, delete_cluster}}
-
-%%     #route{path=["clusters", cluster, "restart"],
-%%            methods=['POST'], exists={?MODULE, cluster_exists},
-%%            accepts=?ACCEPT_TEXT, accept={?MODULE, restart_cluster}},
+            delete = {?MODULE, delete_cluster}},
+     #route{path = ["clusters", cluster, "restart"],
+            methods = ['POST'],
+            exists = {?MODULE, cluster_exists},
+            accepts = ?ACCEPT_TEXT,
+            accept = {?MODULE, restart_cluster}}
 %%     #route{path=["clusters", cluster, "config"],
 %%            methods=['GET', 'PUT'], exists={?MODULE, cluster_exists},
 %%            provides=?PROVIDE_TEXT, content={?MODULE, riak_conf},
@@ -163,44 +164,21 @@ get_cluster(ReqData) ->
 
 add_cluster(ReqData) ->
     Key = wrq:path_info(key, ReqData),
-    io:format("Key: ~p~n", [Key]),
     Response = build_response(rms_cluster_manager:add_cluster(Key)),
     {true, wrq:append_to_response_body(mochijson2:encode(Response), ReqData)}.
 
+delete_cluster(ReqData) ->
+    Key = wrq:path_info(key, ReqData),
+    ResponseBody = build_response(rms_cluster_manager:delete_cluster(Key)),
+    {true, wrq:append_to_response_body(mochijson2:encode(ResponseBody),
+     ReqData)}.
+
+restart_cluster(ReqData) ->
+    %% TODO: implement restart call through rms_cluster_manager.
+    Body = [{success, true}],
+    {true, wrq:append_to_response_body(mochijson2:encode(Body), ReqData)}.
 
 %% TODO: refactoring all code on bottom until internal functions.
-
-delete_cluster(RD) ->
-    ClusterKey = wrq:path_info(cluster, RD),
-    ResponseBody = build_response(mesos_scheduler_data:delete_cluster(ClusterKey)),
-    {true, wrq:append_to_response_body(mochijson2:encode(ResponseBody), RD)}.
-
-%%get_cluster(RD) ->
-%%    ClusterKey = wrq:path_info(cluster, RD),
-%%    {ok, Cluster} = mesos_scheduler_data:get_cluster(ClusterKey),
-%%    #rms_cluster{
-%%        status = Status,
-%%        riak_conf = RiakConf,
-%%        advanced_config = AdvancedConfig,
-%%        nodes = Nodes
-%%    } = Cluster,
-%%    NodeData = [list_to_binary(NodeKey) || NodeKey <- Nodes],
-%%    ClusterData = [{ClusterKey, [
-%%        {key, list_to_binary(ClusterKey)},
-%%        {status, Status},
-%%        {nodes, NodeData},
-%%        %%{node_cpus, 2.0},
-%%        %%{node_mem, 2048.0},
-%%        %%{node_disk, 20000.0},
-%%        %%{node_ports, 3},
-%%        {riak_conf, list_to_binary(RiakConf)},
-%%        {advanced_config, list_to_binary(AdvancedConfig)}
-%%    ]}],
-%%    {ClusterData, RD}.
-
-restart_cluster(RD) ->
-    Body = [{success, true}],
-    {true, wrq:append_to_response_body(mochijson2:encode(Body), RD)}.
 
 riak_conf(RD) ->
     ClusterKey = wrq:path_info(cluster, RD),
