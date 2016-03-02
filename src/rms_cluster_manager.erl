@@ -26,7 +26,8 @@
 
 -export([get_cluster_keys/0,
          get_cluster/1,
-         add_cluster/1]).
+         add_cluster/1,
+         delete_cluster/1]).
 
 -export([apply_offer/2]).
 
@@ -49,14 +50,26 @@ get_cluster(Key) ->
 
 -spec add_cluster(rms_cluster:key()) -> ok | {error, term()}.
 add_cluster(Key) ->
-    ClusterSpec = {Key,
-                       {rms_cluster, start_link, [{add, Key}]},
-                       transient, 5000, worker, [rms_cluster]},
-    case supervisor:start_child(?MODULE, ClusterSpec) of
-        {ok, _Pid} ->
-            ok;
-        {error, {already_started, _Pid}} ->
+    ClusterSpec = cluster_spec(Key),
+    case get_cluster(Key) of
+        {ok, _Cluster} ->
             {error, exists};
+        {error, not_found} ->
+            case supervisor:start_child(?MODULE, ClusterSpec) of
+                {ok, _Pid} ->
+                    ok;
+                {error, {already_started, _Pid}} ->
+                    {error, exists};
+                {error, Reason} ->
+                    {error, Reason}
+            end
+    end.
+
+-spec delete_cluster(rms_cluster:key()) -> ok | {error, term()}.
+delete_cluster(Key) ->
+    case get_cluster_pid(Key) of
+        {ok, Pid} ->
+            rms_cluster:delete(Pid);
         {error, Reason} ->
             {error, Reason}
     end.
@@ -81,13 +94,25 @@ apply_offer(OfferHelper, NodeData) ->
 %% supervisor callback function.
 
 init({}) ->
-    Specs = [{Key,
-                 {rms_cluster, start_link, [{restore, Key}]},
-                 transient, 5000, worker, [rms_cluster]} ||
-                 {Key, _} <- rms_metadata:get_clusters()],
+    Specs = [cluster_spec(Key) ||
+             {Key, _Cluster} <- rms_metadata:get_clusters()],
     {ok, {{one_for_one, 10, 10}, Specs}}.
 
 %% Internal functions.
+
+cluster_spec(Key) ->
+    {Key,
+        {rms_cluster, start_link, [Key]},
+        transient, 5000, worker, [rms_cluster]}.
+
+-spec get_cluster_pid(rms_cluster:key()) -> {ok, pid()} | {error, not_found}.
+get_cluster_pid(Key) ->
+    case lists:keyfind(Key, 1, supervisor:which_children(?MODULE)) of
+        {_Key, Pid, _, _} ->
+            {ok, Pid};
+        false ->
+            {error, not_found}
+    end.
 
 apply_offer([NodeKey | NodeKeys], NeedsReconciliation, OfferHelper, NodeData) ->
     case rms_node_manager:node_needs_to_be_reconciled(NodeKey) of
@@ -115,7 +140,7 @@ schedule_node(NodeKey, NodeKeys, NeedsReconciliation, OfferHelper, NodeData) ->
             %% New node.
             apply_unreserved_offer(NodeKey, NodeKeys, NeedsReconciliation,
                                    OfferHelper, NodeData)
-        end.
+    end.
 
 -spec apply_unreserved_offer(rms_node:key(), [rms_node:key()], boolean(),
                              rms_offer_helper:offer_helper(),
