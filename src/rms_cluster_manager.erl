@@ -27,8 +27,10 @@
 -export([get_cluster_keys/0,
          get_cluster/1,
          get_cluster_riak_config/1,
+         get_cluster_advanced_config/1,
          add_cluster/1,
          set_cluster_riak_config/2,
+         set_cluster_advanced_config/2,
          delete_cluster/1]).
 
 -export([apply_offer/2]).
@@ -55,6 +57,11 @@ get_cluster(Key) ->
 get_cluster_riak_config(Key) ->
     rms_cluster:get_riak_config(Key).
 
+-spec get_cluster_advanced_config(rms_cluster:key()) ->
+    {ok, string()} | {error, term()}.
+get_cluster_advanced_config(Key) ->
+    rms_cluster:get_advanced_config(Key).
+
 -spec add_cluster(rms_cluster:key()) -> ok | {error, term()}.
 add_cluster(Key) ->
     ClusterSpec = cluster_spec(Key),
@@ -78,6 +85,16 @@ set_cluster_riak_config(Key, RiakConfig) ->
     case get_cluster_pid(Key) of
         {ok, Pid} ->
             rms_cluster:set_riak_config(Pid, RiakConfig);
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+-spec set_cluster_advanced_config(rms_cluster:key(), string()) ->
+    ok | {error, term()}.
+set_cluster_advanced_config(Key, AdvancedConfig) ->
+    case get_cluster_pid(Key) of
+        {ok, Pid} ->
+            rms_cluster:set_advanced_config(Pid, AdvancedConfig);
         {error, Reason} ->
             {error, Reason}
     end.

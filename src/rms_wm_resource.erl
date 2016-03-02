@@ -10,9 +10,8 @@
          restart_cluster/1,
          get_cluster_riak_config/1,
          set_cluster_riak_config/1,
-
-         advanced_config/1,
-         set_advanced_config/1]).
+         get_cluster_advanced_config/1,
+         set_cluster_advanced_config/1]).
 
 -export([
     get_nodes/1,
@@ -101,11 +100,13 @@ routes() ->
             content = {?MODULE, get_cluster_riak_config},
             accepts = ?ACCEPT_TEXT,
             accept = {?MODULE, set_cluster_riak_config}},
-
-     #route{path=["clusters", cluster, "advancedConfig"],
-            methods=['GET', 'PUT'], exists={?MODULE, cluster_exists},
-            provides=?PROVIDE_TEXT, content={?MODULE, advanced_config},
-            accepts=?ACCEPT_TEXT,   accept={?MODULE, set_advanced_config}}
+     #route{path = ["clusters", key, "advancedConfig"],
+            methods = ['GET', 'PUT'],
+            exists = {?MODULE, cluster_exists},
+            provides = ?PROVIDE_TEXT,
+            content = {?MODULE, get_cluster_advanced_config},
+            accepts = ?ACCEPT_TEXT,
+            accept={?MODULE, set_cluster_advanced_config}}
 %%        % Nodes
 %%        #route{path=["clusters", cluster, "nodes"],
 %%            methods=['GET', 'POST'],
@@ -194,25 +195,38 @@ set_cluster_riak_config(ReqData) ->
     Response = build_response(Result),
     {true, wrq:append_to_response_body(mochijson2:encode(Response), ReqData)}.
 
+get_cluster_advanced_config(ReqData) ->
+    Key = wrq:path_info(key, ReqData),
+    {ok, AdvancedConfig} = rms_cluster_manager:get_cluster_advanced_config(Key),
+    Response = [{key, list_to_binary(Key)},
+                {advanced_config, list_to_binary(AdvancedConfig)}],
+    {true, wrq:append_to_response_body(mochijson2:encode(Response), ReqData)}.
+
+set_cluster_advanced_config(ReqData) ->
+    Key = wrq:path_info(key, ReqData),
+    AdvancedConfig = binary_to_list(wrq:req_body(ReqData)),
+    Result = rms_cluster_manager:set_cluster_advanced_config(Key,
+                                                             AdvancedConfig),
+    Response = build_response(Result),
+    {true, wrq:append_to_response_body(mochijson2:encode(Response), ReqData)}.
 
 
 
-
-update_cluster(RD, UpdateFun) ->
-    ClusterKey = wrq:path_info(cluster, RD),
-    ReplyBody = build_response(mesos_scheduler_data:update_cluster(ClusterKey, UpdateFun)),
-    {true, wrq:append_to_response_body(mochijson2:encode(ReplyBody), RD)}.
-
-advanced_config(RD) ->
-    ClusterKey = wrq:path_info(cluster, RD),
-    {ok, Cluster} = mesos_scheduler_data:get_cluster(ClusterKey),
-    AdvancedConfig = Cluster#rms_cluster.advanced_config,
-    {AdvancedConfig, RD}.
-
-set_advanced_config(RD) ->
-    Config = binary_to_list(wrq:req_body(RD)),
-    UpdateFun = fun(Cluster) -> Cluster#rms_cluster{advanced_config = Config} end,
-    update_cluster(RD, UpdateFun).
+%%update_cluster(RD, UpdateFun) ->
+%%    ClusterKey = wrq:path_info(cluster, RD),
+%%    ReplyBody = build_response(mesos_scheduler_data:update_cluster(ClusterKey, UpdateFun)),
+%%    {true, wrq:append_to_response_body(mochijson2:encode(ReplyBody), RD)}.
+%%
+%%advanced_config(RD) ->
+%%    ClusterKey = wrq:path_info(cluster, RD),
+%%    {ok, Cluster} = mesos_scheduler_data:get_cluster(ClusterKey),
+%%    AdvancedConfig = Cluster#rms_cluster.advanced_config,
+%%    {AdvancedConfig, RD}.
+%%
+%%set_advanced_config(RD) ->
+%%    Config = binary_to_list(wrq:req_body(RD)),
+%%    UpdateFun = fun(Cluster) -> Cluster#rms_cluster{advanced_config = Config} end,
+%%    update_cluster(RD, UpdateFun).
 
 %% TODO: refactoring all code on bottom until internal functions.
 

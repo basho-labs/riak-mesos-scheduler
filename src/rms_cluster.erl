@@ -23,7 +23,9 @@
 -export([start_link/1]).
 
 -export([get_riak_config/1,
+         get_advanced_config/1,
          set_riak_config/2,
+         set_advanced_config/2,
          delete/1]).
 
 -export([init/1,
@@ -65,9 +67,22 @@ get_riak_config(Key) ->
             {stop, Reason}
     end.
 
+-spec get_advanced_config(key()) -> {ok, string()} | {error, term()}.
+get_advanced_config(Key) ->
+    case get_cluster(Key) of
+        {ok, #cluster{advanced_config = AdvancedConfig}} ->
+            {ok, AdvancedConfig};
+        {error, Reason} ->
+            {stop, Reason}
+    end.
+
 -spec set_riak_config(pid(), string()) -> ok | {error, term()}.
 set_riak_config(Pid, RiakConfig) ->
     gen_server:call(Pid, {set_riak_config, RiakConfig}).
+
+-spec set_advanced_config(pid(), string()) -> ok | {error, term()}.
+set_advanced_config(Pid, AdvancedConfig) ->
+    gen_server:call(Pid, {set_advanced_config, AdvancedConfig}).
 
 -spec delete(pid()) -> ok | {error, term()}.
 delete(Pid) ->
@@ -93,6 +108,9 @@ init(Key) ->
 
 handle_call({set_riak_config, RiakConfig}, _From, Cluster) ->
     Cluster1 = Cluster#cluster{riak_config = RiakConfig},
+    update_cluster_state(Cluster, Cluster1);
+handle_call({set_advanced_config, AdvancedConfig}, _From, Cluster) ->
+    Cluster1 = Cluster#cluster{advanced_config = AdvancedConfig},
     update_cluster_state(Cluster, Cluster1);
 handle_call(delete, _From, Cluster) ->
     Cluster1 = Cluster#cluster{status = shutting_down},
