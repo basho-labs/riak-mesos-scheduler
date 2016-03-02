@@ -64,11 +64,11 @@ get_cluster_advanced_config(Key) ->
 
 -spec add_cluster(rms_cluster:key()) -> ok | {error, term()}.
 add_cluster(Key) ->
-    ClusterSpec = cluster_spec(Key),
     case get_cluster(Key) of
         {ok, _Cluster} ->
             {error, exists};
         {error, not_found} ->
+            ClusterSpec = cluster_spec(Key),
             case supervisor:start_child(?MODULE, ClusterSpec) of
                 {ok, _Pid} ->
                     ok;
