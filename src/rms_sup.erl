@@ -87,6 +87,10 @@ init([]) ->
                               {rms_cluster_manager, start_link, []},
                               permanent, 5000, supervisor,
                               [rms_cluster_manager]},
+    NodeManagerSpec = {rms_node_manager,
+                           {rms_node_manager, start_link, []},
+                           permanent, 5000, supervisor,
+                           [rms_node_manager]},
     _SchedulerSpec = {rms_scheduler,
                         {erl_mesos_scheduler, start_link, [Ref, Scheduler,
                                                            SchedulerOptions,
@@ -111,7 +115,6 @@ init([]) ->
 %%                  permanent, 5000, worker, [scheduler_node_fsm_sup]},
 
     Specs = [MetadataManagerSpec, MetadataSpec, ClusterManagerSpec,
-             SchedulerDataSpec,
-
-             WebmachineSpec],
+             NodeManagerSpec, WebmachineSpec,
+             SchedulerDataSpec],
     {ok, {{one_for_one, 10, 10}, Specs}}.

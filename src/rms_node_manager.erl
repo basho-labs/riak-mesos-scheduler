@@ -20,6 +20,13 @@
 
 -module(rms_node_manager).
 
+-behaviour(supervisor).
+
+-export([start_link/0]).
+
+-export([get_node/1,
+         add_node/2]).
+
 -export([node_data/1]).
 
 -export([node_keys/0]).
@@ -29,6 +36,8 @@
          node_has_reservation/1]).
 
 -export([apply_unreserved_offer/3, apply_reserved_offer/3]).
+
+-export([init/1]).
 
 -record(node_data, {cpus :: float(),
                     mem :: float(),
@@ -50,6 +59,31 @@
 -define(MEM_PER_EXECUTOR, 32.0).
 
 %% External functions.
+
+-spec start_link() -> {ok, pid()}.
+start_link() ->
+    supervisor:start_link({local, ?MODULE}, ?MODULE, {}).
+
+-spec get_node(rms_node:key()) -> {ok, rms_metadata:nd()} | {error, term()}.
+get_node(Key) ->
+    rms_metadata:get_node(Key).
+
+-spec add_node(rms_node:key(), rms_cluster:key()) -> ok | {error, term()}.
+add_node(Key, ClusterKey) ->
+    case get_node(Key) of
+        {ok, _Node} ->
+            {error, exists};
+        {error, not_found} ->
+            NodeSpec = node_spec(Key, ClusterKey),
+            case supervisor:start_child(?MODULE, NodeSpec) of
+                {ok, _Pid} ->
+                    ok;
+                {error, {already_started, _Pid}} ->
+                    {error, exists};
+                {error, Reason} ->
+                    {error, Reason}
+            end
+    end.
 
 -spec node_data(rms:options()) -> node_data().
 node_data(Options) ->
@@ -212,6 +246,20 @@ apply_reserved_offer(_NodeKey, OfferHelper,
         false ->
             {error, not_enophe_resources}
     end.
+
+%% supervisor callback function.
+
+init({}) ->
+    Specs = [node_spec(Key, proplists:get_value(cluster_key, Node)) ||
+             {Key, Node} <- rms_metadata:get_nodes()],
+    {ok, {{one_for_one, 10, 10}, Specs}}.
+
+%% Internal functions.
+
+node_spec(Key, ClusterKey) ->
+    {Key,
+        {rms_node, start_link, [Key, ClusterKey]},
+        transient, 5000, worker, [rms_node]}.
 
 %% Internal functions.
 
