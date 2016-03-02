@@ -26,17 +26,12 @@
 
 -export([init/1]).
 
-
-%%%===================================================================
-%%% API
-%%%===================================================================
+%% External functions.
 
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
-%%%===================================================================
-%%% Callbacks
-%%%===================================================================
+%% supervisor callback function.
 
 init([]) ->
     Ip = rms_config:get_value(ip, "0.0.0.0"),
@@ -72,8 +67,6 @@ init([]) ->
                         {node_disk, NodeDisk}],
     Options = [{master_hosts, [Master]}],
 
-
-
     MetadataManagerSpec = {mesos_metadata_manager,
                                {mesos_metadata_manager, start_link,
                                [[{ZooKeeperHost, ZooKeeperPort}],
@@ -91,30 +84,14 @@ init([]) ->
                            {rms_node_manager, start_link, []},
                            permanent, 5000, supervisor,
                            [rms_node_manager]},
-    _SchedulerSpec = {rms_scheduler,
+    SchedulerSpec = {rms_scheduler,
                         {erl_mesos_scheduler, start_link, [Ref, Scheduler,
                                                            SchedulerOptions,
                                                            Options]},
                         permanent, 5000, worker, [rms_scheduler]},
-
-
-
     WebmachineSpec = {webmachine_mochiweb,
                       {webmachine_mochiweb, start, [WebConfig]},
                       permanent, 5000, worker, [mochiweb_socket_server]},
-%%    MdMgrSpec = {mesos_metadata_manager,
-%%                 {mesos_metadata_manager, start_link,
-%%                  [[{ZooKeeperHost, ZooKeeperPort}], "riak_mesos_scheduler"]},
-%%                 permanent, 5000, worker, [mesos_metadata_manager]},
-    %% TODO: remove SchedulerDataSpec.
-    SchedulerDataSpec = {mesos_scheduler_data,
-                         {mesos_scheduler_data, start_link, []},
-                         permanent, 5000, worker, [mesos_scheduler_data]},
-%%    NodeFsmSup = {scheduler_node_fsm_sup,
-%%                  {scheduler_node_fsm_sup, start_link, []},
-%%                  permanent, 5000, worker, [scheduler_node_fsm_sup]},
-
     Specs = [MetadataManagerSpec, MetadataSpec, ClusterManagerSpec,
-             NodeManagerSpec, WebmachineSpec,
-             SchedulerDataSpec],
+             NodeManagerSpec, SchedulerSpec, WebmachineSpec],
     {ok, {{one_for_one, 10, 10}, Specs}}.
