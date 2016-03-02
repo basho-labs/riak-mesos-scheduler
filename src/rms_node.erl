@@ -20,7 +20,11 @@
 
 -module(rms_node).
 
+-behaviour(gen_server).
+
 -export([start_link/2]).
+
+-export([delete/1]).
 
 -export([init/1,
          handle_call/3,
@@ -32,7 +36,7 @@
 -record(node, {key :: key(),
                status = requested :: status(),
                cluster_key :: rms_cluster:key(),
-               node_name :: node(),
+               node_name = "" :: string(),
                hostname = "" :: string(),
                http_port :: pos_integer(),
                pb_port :: pos_integer(),
@@ -48,7 +52,7 @@
 -export_type([status/0]).
 
 -type nd() :: #node{}.
--export_type([node/0]).
+-export_type([nd/0]).
 
 %% External functions.
 
@@ -56,6 +60,10 @@
     {ok, pid()} | {error, term()}.
 start_link(Key, ClusterKey) ->
     gen_server:start_link(?MODULE, {Key, ClusterKey}, []).
+
+-spec delete(pid()) -> ok | {error, term()}.
+delete(Pid) ->
+    gen_server:call(Pid, delete).
 
 %% gen_server callback functions.
 
@@ -75,7 +83,9 @@ init({Key, ClusterKey}) ->
         {error, Reason} ->
             {stop, Reason}
     end.
-
+handle_call(delete, _From, Node) ->
+    Node1 = Node#node{status = shutting_down},
+    update_node_state(Node, Node1);
 handle_call(_Request, _From, State) ->
     {noreply, State}.
 
@@ -106,19 +116,18 @@ get_node(Key) ->
 add_node(Node) ->
     rms_metadata:add_node(to_list(Node)).
 
-%%-spec update_node_state(node(), node()) ->
-%%    {reply, ok | {error, term()}, cluster()}.
-%%update_node_state(#node{key = Key} = Node, NewNode) ->
-%%    case update_node(Key, NewNode) of
-%%        ok ->
-%%            {reply, ok, NewNode};
-%%        {error, Reason} ->
-%%            {reply, {error, Reason}, Node}
-%%    end.
+-spec update_node_state(nd(), nd()) -> {reply, ok | {error, term()}, nd()}.
+update_node_state(#node{key = Key} = Node, NewNode) ->
+    case update_node(Key, NewNode) of
+        ok ->
+            {reply, ok, NewNode};
+        {error, Reason} ->
+            {reply, {error, Reason}, Node}
+    end.
 
-%%-spec update_node(key(), node()) -> ok | {error, term()}.
-%%update_node(Key, Node) ->
-%%    rms_metadata:update_node(Key, to_list(Node)).
+-spec update_node(key(), nd()) -> ok | {error, term()}.
+update_node(Key, Node) ->
+    rms_metadata:update_node(Key, to_list(Node)).
 
 -spec from_list(rms_metadata:nd()) -> nd().
 from_list(NodeList) ->
