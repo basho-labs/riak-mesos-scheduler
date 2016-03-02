@@ -1,3 +1,5 @@
+%% TODO: remove this file and may be move some of the code to the rms_node.
+
 -module(scheduler_node_fsm).
 
 -behavior(gen_fsm).
@@ -87,7 +89,10 @@ handle_sync_event(stop_node, _From, _StateName, StateData) ->
     %% TODO handle errors here instead of matching on 'ok':
     ok = mesos_scheduler_data:set_node_status(StateData#state.task_id, stopping),
 
+    %% It is incorrect. Scheduler may be disconnected.
+    %% We should do the queue inside rms_scheduler and make all mesos calls from rms_scheduler.
     SchedulerInfo = erl_mesos_scheduler:get_scheduler_info(),
+
     AgentId = StateData#state.agent_id,
     ExecutorId = erl_mesos_utils:executor_id("riak"),
     erl_mesos_scheduler:message(SchedulerInfo, AgentId, ExecutorId, <<"finish">>),
