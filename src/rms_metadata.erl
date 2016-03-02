@@ -38,6 +38,9 @@
          update_node/2,
          delete_node/1]).
 
+%% TODO: remove after development will be finished.
+-export([reset/0]).
+
 -export([init/1,
          handle_call/3,
          handle_cast/2,
@@ -132,6 +135,9 @@ update_node(Key, Node) ->
 delete_node(Key) ->
     gen_server:call(?MODULE, {delete_node, Key}).
 
+reset() ->
+    gen_server:call(?MODULE, reset).
+
 %% gen_server callback functions.
 
 -spec init({}) -> state().
@@ -160,6 +166,17 @@ handle_call({update_node, Key, Node}, _From, State) ->
     {reply, update_node(Key, Node, State), State};
 handle_call({delete_node, Key}, _From, State) ->
     {reply, delete_node(Key, State), State};
+
+%% TODO: remove.
+handle_call(reset, _From, #state{root_node = RootNode} = State) ->
+    ClusterBasePath = [RootNode, "/", ?ZK_CLUSTER_NODE],
+    NodeBasePath = [RootNode, "/", ?ZK_NODE_NODE],
+    ok = mesos_metadata_manager:recursive_delete(ClusterBasePath),
+    ok = mesos_metadata_manager:recursive_delete(NodeBasePath),
+    true = ets:delete_all_objects(?CLUSTER_TAB),
+    true = ets:delete_all_objects(?NODE_TAB),
+    {reply, ok, State};
+
 handle_call(_Request, _From, State) ->
     {noreply, State}.
 
