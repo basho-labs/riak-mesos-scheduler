@@ -7,10 +7,10 @@
          get_cluster/1,
          add_cluster/1,
          delete_cluster/1,
-
          restart_cluster/1,
-         riak_conf/1,
-         set_riak_conf/1,
+         get_cluster_riak_config/1,
+         set_cluster_riak_config/1,
+
          advanced_config/1,
          set_advanced_config/1]).
 
@@ -77,9 +77,7 @@
 
 -include("mesos_scheduler_data.hrl").
 
-%%%===================================================================
-%%% API
-%%%===================================================================
+%% External functions.
 
 routes() ->
     [#route{path = ["clusters"],
@@ -91,19 +89,23 @@ routes() ->
             accepts = ?ACCEPT_TEXT,
             accept = {?MODULE, add_cluster},
             delete = {?MODULE, delete_cluster}},
-     #route{path = ["clusters", cluster, "restart"],
+     #route{path = ["clusters", key, "restart"],
             methods = ['POST'],
             exists = {?MODULE, cluster_exists},
             accepts = ?ACCEPT_TEXT,
-            accept = {?MODULE, restart_cluster}}
-%%     #route{path=["clusters", cluster, "config"],
-%%            methods=['GET', 'PUT'], exists={?MODULE, cluster_exists},
-%%            provides=?PROVIDE_TEXT, content={?MODULE, riak_conf},
-%%            accepts=?ACCEPT_TEXT,   accept={?MODULE, set_riak_conf}},
-%%        #route{path=["clusters", cluster, "advancedConfig"],
-%%            methods=['GET', 'PUT'], exists={?MODULE, cluster_exists},
-%%            provides=?PROVIDE_TEXT, content={?MODULE, advanced_config},
-%%            accepts=?ACCEPT_TEXT,   accept={?MODULE, set_advanced_config}},
+            accept = {?MODULE, restart_cluster}},
+     #route{path = ["clusters", key, "config"],
+            methods = ['GET', 'PUT'],
+            exists = {?MODULE, cluster_exists},
+            provides = ?PROVIDE_TEXT,
+            content = {?MODULE, get_cluster_riak_config},
+            accepts = ?ACCEPT_TEXT,
+            accept = {?MODULE, set_cluster_riak_config}},
+
+     #route{path=["clusters", cluster, "advancedConfig"],
+            methods=['GET', 'PUT'], exists={?MODULE, cluster_exists},
+            provides=?PROVIDE_TEXT, content={?MODULE, advanced_config},
+            accepts=?ACCEPT_TEXT,   accept={?MODULE, set_advanced_config}}
 %%        % Nodes
 %%        #route{path=["clusters", cluster, "nodes"],
 %%            methods=['GET', 'POST'],
@@ -169,27 +171,32 @@ add_cluster(ReqData) ->
 
 delete_cluster(ReqData) ->
     Key = wrq:path_info(key, ReqData),
-    ResponseBody = build_response(rms_cluster_manager:delete_cluster(Key)),
-    {true, wrq:append_to_response_body(mochijson2:encode(ResponseBody),
+    Response = build_response(rms_cluster_manager:delete_cluster(Key)),
+    {true, wrq:append_to_response_body(mochijson2:encode(Response),
      ReqData)}.
 
 restart_cluster(ReqData) ->
     %% TODO: implement restart call through rms_cluster_manager.
-    Body = [{success, true}],
-    {true, wrq:append_to_response_body(mochijson2:encode(Body), ReqData)}.
+    Response = [{success, true}],
+    {true, wrq:append_to_response_body(mochijson2:encode(Response), ReqData)}.
 
-%% TODO: refactoring all code on bottom until internal functions.
+get_cluster_riak_config(ReqData) ->
+    Key = wrq:path_info(key, ReqData),
+    {ok, RiakConfig} = rms_cluster_manager:get_cluster_riak_config(Key),
+    Response = [{key, list_to_binary(Key)},
+                {riak_config, list_to_binary(RiakConfig)}],
+    {true, wrq:append_to_response_body(mochijson2:encode(Response), ReqData)}.
 
-riak_conf(RD) ->
-    ClusterKey = wrq:path_info(cluster, RD),
-    {ok, Cluster} = mesos_scheduler_data:get_cluster(ClusterKey),
-    RiakConf = Cluster#rms_cluster.riak_conf,
-    {RiakConf, RD}.
+set_cluster_riak_config(ReqData) ->
+    Key = wrq:path_info(key, ReqData),
+    RiakConfig = binary_to_list(wrq:req_body(ReqData)),
+    Result = rms_cluster_manager:set_cluster_riak_config(Key, RiakConfig),
+    Response = build_response(Result),
+    {true, wrq:append_to_response_body(mochijson2:encode(Response), ReqData)}.
 
-set_riak_conf(RD) ->
-    Config = binary_to_list(wrq:req_body(RD)),
-    UpdateFun = fun(Cluster) -> Cluster#rms_cluster{riak_conf = Config} end,
-    update_cluster(RD, UpdateFun).
+
+
+
 
 update_cluster(RD, UpdateFun) ->
     ClusterKey = wrq:path_info(cluster, RD),
@@ -207,6 +214,7 @@ set_advanced_config(RD) ->
     UpdateFun = fun(Cluster) -> Cluster#rms_cluster{advanced_config = Config} end,
     update_cluster(RD, UpdateFun).
 
+%% TODO: refactoring all code on bottom until internal functions.
 
 %% Nodes
 
@@ -373,7 +381,7 @@ accept_content(RD, Ctx = #ctx{route = #route{accept = {M, F}}}) ->
 accept_content(RD, Ctx = #ctx{route = #route{accept = undefined}}) ->
     {false, RD, Ctx}.
 
-process_post(RD, Ctx = #ctx{route = #route{accept= {M, F}}}) ->
+process_post(RD, Ctx = #ctx{route = #route{accept = {M, F}}}) ->
     {Success, RD1} = M:F(RD),
     {Success, RD1, Ctx}.
 

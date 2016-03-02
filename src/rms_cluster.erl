@@ -22,7 +22,9 @@
 
 -export([start_link/1]).
 
--export([delete/1]).
+-export([get_riak_config/1,
+         set_riak_config/2,
+         delete/1]).
 
 -export([init/1,
          handle_call/3,
@@ -54,6 +56,19 @@
 start_link(Key) ->
     gen_server:start_link(?MODULE, Key, []).
 
+-spec get_riak_config(key()) -> {ok, string()} | {error, term()}.
+get_riak_config(Key) ->
+    case get_cluster(Key) of
+        {ok, #cluster{riak_config = RiakConfig}} ->
+            {ok, RiakConfig};
+        {error, Reason} ->
+            {stop, Reason}
+    end.
+
+-spec set_riak_config(pid(), string()) -> ok | {error, term()}.
+set_riak_config(Pid, RiakConfig) ->
+    gen_server:call(Pid, {set_riak_config, RiakConfig}).
+
 -spec delete(pid()) -> ok | {error, term()}.
 delete(Pid) ->
     gen_server:call(Pid, delete).
@@ -76,14 +91,12 @@ init(Key) ->
             {stop, Reason}
     end.
 
-handle_call(delete, _From, #cluster{key = Key} = Cluster) ->
+handle_call({set_riak_config, RiakConfig}, _From, Cluster) ->
+    Cluster1 = Cluster#cluster{riak_config = RiakConfig},
+    update_cluster_state(Cluster, Cluster1);
+handle_call(delete, _From, Cluster) ->
     Cluster1 = Cluster#cluster{status = shutting_down},
-    case update_cluster(Key, Cluster1) of
-        ok ->
-            {reply, ok, Cluster1};
-        {error, Reason} ->
-            {reply, {error, Reason}, Cluster}
-    end;
+    update_cluster_state(Cluster, Cluster1);
 handle_call(_Request, _From, State) ->
     {noreply, State}.
 
@@ -114,6 +127,16 @@ get_cluster(Key) ->
 add_cluster(Cluster) ->
     rms_metadata:add_cluster(to_list(Cluster)).
 
+-spec update_cluster_state(cluster(), cluster()) ->
+    {reply, ok | {error, term()}, cluster()}.
+update_cluster_state(#cluster{key = Key} = Cluster, NewCluster) ->
+    case update_cluster(Key, NewCluster) of
+        ok ->
+            {reply, ok, NewCluster};
+        {error, Reason} ->
+            {reply, {error, Reason}, Cluster}
+    end.
+
 -spec update_cluster(key(), cluster()) -> ok | {error, term()}.
 update_cluster(Key, Cluster) ->
     rms_metadata:update_cluster(Key, to_list(Cluster)).
@@ -122,7 +145,7 @@ update_cluster(Key, Cluster) ->
 from_list(ClusterList) ->
     #cluster{key = proplists:get_value(key, ClusterList),
              status = proplists:get_value(status, ClusterList),
-             riak_config = proplists:get_value(riak_conf, ClusterList),
+             riak_config = proplists:get_value(riak_config, ClusterList),
              advanced_config = proplists:get_value(advanced_config,
                                                    ClusterList),
              node_keys = proplists:get_value(node_keys, ClusterList),
