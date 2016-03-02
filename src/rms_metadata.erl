@@ -82,11 +82,11 @@ get_scheduler() ->
 set_scheduler(Scheduler) ->
     gen_server:call(?MODULE, {set_scheduler, Scheduler}).
 
--spec get_clusters() -> [{string(), cluster()}].
+-spec get_clusters() -> [{rms_cluster:key(), cluster()}].
 get_clusters() ->
     ets:tab2list(?CLUSTER_TAB).
 
--spec get_cluster(string()) -> {ok, cluster()} | {error, not_found}.
+-spec get_cluster(rms_cluster:key()) -> {ok, cluster()} | {error, not_found}.
 get_cluster(Key) ->
     case ets:lookup(?CLUSTER_TAB, Key) of
         [{_Key, Cluster}] ->
@@ -99,11 +99,11 @@ get_cluster(Key) ->
 add_cluster(Cluster) ->
     gen_server:call(?MODULE, {add_cluster, Cluster}).
 
--spec update_cluster(string(), cluster()) -> ok | {error, term()}.
+-spec update_cluster(rms_cluster:key(), cluster()) -> ok | {error, term()}.
 update_cluster(Key, Cluster) ->
     gen_server:call(?MODULE, {update_cluster, Key, Cluster}).
 
--spec delete_cluster(string()) -> ok | {error, term()}.
+-spec delete_cluster(rms_cluster:key()) -> ok | {error, term()}.
 delete_cluster(Key) ->
     gen_server:call(?MODULE, {delete_cluster, Key}).
 
@@ -111,7 +111,7 @@ delete_cluster(Key) ->
 get_nodes() ->
     ets:tab2list(?NODE_TAB).
 
--spec get_node(string()) -> {ok, node()} | {error, not_found}.
+-spec get_node(rms_node:key()) -> {ok, node()} | {error, not_found}.
 get_node(Key) ->
     case ets:lookup(?NODE_TAB, Key) of
         [{_Key, Node}] ->
@@ -124,11 +124,11 @@ get_node(Key) ->
 add_node(Node) ->
     gen_server:call(?MODULE, {add_node, Node}).
 
--spec update_node(string(), node()) -> ok | {error, term()}.
+-spec update_node(rms_node:key(), node()) -> ok | {error, term()}.
 update_node(Key, Node) ->
     gen_server:call(?MODULE, {update_node, Key, Node}).
 
--spec delete_node(string()) -> ok | {error, term()}.
+-spec delete_node(rms_node:key()) -> ok | {error, term()}.
 delete_node(Key) ->
     gen_server:call(?MODULE, {delete_node, Key}).
 
@@ -246,7 +246,7 @@ add_cluster(Cluster, State) ->
             {error, exists}
     end.
 
--spec update_cluster(string(), cluster(), state()) ->
+-spec update_cluster(rms_cluster:key(), cluster(), state()) ->
     ok | {error, not_found | term()}.
 update_cluster(Key, Cluster, State) ->
     case ets:lookup(?CLUSTER_TAB, Key) of
@@ -262,7 +262,8 @@ update_cluster(Key, Cluster, State) ->
             {error, not_found}
     end.
 
--spec delete_cluster(string(), state()) -> ok | {errro, not_found | term()}.
+-spec delete_cluster(rms_cluster:key(), state()) ->
+    ok | {errro, not_found | term()}.
 delete_cluster(Key, State) ->
     case ets:lookup(?CLUSTER_TAB, Key) of
         [] ->
@@ -293,7 +294,7 @@ add_node(Node, State) ->
             {error, exists}
     end.
 
--spec update_node(string(), node(), state()) ->
+-spec update_node(rms_node:key(), node(), state()) ->
     ok | {error, not_found | term()}.
 update_node(Key, Node, State) ->
     case ets:lookup(?NODE_TAB, Key) of
@@ -309,7 +310,7 @@ update_node(Key, Node, State) ->
             {error, not_found}
     end.
 
--spec delete_node(string(), state()) -> ok | {errro, not_found | term()}.
+-spec delete_node(rms_node:key(), state()) -> ok | {errro, not_found | term()}.
 delete_node(Key, State) ->
     case ets:lookup(?NODE_TAB, Key) of
         [] ->
@@ -324,15 +325,17 @@ delete_node(Key, State) ->
             end
     end.
 
--spec get_cluster_data(string(), state()) -> {ok, cluster()} | {error, term()}.
+-spec get_cluster_data(rms_cluster:key(), state()) ->
+    {ok, cluster()} | {error, term()}.
 get_cluster_data(Key, State) ->
     get_data(?ZK_CLUSTER_NODE, Key, State).
 
--spec get_node_data(string(), state()) -> {ok, node()} | {error, term()}.
+-spec get_node_data(rms_node:key(), state()) -> {ok, node()} | {error, term()}.
 get_node_data(Key, State) ->
     get_data(?ZK_NODE_NODE, Key, State).
 
--spec get_data(string(), string(), state()) -> {ok, term()} | {error, term()}.
+-spec get_data(string(), rms_cluster:key() | rms_node:key(), state()) ->
+    {ok, term()} | {error, term()}.
 get_data(Node, Key, #state{root_node = RootNode}) ->
     Path = [RootNode, "/", Node, "/", Key],
     case mesos_metadata_manager:get_node(Path) of
@@ -343,15 +346,17 @@ get_data(Node, Key, #state{root_node = RootNode}) ->
             {error, Reason}
     end.
 
--spec set_cluster_data(string(), cluster(), state()) -> ok | {error, term()}.
+-spec set_cluster_data(rms_cluster:key(), cluster(), state()) ->
+    ok | {error, term()}.
 set_cluster_data(Key, Cluster, State) ->
     set_data(?ZK_CLUSTER_NODE, Key, Cluster, State).
 
--spec set_node_data(string(), node(), state()) -> ok | {error, term()}.
+-spec set_node_data(rms_node:key(), node(), state()) -> ok | {error, term()}.
 set_node_data(Key, Node, State) ->
     set_data(?ZK_NODE_NODE, Key, Node, State).
 
--spec set_data(string(), string(), term(), state()) -> ok | {error, term()}.
+-spec set_data(string(), rms_cluster:key() | rms_node:key(), term(), state()) ->
+    ok | {error, term()}.
 set_data(Node, Key, Data, #state{root_node = RootNode}) ->
     Path = [RootNode, "/", Node],
     BinaryData = term_to_binary(Data),
@@ -362,15 +367,16 @@ set_data(Node, Key, Data, #state{root_node = RootNode}) ->
             {error, Reason}
     end.
 
--spec delete_cluster_data(string(), state()) -> ok | {error, term()}.
+-spec delete_cluster_data(rms_cluster:key(), state()) -> ok | {error, term()}.
 delete_cluster_data(Key, State) ->
     delete_data(?ZK_CLUSTER_NODE, Key, State).
 
--spec delete_node_data(string(), state()) -> ok | {error, term()}.
+-spec delete_node_data(rms_node:key(), state()) -> ok | {error, term()}.
 delete_node_data(Key, State) ->
     delete_data(?ZK_NODE_NODE, Key, State).
 
--spec delete_data(string(), string(), state()) -> ok | {error, term()}.
+-spec delete_data(string(), rms_cluster:key() | rms_node:key(), state()) ->
+    ok | {error, term()}.
 delete_data(Node, Key, #state{root_node = RootNode}) ->
     Path = [RootNode, "/", Node, "/", Key],
     case mesos_metadata_manager:delete_node(Path) of
