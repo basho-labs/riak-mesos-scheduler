@@ -24,12 +24,15 @@
 
 -export([start_link/0]).
 
--export([get_node/1,
-         add_node/2]).
-
--export([node_data/1]).
+-export([get_node_keys/0,
+         get_node_keys/1,
+         get_node/1,
+         add_node/2,
+         delete_node/1]).
 
 -export([node_keys/0]).
+
+-export([node_data/1]).
 
 -export([node_needs_to_be_reconciled/1,
          node_can_be_scheduled/1,
@@ -64,6 +67,15 @@
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, {}).
 
+-spec get_node_keys() -> [rms_node:key()].
+get_node_keys() ->
+    [Key || {Key, _} <- rms_metadata:get_nodes()].
+
+-spec get_node_keys(rms_cluster:key()) -> [rms_node:key()].
+get_node_keys(ClusterKey) ->
+    [Key || {Key, Node} <- rms_metadata:get_nodes(),
+     ClusterKey =:= proplists:get_value(cluster_key, Node)].
+
 -spec get_node(rms_node:key()) -> {ok, rms_metadata:nd()} | {error, term()}.
 get_node(Key) ->
     rms_metadata:get_node(Key).
@@ -85,6 +97,19 @@ add_node(Key, ClusterKey) ->
             end
     end.
 
+-spec delete_node(rms_node:key()) -> ok | {error, term()}.
+delete_node(Key) ->
+    case get_node_pid(Key) of
+        {ok, Pid} ->
+            rms_node:delete(Pid);
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+%% TODO: replace with get_node_keys/0 and remove.
+node_keys() ->
+    "test_1".
+
 -spec node_data(rms:options()) -> node_data().
 node_data(Options) ->
     #node_data{cpus = proplists:get_value(node_cpus, Options),
@@ -94,11 +119,6 @@ node_data(Options) ->
                role = proplists:get_value(framework_role, Options),
                principal = proplists:get_value(framework_principal, Options),
                container_path = ?NODE_CONTAINER_PATH}.
-
--spec node_keys() -> [rms_node:key()].
-node_keys() ->
-    %% Tmp solution for testing the resource management.
-    ["test_1"].
 
 -spec node_needs_to_be_reconciled(rms_node:key()) -> boolean().
 node_needs_to_be_reconciled(_NodeKey) ->
@@ -260,6 +280,16 @@ node_spec(Key, ClusterKey) ->
     {Key,
         {rms_node, start_link, [Key, ClusterKey]},
         transient, 5000, worker, [rms_node]}.
+
+-spec get_node_pid(rms_node:key()) -> {ok, pid()} | {error, not_found}.
+get_node_pid(Key) ->
+    case lists:keyfind(Key, 1, supervisor:which_children(?MODULE)) of
+        {_Key, Pid, _, _} ->
+            {ok, Pid};
+        false ->
+            {error, not_found}
+    end.
+
 
 %% Internal functions.
 
