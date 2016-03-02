@@ -30,6 +30,8 @@
          set_advanced_config/2,
          delete/1]).
 
+-export([add_node/1]).
+
 -export([init/1,
          handle_call/3,
          handle_cast/2,
@@ -90,6 +92,10 @@ set_advanced_config(Pid, AdvancedConfig) ->
 delete(Pid) ->
     gen_server:call(Pid, delete).
 
+-spec add_node(pid()) -> ok | {error, term()}.
+add_node(Pid) ->
+    gen_server:call(Pid, add_node).
+
 %% gen_server callback functions.
 
 init(Key) ->
@@ -117,6 +123,18 @@ handle_call({set_advanced_config, AdvancedConfig}, _From, Cluster) ->
 handle_call(delete, _From, Cluster) ->
     Cluster1 = Cluster#cluster{status = shutting_down},
     update_cluster_state(Cluster, Cluster1);
+handle_call(add_node, _From, #cluster{key = Key,
+                                      node_keys = NodeKeys,
+                                      generation = Generation} = Cluster) ->
+    NodeKey = Key ++ "-" ++ integer_to_list(Generation),
+    case rms_node_manager:add_node(NodeKey, Key) of
+        ok ->
+            Cluster1 = Cluster#cluster{node_keys = [NodeKey | NodeKeys],
+                                       generation = Generation + 1},
+            update_cluster_state(Cluster, Cluster1);
+        {error, Reason} ->
+            {reply, {error, Reason}, Cluster}
+    end;
 handle_call(_Request, _From, State) ->
     {noreply, State}.
 

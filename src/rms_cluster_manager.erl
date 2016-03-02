@@ -33,6 +33,8 @@
          set_cluster_advanced_config/2,
          delete_cluster/1]).
 
+-export([add_node/1]).
+
 -export([apply_offer/2]).
 
 -export([init/1]).
@@ -104,6 +106,15 @@ delete_cluster(Key) ->
     case get_cluster_pid(Key) of
         {ok, Pid} ->
             rms_cluster:delete(Pid);
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+-spec add_node(rms_cluster:key()) -> ok | {error, term()}.
+add_node(Key) ->
+    case get_cluster_pid(Key) of
+        {ok, Pid} ->
+            rms_cluster:add_node(Pid);
         {error, Reason} ->
             {error, Reason}
     end.
