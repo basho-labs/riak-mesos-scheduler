@@ -20,6 +20,8 @@
 
 -module(rms_cluster).
 
+-behaviour(gen_server).
+
 -export([start_link/1]).
 
 -export([get_riak_config/1,
