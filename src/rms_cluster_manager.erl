@@ -123,6 +123,7 @@ add_node(Key) ->
                   rms_node_manager:node_data()) ->
     rms_offer_helper:offer_helper().
 apply_offer(OfferHelper, NodeData) ->
+    %% TODO: replace with get_node_keys/0.
     NodeKeys = rms_node_manager:node_keys(),
     case apply_offer(NodeKeys, false, OfferHelper, NodeData) of
         {true, OfferHelper1} ->
