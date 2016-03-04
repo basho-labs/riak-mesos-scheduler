@@ -52,8 +52,8 @@
 -type status() :: undefined | requested | shutting_down.
 -export_type([status/0]).
 
--type cluster_data() :: #cluster{}.
--export_type([cluster_data/0]).
+-type cluster_state() :: #cluster{}.
+-export_type([cluster_state/0]).
 
 %% External functions.
 
@@ -152,7 +152,7 @@ code_change(_OldVersion, State, _Extra) ->
 
 %% Internal functions.
 
--spec get_cluster(key()) -> {ok, cluster_data()} | {error, term()}.
+-spec get_cluster(key()) -> {ok, cluster_state()} | {error, term()}.
 get_cluster(Key) ->
     case rms_metadata:get_cluster(Key) of
         {ok, Cluster} ->
@@ -161,12 +161,12 @@ get_cluster(Key) ->
             {error, Reason}
     end.
 
--spec add_cluster(cluster_data()) -> ok | {error, term()}.
+-spec add_cluster(cluster_state()) -> ok | {error, term()}.
 add_cluster(Cluster) ->
     rms_metadata:add_cluster(to_list(Cluster)).
 
--spec update_cluster_state(cluster_data(), cluster_data()) ->
-    {reply, ok | {error, term()}, cluster_data()}.
+-spec update_cluster_state(cluster_state(), cluster_state()) ->
+    {reply, ok | {error, term()}, cluster_state()}.
 update_cluster_state(#cluster{key = Key} = Cluster, NewCluster) ->
     case update_cluster(Key, NewCluster) of
         ok ->
@@ -175,11 +175,11 @@ update_cluster_state(#cluster{key = Key} = Cluster, NewCluster) ->
             {reply, {error, Reason}, Cluster}
     end.
 
--spec update_cluster(key(), cluster_data()) -> ok | {error, term()}.
+-spec update_cluster(key(), cluster_state()) -> ok | {error, term()}.
 update_cluster(Key, Cluster) ->
     rms_metadata:update_cluster(Key, to_list(Cluster)).
 
--spec from_list(rms_metadata:cluster_data()) -> cluster_data().
+-spec from_list(rms_metadata:cluster_state()) -> cluster_state().
 from_list(ClusterList) ->
     #cluster{key = proplists:get_value(key, ClusterList),
              status = proplists:get_value(status, ClusterList),
@@ -189,7 +189,7 @@ from_list(ClusterList) ->
              node_keys = proplists:get_value(node_keys, ClusterList),
              generation = proplists:get_value(generation, ClusterList)}.
 
--spec to_list(cluster_data()) -> rms_metadata:cluster_data().
+-spec to_list(cluster_state()) -> rms_metadata:cluster_state().
 to_list(#cluster{key = Key,
                  status = Status,
                  riak_config = RiakConf,
