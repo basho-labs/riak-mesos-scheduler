@@ -108,7 +108,7 @@ delete_node(Key) ->
 
 %% TODO: replace with get_node_keys/0 and remove.
 node_keys() ->
-    "test_1".
+    ["test_1"].
 
 -spec node_data(rms:options()) -> node_data().
 node_data(Options) ->
