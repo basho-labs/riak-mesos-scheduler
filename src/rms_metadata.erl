@@ -171,8 +171,10 @@ handle_call({delete_node, Key}, _From, State) ->
 
 %% TODO: remove.
 handle_call(reset, _From, #state{root_node = RootNode} = State) ->
+    SchedulerBasePath = [RootNode, "/", ?ZK_SCHEDULER_NODE],
     ClusterBasePath = [RootNode, "/", ?ZK_CLUSTER_NODE],
     NodeBasePath = [RootNode, "/", ?ZK_NODE_NODE],
+    ok = mesos_metadata_manager:recursive_delete(SchedulerBasePath),
     ok = mesos_metadata_manager:recursive_delete(ClusterBasePath),
     ok = mesos_metadata_manager:recursive_delete(NodeBasePath),
     true = ets:delete_all_objects(?CLUSTER_TAB),
