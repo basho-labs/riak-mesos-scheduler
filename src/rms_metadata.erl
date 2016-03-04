@@ -56,8 +56,8 @@
 -type cluster() :: [{atom(), term()}].
 -export_type([cluster/0]).
 
--type nd() :: [{atom(), term()}].
--export_type([nd/0]).
+-type node() :: [{atom(), term()}].
+-export_type([node/0]).
 
 -type state() :: #state{}.
 
@@ -110,11 +110,11 @@ update_cluster(Key, Cluster) ->
 delete_cluster(Key) ->
     gen_server:call(?MODULE, {delete_cluster, Key}).
 
--spec get_nodes() -> [{string(), nd()}].
+-spec get_nodes() -> [{string(), node()}].
 get_nodes() ->
     ets:tab2list(?NODE_TAB).
 
--spec get_node(rms_node:key()) -> {ok, nd()} | {error, not_found}.
+-spec get_node(rms_node:key()) -> {ok, node()} | {error, not_found}.
 get_node(Key) ->
     case ets:lookup(?NODE_TAB, Key) of
         [{_Key, Node}] ->
@@ -123,11 +123,11 @@ get_node(Key) ->
             {error, not_found}
     end.
 
--spec add_node(nd()) -> ok | {error, term()}.
+-spec add_node(node()) -> ok | {error, term()}.
 add_node(Node) ->
     gen_server:call(?MODULE, {add_node, Node}).
 
--spec update_node(rms_node:key(), nd()) -> ok | {error, term()}.
+-spec update_node(rms_node:key(), node()) -> ok | {error, term()}.
 update_node(Key, Node) ->
     gen_server:call(?MODULE, {update_node, Key, Node}).
 
@@ -295,7 +295,7 @@ delete_cluster(Key, State) ->
             end
     end.
 
--spec add_node(nd(), state()) -> ok | {error, exists | term()}.
+-spec add_node(node(), state()) -> ok | {error, exists | term()}.
 add_node(Node, State) ->
     Key = proplists:get_value(key, Node),
     case ets:lookup(?NODE_TAB, Key) of
@@ -311,7 +311,7 @@ add_node(Node, State) ->
             {error, exists}
     end.
 
--spec update_node(rms_node:key(), nd(), state()) ->
+-spec update_node(rms_node:key(), node(), state()) ->
     ok | {error, not_found | term()}.
 update_node(Key, Node, State) ->
     case ets:lookup(?NODE_TAB, Key) of
@@ -347,7 +347,7 @@ delete_node(Key, State) ->
 get_cluster_data(Key, State) ->
     get_data(?ZK_CLUSTER_NODE, Key, State).
 
--spec get_node_data(rms_node:key(), state()) -> {ok, nd()} | {error, term()}.
+-spec get_node_data(rms_node:key(), state()) -> {ok, node()} | {error, term()}.
 get_node_data(Key, State) ->
     get_data(?ZK_NODE_NODE, Key, State).
 
@@ -368,7 +368,7 @@ get_data(Node, Key, #state{root_node = RootNode}) ->
 set_cluster_data(Key, Cluster, State) ->
     set_data(?ZK_CLUSTER_NODE, Key, Cluster, State).
 
--spec set_node_data(rms_node:key(), nd(), state()) -> ok | {error, term()}.
+-spec set_node_data(rms_node:key(), node(), state()) -> ok | {error, term()}.
 set_node_data(Key, Node, State) ->
     set_data(?ZK_NODE_NODE, Key, Node, State).
 

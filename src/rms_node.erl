@@ -51,8 +51,8 @@
 -type status() :: requested.
 -export_type([status/0]).
 
--type nd() :: #node{}.
--export_type([nd/0]).
+-type node() :: #node{}.
+-export_type([node/0]).
 
 %% External functions.
 
@@ -103,7 +103,7 @@ code_change(_OldVersion, State, _Extra) ->
 
 %% Internal functions.
 
--spec get_node(key()) -> {ok, nd()} | {error, term()}.
+-spec get_node(key()) -> {ok, node()} | {error, term()}.
 get_node(Key) ->
     case rms_metadata:get_node(Key) of
         {ok, Node} ->
@@ -112,11 +112,12 @@ get_node(Key) ->
             {error, Reason}
     end.
 
--spec add_node(nd()) -> ok | {error, term()}.
+-spec add_node(node()) -> ok | {error, term()}.
 add_node(Node) ->
     rms_metadata:add_node(to_list(Node)).
 
--spec update_node_state(nd(), nd()) -> {reply, ok | {error, term()}, nd()}.
+-spec update_node_state(node(), node()) ->
+    {reply, ok | {error, term()}, node()}.
 update_node_state(#node{key = Key} = Node, NewNode) ->
     case update_node(Key, NewNode) of
         ok ->
@@ -125,11 +126,11 @@ update_node_state(#node{key = Key} = Node, NewNode) ->
             {reply, {error, Reason}, Node}
     end.
 
--spec update_node(key(), nd()) -> ok | {error, term()}.
+-spec update_node(key(), node()) -> ok | {error, term()}.
 update_node(Key, Node) ->
     rms_metadata:update_node(Key, to_list(Node)).
 
--spec from_list(rms_metadata:nd()) -> nd().
+-spec from_list(rms_metadata:nd()) -> node().
 from_list(NodeList) ->
     #node{key = proplists:get_value(key, NodeList),
           status = proplists:get_value(status, NodeList),
@@ -143,7 +144,7 @@ from_list(NodeList) ->
           container_path = proplists:get_value(container_path, NodeList),
           persistence_id = proplists:get_value(persistence_id, NodeList)}.
 
--spec to_list(nd()) -> rms_metadata:nd().
+-spec to_list(node()) -> rms_metadata:nd().
 to_list(#node{key = Key,
               status = Status,
               cluster_key = ClusterKey,
