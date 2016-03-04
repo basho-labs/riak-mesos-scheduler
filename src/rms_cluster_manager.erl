@@ -50,7 +50,7 @@ get_cluster_keys() ->
     [Key || {Key, _} <- rms_metadata:get_clusters()].
 
 -spec get_cluster(rms_cluster:key()) ->
-    {ok, rms_metadata:cluster()} | {error, term()}.
+    {ok, rms_metadata:cluster_data()} | {error, term()}.
 get_cluster(Key) ->
     rms_metadata:get_cluster(Key).
 

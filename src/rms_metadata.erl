@@ -50,14 +50,14 @@
 
 -record(state, {root_node :: string()}).
 
--type scheduler() :: [{atom(), term()}].
--export_type([scheduler/0]).
+-type scheduler_data() :: [{atom(), term()}].
+-export_type([scheduler_data/0]).
 
--type cluster() :: [{atom(), term()}].
--export_type([cluster/0]).
+-type cluster_data() :: [{atom(), term()}].
+-export_type([cluster_data/0]).
 
--type node() :: [{atom(), term()}].
--export_type([node/0]).
+-type node_data() :: [{atom(), term()}].
+-export_type([node_data/0]).
 
 -type state() :: #state{}.
 
@@ -81,15 +81,16 @@ start_link() ->
 get_scheduler() ->
     gen_server:call(?MODULE, get_scheduler).
 
--spec set_scheduler(scheduler()) -> ok | {error, term()}.
+-spec set_scheduler(scheduler_data()) -> ok | {error, term()}.
 set_scheduler(Scheduler) ->
     gen_server:call(?MODULE, {set_scheduler, Scheduler}).
 
--spec get_clusters() -> [{rms_cluster:key(), cluster()}].
+-spec get_clusters() -> [{rms_cluster:key(), cluster_data()}].
 get_clusters() ->
     ets:tab2list(?CLUSTER_TAB).
 
--spec get_cluster(rms_cluster:key()) -> {ok, cluster()} | {error, not_found}.
+-spec get_cluster(rms_cluster:key()) ->
+    {ok, cluster_data()} | {error, not_found}.
 get_cluster(Key) ->
     case ets:lookup(?CLUSTER_TAB, Key) of
         [{_Key, Cluster}] ->
@@ -98,11 +99,11 @@ get_cluster(Key) ->
             {error, not_found}
     end.
 
--spec add_cluster(cluster()) -> ok | {error, term()}.
+-spec add_cluster(cluster_data()) -> ok | {error, term()}.
 add_cluster(Cluster) ->
     gen_server:call(?MODULE, {add_cluster, Cluster}).
 
--spec update_cluster(rms_cluster:key(), cluster()) -> ok | {error, term()}.
+-spec update_cluster(rms_cluster:key(), cluster_data()) -> ok | {error, term()}.
 update_cluster(Key, Cluster) ->
     gen_server:call(?MODULE, {update_cluster, Key, Cluster}).
 
@@ -110,11 +111,11 @@ update_cluster(Key, Cluster) ->
 delete_cluster(Key) ->
     gen_server:call(?MODULE, {delete_cluster, Key}).
 
--spec get_nodes() -> [{string(), node()}].
+-spec get_nodes() -> [{string(), node_data()}].
 get_nodes() ->
     ets:tab2list(?NODE_TAB).
 
--spec get_node(rms_node:key()) -> {ok, node()} | {error, not_found}.
+-spec get_node(rms_node:key()) -> {ok, node_data()} | {error, not_found}.
 get_node(Key) ->
     case ets:lookup(?NODE_TAB, Key) of
         [{_Key, Node}] ->
@@ -123,11 +124,11 @@ get_node(Key) ->
             {error, not_found}
     end.
 
--spec add_node(node()) -> ok | {error, term()}.
+-spec add_node(node_data()) -> ok | {error, term()}.
 add_node(Node) ->
     gen_server:call(?MODULE, {add_node, Node}).
 
--spec update_node(rms_node:key(), node()) -> ok | {error, term()}.
+-spec update_node(rms_node:key(), node_data()) -> ok | {error, term()}.
 update_node(Key, Node) ->
     gen_server:call(?MODULE, {update_node, Key, Node}).
 
@@ -194,7 +195,7 @@ code_change(_OldVersion, State, _Extra) ->
 
 %% Internal functions.
 
--spec get_scheduler(state()) -> {ok, scheduler()} | {error, term()}.
+-spec get_scheduler(state()) -> {ok, scheduler_data()} | {error, term()}.
 get_scheduler(#state{root_node = RootNode}) ->
     Path = [RootNode, "/", ?ZK_SCHEDULER_NODE],
     case mesos_metadata_manager:get_node(Path) of
@@ -207,7 +208,7 @@ get_scheduler(#state{root_node = RootNode}) ->
             {error, Reason}
     end.
 
--spec set_scheduler(scheduler(), state()) -> ok | {error, term()}.
+-spec set_scheduler(scheduler_data(), state()) -> ok | {error, term()}.
 set_scheduler(Scheduler, #state{root_node = RootNode}) ->
     BinaryData = term_to_binary(Scheduler),
     case mesos_metadata_manager:create_or_set(RootNode, ?ZK_SCHEDULER_NODE,
@@ -247,7 +248,7 @@ restore_nodes(#state{root_node = RootNode} = State) ->
             ok
     end.
 
--spec add_cluster(cluster(), state()) -> ok | {error, exists | term()}.
+-spec add_cluster(cluster_data(), state()) -> ok | {error, exists | term()}.
 add_cluster(Cluster, State) ->
     Key = proplists:get_value(key, Cluster),
     case ets:lookup(?CLUSTER_TAB, Key) of
@@ -263,7 +264,7 @@ add_cluster(Cluster, State) ->
             {error, exists}
     end.
 
--spec update_cluster(rms_cluster:key(), cluster(), state()) ->
+-spec update_cluster(rms_cluster:key(), cluster_data(), state()) ->
     ok | {error, not_found | term()}.
 update_cluster(Key, Cluster, State) ->
     case ets:lookup(?CLUSTER_TAB, Key) of
@@ -295,7 +296,7 @@ delete_cluster(Key, State) ->
             end
     end.
 
--spec add_node(node(), state()) -> ok | {error, exists | term()}.
+-spec add_node(node_data(), state()) -> ok | {error, exists | term()}.
 add_node(Node, State) ->
     Key = proplists:get_value(key, Node),
     case ets:lookup(?NODE_TAB, Key) of
@@ -311,7 +312,7 @@ add_node(Node, State) ->
             {error, exists}
     end.
 
--spec update_node(rms_node:key(), node(), state()) ->
+-spec update_node(rms_node:key(), node_data(), state()) ->
     ok | {error, not_found | term()}.
 update_node(Key, Node, State) ->
     case ets:lookup(?NODE_TAB, Key) of
@@ -343,11 +344,12 @@ delete_node(Key, State) ->
     end.
 
 -spec get_cluster_data(rms_cluster:key(), state()) ->
-    {ok, cluster()} | {error, term()}.
+    {ok, cluster_data()} | {error, term()}.
 get_cluster_data(Key, State) ->
     get_data(?ZK_CLUSTER_NODE, Key, State).
 
--spec get_node_data(rms_node:key(), state()) -> {ok, node()} | {error, term()}.
+-spec get_node_data(rms_node:key(), state()) ->
+    {ok, node_data()} | {error, term()}.
 get_node_data(Key, State) ->
     get_data(?ZK_NODE_NODE, Key, State).
 
@@ -363,12 +365,13 @@ get_data(Node, Key, #state{root_node = RootNode}) ->
             {error, Reason}
     end.
 
--spec set_cluster_data(rms_cluster:key(), cluster(), state()) ->
+-spec set_cluster_data(rms_cluster:key(), cluster_data(), state()) ->
     ok | {error, term()}.
 set_cluster_data(Key, Cluster, State) ->
     set_data(?ZK_CLUSTER_NODE, Key, Cluster, State).
 
--spec set_node_data(rms_node:key(), node(), state()) -> ok | {error, term()}.
+-spec set_node_data(rms_node:key(), node_data(), state()) ->
+    ok | {error, term()}.
 set_node_data(Key, Node, State) ->
     set_data(?ZK_NODE_NODE, Key, Node, State).
 

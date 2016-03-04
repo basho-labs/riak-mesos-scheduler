@@ -76,7 +76,7 @@ get_node_keys(ClusterKey) ->
     [Key || {Key, Node} <- rms_metadata:get_nodes(),
      ClusterKey =:= proplists:get_value(cluster_key, Node)].
 
--spec get_node(rms_node:key()) -> {ok, rms_metadata:node()} | {error, term()}.
+-spec get_node(rms_node:key()) -> {ok, rms_metadata:nd()} | {error, term()}.
 get_node(Key) ->
     rms_metadata:get_node(Key).
 
