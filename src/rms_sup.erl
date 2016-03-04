@@ -51,6 +51,9 @@ init([]) ->
     FrameworkRole = rms_config:get_value(role, "riak", string),
     FrameworkHostname = rms_config:get_value(hostname, undefined, string),
     FrameworkPrincipal = rms_config:get_value(principal, "riak", string),
+    FrameworkFailoverTimeout =
+        rms_config:get_value(failover_timeout, 10000.0, string),
+
     NodeCpus = rms_config:get_value(node_cpus, 1.0, float),
     NodeMem = rms_config:get_value(node_mem, 1024.0, float),
     NodeDisk = rms_config:get_value(node_disk, 4000.0, float),
@@ -62,6 +65,7 @@ init([]) ->
                         {framework_role, FrameworkRole},
                         {framework_hostname, FrameworkHostname},
                         {framework_principal, FrameworkPrincipal},
+                        {framework_failover_timeout, FrameworkFailoverTimeout},
                         {node_cpus, NodeCpus},
                         {node_mem, NodeMem},
                         {node_disk, NodeDisk}],
