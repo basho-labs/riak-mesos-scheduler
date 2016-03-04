@@ -42,12 +42,15 @@
                     cluster_keys = [] :: [rms_cluster:key()],
                     removed_cluster_keys = [] :: [rms_cluster:key()]}).
 
--record(state, {scheduler :: scheduler(),
-                node_data :: rms_node_manager:node_data(),
-                framework_info :: erl_mesos:'FrameworkInfo'()}).
+-record(state, {scheduler :: scheduler_state(),
+                node_data :: rms_node_manager:node_data()}).
 
--type scheduler() :: #scheduler{}.
--export_type([scheduler/0]).
+-type scheduler_state() :: #scheduler{}.
+-export_type([scheduler_state/0]).
+
+-type state() :: #state{}.
+
+-type framework_info() :: [{atom(), term()}].
 
 -define(OFFER_INTERVAL, 5).
 
@@ -55,15 +58,38 @@
 
 init(Options) ->
     lager:info("Scheduler options: ~p.", [Options]),
-    %% TODO: check if framework id exist in metadata manager.
-    FrameworkInfo = framework_info(Options),
-    NodeData = rms_node_manager:node_data(Options),
-    lager:info("Start scheduler with framework info: ~p.", [FrameworkInfo]),
-    {ok, FrameworkInfo, true, #state{node_data = NodeData,
-                                     framework_info = FrameworkInfo}}.
+    case get_scheduler() of
+        {ok, #scheduler{framework_id = FrameworkId} = Scheduler} ->
+            Options1 = [{framework_id, FrameworkId} | Options],
+            init(Options1, Scheduler);
+        {error, not_found} ->
+            init(Options, #scheduler{});
+        {error, Reason} ->
+            lager:error("Error during retrving sheduler state. Reason: ~p.",
+                        [Reason]),
+            {stop, {error, Reason}}
+    end.
 
-registered(_SchedulerInfo, EventSubscribed, State) ->
-    lager:info("Scheduler registered: ~p.", [EventSubscribed]),
+registered(_SchedulerInfo, #'Event.Subscribed'{framework_id = FrameworkId},
+           #state{scheduler = #scheduler{framework_id = undefined} =
+                  Scheduler} = State) ->
+    Scheduler1 = Scheduler#scheduler{framework_id = FrameworkId},
+    case set_scheduler(Scheduler1) of
+        ok ->
+            lager:info("New scheduler registered. Framework id: ~p.",
+                       [framework_id_value(FrameworkId)]),
+            {ok, State#state{scheduler = Scheduler1}};
+        {error, Reason} ->
+            lager:error("Error during saving sheduler state. Reason: ~p.",
+                        [Reason]),
+            {ok, State}
+    end;
+registered(_SchedulerInfo, _EventSubscribed,
+           #state{scheduler = #scheduler{framework_id = FrameworkId}} =
+           State) ->
+    %% TODO: reconcile here.
+    lager:info("Scheduler registered. Framework id: ~p.",
+               [framework_id_value(FrameworkId)]),
     {ok, State}.
 
 reregistered(_SchedulerInfo, State) ->
@@ -77,8 +103,6 @@ disconnected(_SchedulerInfo, State) ->
 resource_offers(SchedulerInfo, #'Event.Offers'{offers = Offers},
                 #state{node_data = NodeData} = State) ->
     {OfferIds, Operations} = apply_offers(Offers, NodeData),
-    %% lager:info("~n~nOfferIds: ~p.~n~n", [OfferIds]),
-    %% lager:info("~n~nOperations: ~p.~n~n", [Operations]),
     Filters = #'Filters'{refuse_seconds = ?OFFER_INTERVAL},
     ok = erl_mesos_scheduler:accept(SchedulerInfo, OfferIds, Operations,
                                     Filters),
@@ -125,23 +149,88 @@ terminate(_SchedulerInfo, Reason, _State) ->
 
 %% Internal functions.
 
+-spec init(rms:options(), scheduler_state()) ->
+    {ok, erl_mesos:'FrameworkInfo'(), true, state()}.
+init(Options, Scheduler) ->
+    FrameworkInfo = framework_info(Options),
+    lager:info("Start scheduler. Framework info: ~p.",
+               [framework_info_to_list(FrameworkInfo)]),
+    NodeData = rms_node_manager:node_data(Options),
+    {ok, FrameworkInfo, true, #state{scheduler = Scheduler,
+                                     node_data = NodeData}}.
+
+-spec framework_id_value(erl_mesos:'FrameworkID'()) -> string().
+framework_id_value(#'FrameworkID'{value = Value}) ->
+    Value.
+
 -spec framework_info(rms:options()) -> erl_mesos:'FrameworkInfo'().
 framework_info(Options) ->
-    #'FrameworkInfo'{user = proplists:get_value(framework_user, Options),
-                     name = proplists:get_value(framework_name, Options),
-                     role = proplists:get_value(framework_role, Options),
-                     hostname =
-                         proplists:get_value(framework_hostname, Options),
-                     principal =
-                         proplists:get_value(framework_principal, Options),
+    Id = proplists:get_value(framework_id, Options),
+    User = proplists:get_value(framework_user, Options),
+    Name = proplists:get_value(framework_name, Options),
+    Role = proplists:get_value(framework_role, Options),
+    Hostname = proplists:get_value(framework_hostname, Options),
+    Principal = proplists:get_value(framework_principal, Options),
+    FailoverTimeout = proplists:get_value(framework_failover_timeout, Options),
+    #'FrameworkInfo'{id = Id,
+                     user = User,
+                     name = Name,
+                     role = Role,
+                     hostname = Hostname,
+                     principal = Principal,
                      %% TODO: We will want to enable checkpoint.
                      checkpoint = undefined,
-                     %% TODO: Will need to check ZK for this for reregistration.
-                     id = undefined,
                      %% TODO: Get this from wm helper probably.
                      webui_url = undefined,
-                     %% TODO: Add this to configurable options.
-                     failover_timeout = undefined}.
+                     failover_timeout = FailoverTimeout}.
+
+-spec framework_info_to_list(erl_mesos:'FrameworkInfo'()) -> framework_info().
+framework_info_to_list(#'FrameworkInfo'{id = Id,
+                                        user = User,
+                                        name = Name,
+                                        role = Role,
+                                        hostname = Hostname,
+                                        principal = Principal,
+                                        checkpoint = Checkpoint,
+                                        webui_url = WebuiUrl,
+                                        failover_timeout = FailoverTimeout}) ->
+    [{id, Id},
+     {user, User},
+     {name, Name},
+     {role, Role},
+     {hostname, Hostname},
+     {principal, Principal},
+     {checkpoint, Checkpoint},
+     {webui_url, WebuiUrl},
+     {failover_timeout, FailoverTimeout}].
+
+-spec get_scheduler() -> {ok, scheduler_state()} | {error, term()}.
+get_scheduler() ->
+    case rms_metadata:get_scheduler() of
+        {ok, Scheduler} ->
+            {ok, from_list(Scheduler)};
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+-spec set_scheduler(scheduler_state()) -> ok | {error, term()}.
+set_scheduler(Scheduler) ->
+    rms_metadata:set_scheduler(to_list(Scheduler)).
+
+-spec to_list(scheduler_state()) -> rms_metadata:scheduler_state().
+to_list(#scheduler{framework_id = FrameworkId,
+                   cluster_keys = ClusterKeys,
+                   removed_cluster_keys = RemovedClusterKeys}) ->
+    [{framework_id, FrameworkId},
+     {cluster_keys, ClusterKeys},
+     {removed_cluster_keys, RemovedClusterKeys}].
+
+-spec from_list(rms_metadata:scheduler_state()) -> scheduler_state().
+from_list(SchedulerList) ->
+    #scheduler{framework_id = proplists:get_value(framework_id, SchedulerList),
+               cluster_keys = proplists:get_value(cluster_keys, SchedulerList),
+               removed_cluster_keys =
+                   proplists:get_value(removed_cluster_keys, SchedulerList)}.
 
 -spec apply_offers([erl_mesos:'Offer'()], rms_node_manager:node_data()) ->
     {[erl_mesos:'OfferID'()], [erl_mesos:'Offer.Operation'()]}.
