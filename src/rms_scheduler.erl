@@ -84,12 +84,15 @@ registered(_SchedulerInfo, #'Event.Subscribed'{framework_id = FrameworkId},
                         [Reason]),
             {ok, State}
     end;
-registered(_SchedulerInfo, _EventSubscribed,
+registered(SchedulerInfo, _EventSubscribed,
            #state{scheduler = #scheduler{framework_id = FrameworkId}} =
            State) ->
-    %% TODO: reconcile here.
     lager:info("Scheduler registered. Framework id: ~p.",
                [framework_id_value(FrameworkId)]),
+    TaskIdValues = rms_node_manager:get_node_keys(),
+    lager:info("Scheduler task ids to reconcile: ~p.", [TaskIdValues]),
+    ReconcileTasks = reconcile_tasks(TaskIdValues),
+    ok = erl_mesos_scheduler:reconcile(SchedulerInfo, ReconcileTasks),
     {ok, State}.
 
 reregistered(_SchedulerInfo, State) ->
@@ -165,7 +168,7 @@ framework_id_value(#'FrameworkID'{value = Value}) ->
 
 -spec framework_info(rms:options()) -> erl_mesos:'FrameworkInfo'().
 framework_info(Options) ->
-    Id = proplists:get_value(framework_id, Options),
+    Id = framework_id_value(proplists:get_value(framework_id, Options)),
     User = proplists:get_value(framework_user, Options),
     Name = proplists:get_value(framework_name, Options),
     Role = proplists:get_value(framework_role, Options),
@@ -260,3 +263,10 @@ apply_offer(Offer, NodeData) ->
     OfferId = rms_offer_helper:get_offer_id(OfferHelper1),
     Operations = rms_offer_helper:operations(OfferHelper1),
     {OfferId, Operations}.
+
+-spec reconcile_tasks([string()]) -> [erl_mesos:'Call.Reconcile.Task'()].
+reconcile_tasks(TaskIdValues) ->
+    [begin
+         TaskId = erl_mesos_utils:task_id(TaskIdValue),
+         #'Call.Reconcile.Task'{task_id = TaskId}
+     end || TaskIdValue <- TaskIdValues].
