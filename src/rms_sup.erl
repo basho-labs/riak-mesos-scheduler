@@ -35,12 +35,12 @@ start_link() ->
 
 init([]) ->
     Ip = rms_config:get_value(ip, "0.0.0.0"),
-    %% TODO: Will need to get this dynamically... somehow.
     Port = rms_config:get_value(port, 9090, integer),
     WebConfig = rms_wm_resource:dispatch(Ip, Port),
 
-    ZooKeeperHost = rms_config:get_value(zk_host, "localhost"),
-    ZooKeeperPort = rms_config:get_value(zk_port, 2181),
+    ZooKeeper = rms_config:get_value(zk, "localhost:2181", string),
+    [ZooKeeperHost,P] = string:tokens(ZooKeeper, ":"),
+    ZooKeeperPort = list_to_integer(P),
 
     %% TODO: need to turn this into a list if it contains commas.
     Master = rms_config:get_value(master, <<"localhost:5050">>, binary),
@@ -54,9 +54,17 @@ init([]) ->
     FrameworkFailoverTimeout =
         rms_config:get_value(failover_timeout, 10000.0, string),
 
+    %% TODO: use these if they are set
+    _FrameworkAuthProvider = rms_config:get_value(provider, "", string),
+    _FrameworkAuthSecret = rms_config:get_value(secret_file, "", string),
+
     NodeCpus = rms_config:get_value(node_cpus, 0.5, float),
     NodeMem = rms_config:get_value(node_mem, 1024.0, float),
     NodeDisk = rms_config:get_value(node_disk, 4000.0, float),
+
+    %% TODO: use these
+    _ExecutorCpus = rms_config:get_value(executor_cpus, 0.1, float),
+    _ExecutorMem = rms_config:get_value(executor_mem, 512.0, float),
 
     Ref = riak_mesos_scheduler,
     Scheduler = rms_scheduler,
