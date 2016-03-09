@@ -52,7 +52,7 @@ init([]) ->
     FrameworkHostname = rms_config:get_value(hostname, undefined, string),
     FrameworkPrincipal = rms_config:get_value(principal, "riak", string),
     FrameworkFailoverTimeout =
-        rms_config:get_value(failover_timeout, 10000.0, string),
+        rms_config:get_value(failover_timeout, 10000.0, float),
 
     %% TODO: use these if they are set
     _FrameworkAuthProvider = rms_config:get_value(provider, "", string),
