@@ -160,6 +160,10 @@ get_cluster_pid(Key) ->
             {error, not_found}
     end.
 
+-spec apply_offer([rms_node:key()], boolean(),
+                  rms_offer_helper:offer_helper(),
+                  rms_node_manager:node_data()) ->
+    {boolean(), rms_offer_helper:offer_helper()}.
 apply_offer([NodeKey | NodeKeys], NeedsReconciliation, OfferHelper, NodeData) ->
     case rms_node_manager:node_needs_to_be_reconciled(NodeKey) of
         true ->
@@ -177,6 +181,10 @@ apply_offer([NodeKey | NodeKeys], NeedsReconciliation, OfferHelper, NodeData) ->
 apply_offer([], NeedsReconciliation, OfferHelper, _FrameworkInfo) ->
     {NeedsReconciliation, OfferHelper}.
 
+-spec schedule_node(rms_node:key(), [rms_node:key()], boolean(),
+                    rms_offer_helper:offer_helper(),
+                    rms_node_manager:node_data()) ->
+    {boolean(), rms_offer_helper:offer_helper()}.
 schedule_node(NodeKey, NodeKeys, NeedsReconciliation, OfferHelper, NodeData) ->
     case rms_node_manager:node_has_reservation(NodeKey) of
         true ->
