@@ -142,7 +142,7 @@ reset() ->
 
 %% gen_server callback functions.
 
--spec init({}) -> state().
+-spec init({}) -> {ok, state()}.
 init({}) ->
     ets:new(?CLUSTER_TAB, [set, protected, named_table]),
     ets:new(?NODE_TAB, [set, protected, named_table]),
