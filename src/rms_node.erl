@@ -79,9 +79,7 @@ init({Key, ClusterKey}) ->
                     {ok, Node};
                 {error, Reason} ->
                     {stop, Reason}
-            end;
-        {error, Reason} ->
-            {stop, Reason}
+            end
     end.
 handle_call(delete, _From, Node) ->
     Node1 = Node#node{status = shutting_down},
