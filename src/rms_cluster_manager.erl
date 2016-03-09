@@ -188,7 +188,7 @@ apply_offer([], NeedsReconciliation, OfferHelper, _FrameworkInfo) ->
 schedule_node(NodeKey, NodeKeys, NeedsReconciliation, OfferHelper, NodeData) ->
     case rms_node_manager:node_has_reservation(NodeKey) of
         true ->
-            %% TODO: launch Riak node.
+            %% TODO: launch Riak node by rms_node_manager:apply_reserved_offer/3.
             apply_offer(NodeKeys, false, OfferHelper, NodeData);
         false ->
             %% New node.

@@ -106,6 +106,7 @@ delete_node(Key) ->
             {error, Reason}
     end.
 
+%% Tmp solution for testing the resource management.
 %% TODO: replace with get_node_keys/0 and remove.
 node_keys() ->
     ["test_1"].
@@ -262,6 +263,7 @@ apply_reserved_offer(_NodeKey, OfferHelper,
 %%             Operation = erl_mesos_utils:launch_offer_operation([TaskInfo]),
     case CanFitReserved and CanFitUnreserved of
         true ->
+            %% TODO: Create task to launch with Riak executor and put it to the offer helper.
             {ok, OfferHelper};
         false ->
             {error, not_enophe_resources}
@@ -294,5 +296,5 @@ get_node_pid(Key) ->
 
 -spec node_persistence_id() -> string().
 node_persistence_id() ->
-    %% Generate uuid here.
+    %% TODO: Generate uuid here.
     "uuid".
