@@ -118,6 +118,7 @@ offer_rescinded(_SchedulerInfo, #'Event.Rescind'{} = EventRescind, State) ->
     {ok, State}.
 
 status_update(_SchedulerInfo, EventUpdate, State) ->
+    %% TODO: handle update event and update node state via cluster manager.
     lager:info("Scheduler received stauts update event. "
                "Update: ~p~n", [EventUpdate]),
     {ok, State}.
@@ -162,13 +163,16 @@ init(Options, Scheduler) ->
     {ok, FrameworkInfo, true, #state{scheduler = Scheduler,
                                      node_data = NodeData}}.
 
--spec framework_id_value(erl_mesos:'FrameworkID'()) -> string().
+-spec framework_id_value(undefined | erl_mesos:'FrameworkID'()) ->
+    undefined | string().
+framework_id_value(undefined) ->
+    undefined;
 framework_id_value(#'FrameworkID'{value = Value}) ->
     Value.
 
 -spec framework_info(rms:options()) -> erl_mesos:'FrameworkInfo'().
 framework_info(Options) ->
-    Id = framework_id_value(proplists:get_value(framework_id, Options)),
+    Id = proplists:get_value(framework_id, Options),
     User = proplists:get_value(framework_user, Options),
     Name = proplists:get_value(framework_name, Options),
     Role = proplists:get_value(framework_role, Options),
@@ -197,7 +201,7 @@ framework_info_to_list(#'FrameworkInfo'{id = Id,
                                         checkpoint = Checkpoint,
                                         webui_url = WebuiUrl,
                                         failover_timeout = FailoverTimeout}) ->
-    [{id, Id},
+    [{id, framework_id_value(Id)},
      {user, User},
      {name, Name},
      {role, Role},
