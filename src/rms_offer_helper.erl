@@ -105,7 +105,7 @@ get_hostname(#offer_helper{offer = #'Offer'{hostname = Hostname}}) ->
 get_persistence_ids(#offer_helper{persistence_ids = PersistenceIds}) ->
     PersistenceIds.
 
--spec get_reserved_resources(offer_helper()) -> [erl_mesos:'Resource'()].
+-spec get_reserved_resources(offer_helper()) -> erl_mesos_utils:resources().
 get_reserved_resources(#offer_helper{reserved_resources = ReservedResources}) ->
     ReservedResources.
 
@@ -125,7 +125,7 @@ get_reserved_resources_disk(OfferHelper) ->
 get_reserved_resources_ports(OfferHelper) ->
     erl_mesos_utils:resources_ports(get_reserved_resources(OfferHelper)).
 
--spec get_unreserved_resources(offer_helper()) -> [erl_mesos:'Resource'()].
+-spec get_unreserved_resources(offer_helper()) -> erl_mesos_utils:resources().
 get_unreserved_resources(#offer_helper{unreserved_resources =
                                        UnreservedResources}) ->
     UnreservedResources.
@@ -241,7 +241,8 @@ apply_unreserved_resources(Cpus, Mem, Disk, NumPorts,
               undefined, UnreservedResources),
     OfferHelper#offer_helper{unreserved_resources = UnreservedResources1}.
 
--spec can_fit_reserved(float(), float(), float(), pos_integer(),
+-spec can_fit_reserved(undefined | float(), undefined | float(),
+                       undefined | float(), undefined | pos_integer(),
                        offer_helper()) ->
     boolean().
 can_fit_reserved(Cpus, Mem, Disk, NumPorts, OfferHelper) ->
@@ -250,7 +251,8 @@ can_fit_reserved(Cpus, Mem, Disk, NumPorts, OfferHelper) ->
     get_reserved_resources_disk(OfferHelper) >= Disk andalso
     length(get_reserved_resources_ports(OfferHelper)) >= NumPorts.
 
--spec can_fit_unreserved(float(), float(), float(), pos_integer(),
+-spec can_fit_unreserved(undefined | float(), undefined | float(),
+                         undefined | float(), undefined | pos_integer(),
                          offer_helper()) ->
     boolean().
 can_fit_unreserved(Cpus, Mem, Disk, NumPorts, OfferHelper) ->
