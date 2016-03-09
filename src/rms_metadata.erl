@@ -77,7 +77,7 @@
 start_link() ->
     gen_server:start_link({local,?MODULE}, ?MODULE, {}, []).
 
--spec get_scheduler() -> ok | {error, term()}.
+-spec get_scheduler() -> {ok, scheduler_state()} | {error, term()}.
 get_scheduler() ->
     gen_server:call(?MODULE, get_scheduler).
 
