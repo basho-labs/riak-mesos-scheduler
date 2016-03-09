@@ -48,7 +48,7 @@
 -type key() :: string().
 -export_type([key/0]).
 
--type status() :: requested.
+-type status() :: undefined | requested | shutting_down.
 -export_type([status/0]).
 
 -type node_state() :: #node{}.
