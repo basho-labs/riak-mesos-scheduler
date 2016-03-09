@@ -11,6 +11,13 @@ main() {
     if [ -z "$HOME" ]; then
         export HOME=`eval echo "~$WHOAMI"`
     fi
+    echo "Setting riak_mesos_scheduler environment variables..."
+    if [ -z "$PORT0" ]; then
+        export PORT0=9090
+    fi
+    if [ -z "$RIAK_MESOS_PORT" ]; then
+        export RIAK_MESOS_PORT=$PORT0
+    fi
 
     echo "Starting riak_mesos_scheduler..."
     riak_mesos_scheduler/bin/riak_mesos_scheduler console -noinput
