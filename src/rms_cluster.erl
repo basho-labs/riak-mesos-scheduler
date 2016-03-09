@@ -109,9 +109,7 @@ init(Key) ->
                     {ok, Cluster};
                 {error, Reason} ->
                     {stop, Reason}
-            end;
-        {error, Reason} ->
-            {stop, Reason}
+            end
     end.
 
 handle_call({set_riak_config, RiakConfig}, _From, Cluster) ->
