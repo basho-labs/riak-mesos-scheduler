@@ -18,39 +18,42 @@
 %%
 %% -------------------------------------------------------------------
 
--module(riak_mesos_scheduler_config).
+-module(rms_config).
 
--export([
-  get_value/2,
-  get_value/3
-]).
+-export([get_value/2, get_value/3]).
 
-%%%===================================================================
-%%% API
-%%%===================================================================
+%% External functions.
 
 get_value(Key, Default) ->
     case get_env_value(Key) of
         false ->
-            application:get_env(riak_mesos_scheduler, Key, Default);
-        Value -> Value
+            application:get_env(rms, Key, Default);
+        Value ->
+            Value
     end.
 
 get_value(Key, Default, Type) ->
     case get_value(Key, Default) of
-        Default -> Default;
-        V -> translate_value(V, Type)
+        Default ->
+            Default;
+        Value ->
+            convert_value(Value, Type)
     end.
 
-%% ====================================================================
-%% Private
-%% ====================================================================
+%% Internal functions.
 
-translate_value(Value, integer) when is_list(Value) -> list_to_integer(Value);
-translate_value(Value, boolean) when is_list(Value) -> list_to_atom(Value);
-translate_value(Value, atom) when is_list(Value) -> list_to_atom(Value);
-translate_value(Value, binary) when is_list(Value) -> list_to_binary(Value);
-translate_value(Value, _) -> Value.
+convert_value(Value, integer) when is_list(Value) ->
+    list_to_integer(Value);
+convert_value(Value, float) when is_list(Value) ->
+    list_to_float(Value);
+convert_value(Value, boolean) when is_list(Value) ->
+    list_to_atom(Value);
+convert_value(Value, atom) when is_list(Value) ->
+    list_to_atom(Value);
+convert_value(Value, binary) when is_list(Value) ->
+    list_to_binary(Value);
+convert_value(Value, _Type) ->
+    Value.
 
 get_env_value(Key) ->
     Key1 = "RIAK_MESOS_" ++ string:to_upper(atom_to_list(Key)),

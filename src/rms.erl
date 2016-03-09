@@ -18,21 +18,19 @@
 %%
 %% -------------------------------------------------------------------
 
--module(riak_mesos_scheduler_app).
+-module(rms).
+
 -behaviour(application).
 
 -export([start/2, stop/1]).
 
-%%%===================================================================
-%%% API
-%%%===================================================================
+-type options() :: [{atom(), term()}].
+-export_type([options/0]).
+
+%% application callback functions.
 
 start(_Type, _StartArgs) ->
-    application:ensure_started(erl_mesos),
-    {ok, Pid} = riak_mesos_sup:start_link(),
-    %%riak_mesos_cli:load_schema(),
-    %%riak_mesos_cli:register(),
-    {ok, Pid}.
+    rms_sup:start_link().
 
 stop(_State) ->
     ok.
