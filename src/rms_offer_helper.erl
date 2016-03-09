@@ -312,8 +312,8 @@ resources_to_list(OfferHelper) ->
                  {mem, ReservedMem},
                  {disk, ReservedDisk},
                  {num_ports, ReservedNumPorts},
-                 {num_persistence_ids, ReservedNumPersistenceIds}],
-      unreserved, [{cpus, UnreservedCpus},
+                 {num_persistence_ids, ReservedNumPersistenceIds}]},
+     {unreserved, [{cpus, UnreservedCpus},
                    {mem, UnreservedMem},
                    {disk, UnreservedDisk},
                    {num_ports, UnreservedNumPorts}]}].
@@ -541,7 +541,7 @@ apply_ports(NumPorts, Role, Principal, #resources{ports = ResPorts} = Res,
             {Res1, Resource1}
     end.
 
--spec ports_slice(pos_integer(), pos_integer()) ->
+-spec ports_slice(pos_integer(), [pos_integer()]) ->
     {[non_neg_integer()], [non_neg_integer()]}.
 ports_slice(NumPorts, Ports) when NumPorts < length(Ports) ->
     SliceStart = random:uniform(length(Ports) - NumPorts),
