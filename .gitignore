@@ -4,3 +4,5 @@ doc/*
 ebin
 logs
 *.beam
+rel/riak_mesos_scheduler
+packages
