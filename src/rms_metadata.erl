@@ -148,6 +148,8 @@ init({}) ->
     ets:new(?NODE_TAB, [set, protected, named_table]),
     {ok, RootNode, _Data} = mesos_metadata_manager:get_root_node(),
     State = #state{root_node = RootNode},
+    init_clusters(State),
+    init_nodes(State),
     restore_clusters(State),
     restore_nodes(State),
     {ok, State}.
@@ -222,6 +224,15 @@ set_scheduler(Scheduler, #state{root_node = RootNode}) ->
             {error, Reason}
     end.
 
+-spec init_clusters(state()) -> ok.
+init_clusters(#state{root_node = RootNode}) ->
+    mesos_metadata_manager:make_child(RootNode, ?ZK_CLUSTER_NODE),
+    ok.
+
+-spec init_nodes(state()) -> ok.
+init_nodes(#state{root_node = RootNode}) ->
+    mesos_metadata_manager:make_child(RootNode, ?ZK_NODE_NODE),
+    ok.
 
 -spec restore_clusters(state()) -> ok.
 restore_clusters(#state{root_node = RootNode} = State) ->
