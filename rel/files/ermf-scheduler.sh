@@ -18,16 +18,6 @@ main() {
     if [ -z "$RIAK_MESOS_PORT" ]; then
         export RIAK_MESOS_PORT=$PORT0
     fi
-
-    mkdir -p artifacts
-    mv riak-*.tar.gz artifacts/riak.tar.gz  &> /dev/null
-    mv riak_ts-*.tar.gz artifacts/riak.tar.gz  &> /dev/null
-    mv riak_ee-*.tar.gz artifacts/riak.tar.gz  &> /dev/null
-    mv riak_explorer-*.tar.gz artifacts/riak_explorer.tar.gz
-    mv riak_mesos_executor-*.tar.gz artifacts/riak_mesos_executor.tar.gz
-    rm -rf root
-    rm -rf riak_mesos_executor
-
     if [ -z "$RIAK_MESOS_EXECUTOR_PKG"]; then
         export RIAK_MESOS_EXECUTOR_PKG=riak_mesos_executor.tar.gz
     fi
@@ -37,6 +27,15 @@ main() {
     if [ -z "$RIAK_MESOS_RIAK_PKG"]; then
         export RIAK_MESOS_RIAK_PKG=riak.tar.gz
     fi
+
+    mkdir -p artifacts
+    mv riak-*.tar.gz artifacts/$RIAK_MESOS_RIAK_PKG  &> /dev/null
+    mv riak_ts-*.tar.gz artifacts/$RIAK_MESOS_RIAK_PKG  &> /dev/null
+    mv riak_ee-*.tar.gz artifacts/$RIAK_MESOS_RIAK_PKG  &> /dev/null
+    mv riak_explorer-*.tar.gz artifacts/$RIAK_MESOS_EXPLORER_PKG
+    mv riak_mesos_executor-*.tar.gz artifacts/$RIAK_MESOS_EXECUTOR_PKG
+    rm -rf root
+    rm -rf riak_mesos_executor
 
     echo "Starting riak_mesos_scheduler..."
     riak_mesos_scheduler/bin/riak_mesos_scheduler console -noinput
