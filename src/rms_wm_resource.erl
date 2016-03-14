@@ -2,7 +2,8 @@
 
 -export([routes/0, dispatch/2]).
 
--export([static_file_exists/1,
+-export([static_types/1,
+         static_file_exists/1,
          static_last_modified/1,
          static_file/1]).
 
@@ -61,7 +62,8 @@
                 path :: [string() | atom()],
                 methods = ['GET'] :: [atom()],
                 accepts = [] :: [{string(), atom()}],
-                provides = [?PROVIDE(?JSON_TYPE)] :: [{string() | atom(), atom()}],
+                provides = [?PROVIDE(?JSON_TYPE)] :: [{string(), atom()}] |
+                           {module(), atom()},
                 exists = true :: {module(), atom()} | boolean(),
                 content = [{success, true}] :: {module(), atom()} |
                           nonempty_list(),
@@ -69,8 +71,7 @@
                 delete :: {module(), atom()} | undefined,
                 post_create = false :: boolean(),
                 post_path :: {module(), atom()} | undefined,
-                last_modified :: {module(), atom()} | undefined,
-                etag :: {module(), atom()} | undefined}).
+                last_modified :: {module(), atom()} | undefined}).
 
 -type route() :: #route{}.
 
@@ -85,10 +86,9 @@ routes() ->
      #route{base = [],
             path = ["static", static_resource],
             exists = {?MODULE, static_file_exists},
-            provides = [{guess, provide_static_content}],
+            provides = {?MODULE, static_types},
             content = {?MODULE, static_file},
-            last_modified = {?MODULE, static_last_modified},
-            etag = {?MODULE, static_generate_etag}},
+            last_modified = {?MODULE, static_last_modified}},
      %% Clusters.
      #route{path = ["clusters"],
             content = {?MODULE, clusters}},
@@ -150,8 +150,14 @@ dispatch(Ip, Port) ->
 
 %% Static.
 
+static_types(ReqData) ->
+    Resource = wrq:path_info(static_resource, ReqData),
+    CT = webmachine_util:guess_mime(Resource),
+    {[{CT, provide_static_content}], ReqData}.
+
 static_file_exists(ReqData) ->
     Filename = static_filename(ReqData),
+    lager:info("Attempting to fetch static file: ~p", [Filename]),
     Result = filelib:is_regular(Filename),
     {Result, ReqData}.
 
@@ -163,7 +169,7 @@ static_file(ReqData) ->
     Filename = static_filename(ReqData),
     {ok, Response} = file:read_file(Filename),
     ET = hash_body(Response),
-    ReqData1 = wrq:set_resp_header("ETag", webmachine_util:quoted_string(ET)),
+    ReqData1 = wrq:set_resp_header("ETag", webmachine_util:quoted_string(ET), ReqData),
     {Response, ReqData1}.
 
 %% Clusters.
@@ -313,10 +319,9 @@ allowed_methods(ReqData, Ctx = #ctx{route = Route}) ->
 
 content_types_provided(ReqData, Ctx = #ctx{route = Route}) ->
     case Route#route.provides of
-        [{guess, ContentFunction}] ->
-            Resource = wrq:path_info(static_resource, ReqData),
-            CT = webmachine_util:guess_mime(Resource),
-            {[{CT, ContentFunction}], ReqData, Ctx};
+        {M, F} ->
+            {CTs, ReqData1} = M:F(ReqData),
+            {CTs, ReqData1, Ctx};
         Provides ->
             {Provides, ReqData, Ctx}
      end.
@@ -415,6 +420,7 @@ build_response({error, Error}) ->
     [{success, false}, {error, ErrStr}].
 
 static_filename(ReqData) ->
-    filename:join([?STATIC_ROOT, wrq:disp_path(ReqData)]).
+    Resource = wrq:path_info(static_resource, ReqData),
+    filename:join([?STATIC_ROOT, Resource]).
 
 hash_body(Body) -> mochihex:to_hex(binary_to_list(crypto:hash(sha,Body))).
