@@ -179,16 +179,15 @@ framework_info(Options) ->
     Hostname = proplists:get_value(framework_hostname, Options),
     Principal = proplists:get_value(framework_principal, Options),
     FailoverTimeout = proplists:get_value(framework_failover_timeout, Options),
+    WebUIURL = proplists:get_value(framework_webui_url, Options),
     #'FrameworkInfo'{id = Id,
                      user = User,
                      name = Name,
                      role = Role,
                      hostname = Hostname,
                      principal = Principal,
-                     %% TODO: We will want to enable checkpoint.
-                     checkpoint = undefined,
-                     %% TODO: Get this from wm helper probably.
-                     webui_url = rms_config:webui_url(),
+                     checkpoint = true,
+                     webui_url = WebUIURL,
                      failover_timeout = FailoverTimeout}.
 
 -spec framework_info_to_list(erl_mesos:'FrameworkInfo'()) -> framework_info().

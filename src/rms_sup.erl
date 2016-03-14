@@ -53,6 +53,7 @@ init([]) ->
     FrameworkPrincipal = rms_config:get_value(principal, "riak", string),
     FrameworkFailoverTimeout =
         rms_config:get_value(failover_timeout, 10000.0, float),
+    FrameworkWebUIURL = rms_config:webui_url(),
 
     %% TODO: use these if they are set
     _FrameworkAuthProvider = rms_config:get_value(provider, "", string),
@@ -73,6 +74,7 @@ init([]) ->
                         {framework_hostname, FrameworkHostname},
                         {framework_principal, FrameworkPrincipal},
                         {framework_failover_timeout, FrameworkFailoverTimeout},
+                        {framework_webui_url, FrameworkWebUIURL},
                         {node_cpus, NodeCpus},
                         {node_mem, NodeMem},
                         {node_disk, NodeDisk},
