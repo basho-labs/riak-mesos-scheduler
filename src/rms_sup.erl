@@ -49,7 +49,7 @@ init([]) ->
     FrameworkUser = rms_config:get_value(user, "root"),
     FrameworkName = rms_config:get_value(name, "riak", string),
     FrameworkRole = rms_config:get_value(role, "riak", string),
-    FrameworkHostname = rms_config:get_value(hostname, undefined, string),
+    FrameworkHostname = rms_config:framework_hostname(),
     FrameworkPrincipal = rms_config:get_value(principal, "riak", string),
     FrameworkFailoverTimeout =
         rms_config:get_value(failover_timeout, 10000.0, float),
@@ -65,10 +65,6 @@ init([]) ->
     ExecutorCpus = rms_config:get_value(executor_cpus, 0.1, float),
     ExecutorMem = rms_config:get_value(executor_mem, 512.0, float),
 
-    RiakPkg = rms_config:get_value(executor_pkg, "riak.tar.gz", string),
-    ExplorerPkg = rms_config:get_value(explorer_pkg, "riak_explorer.tar.gz", string),
-    ExecutorPkg = rms_config:get_value(executor_pkg, "riak_mesos_executor.tar.gz", string),
-
     Ref = riak_mesos_scheduler,
     Scheduler = rms_scheduler,
     SchedulerOptions = [{framework_user, FrameworkUser},
@@ -81,10 +77,7 @@ init([]) ->
                         {node_mem, NodeMem},
                         {node_disk, NodeDisk},
                         {executor_cpus, ExecutorCpus},
-                        {executor_mem, ExecutorMem},
-                        {riak_pkg, RiakPkg},
-                        {explorer_pkg, ExplorerPkg},
-                        {executor_pkg, ExecutorPkg}],
+                        {executor_mem, ExecutorMem}],
     Options = [{master_hosts, [Master]}],
 
     MetadataManagerSpec = {mesos_metadata_manager,

@@ -19,11 +19,12 @@ main() {
         export RIAK_MESOS_PORT=$PORT0
     fi
 
-    mv riak-*.tar.gz riak.tar.gz  &> /dev/null
-    mv riak_ts-*.tar.gz riak.tar.gz  &> /dev/null
-    mv riak_ee-*.tar.gz riak.tar.gz  &> /dev/null
-    mv riak_explorer-*.tar.gz riak_explorer.tar.gz
-    mv riak_mesos_executor-*.tar.gz riak_mesos_executor.tar.gz
+    mkdir -p artifacts
+    mv riak-*.tar.gz artifacts/riak.tar.gz  &> /dev/null
+    mv riak_ts-*.tar.gz artifacts/riak.tar.gz  &> /dev/null
+    mv riak_ee-*.tar.gz artifacts/riak.tar.gz  &> /dev/null
+    mv riak_explorer-*.tar.gz artifacts/riak_explorer.tar.gz
+    mv riak_mesos_executor-*.tar.gz artifacts/riak_mesos_executor.tar.gz
     rm -rf root
     rm -rf riak_mesos_executor
 

@@ -188,7 +188,7 @@ framework_info(Options) ->
                      %% TODO: We will want to enable checkpoint.
                      checkpoint = undefined,
                      %% TODO: Get this from wm helper probably.
-                     webui_url = undefined,
+                     webui_url = rms_config:webui_url(),
                      failover_timeout = FailoverTimeout}.
 
 -spec framework_info_to_list(erl_mesos:'FrameworkInfo'()) -> framework_info().
@@ -274,3 +274,4 @@ reconcile_tasks(TaskIdValues) ->
          TaskId = erl_mesos_utils:task_id(TaskIdValue),
          #'Call.Reconcile.Task'{task_id = TaskId}
      end || TaskIdValue <- TaskIdValues].
+
