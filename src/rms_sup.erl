@@ -49,10 +49,11 @@ init([]) ->
     FrameworkUser = rms_config:get_value(user, "root"),
     FrameworkName = rms_config:get_value(name, "riak", string),
     FrameworkRole = rms_config:get_value(role, "riak", string),
-    FrameworkHostname = rms_config:get_value(hostname, undefined, string),
+    FrameworkHostname = rms_config:framework_hostname(),
     FrameworkPrincipal = rms_config:get_value(principal, "riak", string),
     FrameworkFailoverTimeout =
         rms_config:get_value(failover_timeout, 10000.0, float),
+    FrameworkWebUIURL = rms_config:webui_url(),
 
     %% TODO: use these if they are set
     _FrameworkAuthProvider = rms_config:get_value(provider, "", string),
@@ -62,9 +63,8 @@ init([]) ->
     NodeMem = rms_config:get_value(node_mem, 1024.0, float),
     NodeDisk = rms_config:get_value(node_disk, 4000.0, float),
 
-    %% TODO: use these
-    _ExecutorCpus = rms_config:get_value(executor_cpus, 0.1, float),
-    _ExecutorMem = rms_config:get_value(executor_mem, 512.0, float),
+    ExecutorCpus = rms_config:get_value(executor_cpus, 0.1, float),
+    ExecutorMem = rms_config:get_value(executor_mem, 512.0, float),
 
     Ref = riak_mesos_scheduler,
     Scheduler = rms_scheduler,
@@ -74,9 +74,12 @@ init([]) ->
                         {framework_hostname, FrameworkHostname},
                         {framework_principal, FrameworkPrincipal},
                         {framework_failover_timeout, FrameworkFailoverTimeout},
+                        {framework_webui_url, FrameworkWebUIURL},
                         {node_cpus, NodeCpus},
                         {node_mem, NodeMem},
-                        {node_disk, NodeDisk}],
+                        {node_disk, NodeDisk},
+                        {executor_cpus, ExecutorCpus},
+                        {executor_mem, ExecutorMem}],
     Options = [{master_hosts, [Master]}],
 
     MetadataManagerSpec = {mesos_metadata_manager,

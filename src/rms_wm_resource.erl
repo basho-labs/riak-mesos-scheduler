@@ -2,6 +2,11 @@
 
 -export([routes/0, dispatch/2]).
 
+-export([static_types/1,
+         static_file_exists/1,
+         static_last_modified/1,
+         static_file/1]).
+
 -export([clusters/1,
          cluster_exists/1,
          get_cluster/1,
@@ -32,10 +37,13 @@
          delete_resource/2,
          process_post/2,
          provide_text_content/2,
+         provide_static_content/2,
          accept_content/2,
          post_is_create/2,
-         create_path/2]).
+         create_path/2,
+         last_modified/2]).
 
+-define(STATIC_ROOT, "../artifacts/").
 -define(API_BASE, "api").
 -define(API_VERSION, "v1").
 -define(API_ROUTE, [?API_BASE, ?API_VERSION]).
@@ -54,14 +62,16 @@
                 path :: [string() | atom()],
                 methods = ['GET'] :: [atom()],
                 accepts = [] :: [{string(), atom()}],
-                provides = [?PROVIDE(?JSON_TYPE)] :: [{string(), atom()}],
+                provides = [?PROVIDE(?JSON_TYPE)] :: [{string(), atom()}] |
+                           {module(), atom()},
                 exists = true :: {module(), atom()} | boolean(),
                 content = [{success, true}] :: {module(), atom()} |
                           nonempty_list(),
                 accept :: {module(), atom()} | undefined,
                 delete :: {module(), atom()} | undefined,
                 post_create = false :: boolean(),
-                post_path :: {module(), atom()} | undefined}).
+                post_path :: {module(), atom()} | undefined,
+                last_modified :: {module(), atom()} | undefined}).
 
 -type route() :: #route{}.
 
@@ -72,7 +82,14 @@
 %% External functions.
 
 routes() ->
-    [%% Clusters.
+    [%% Static.
+     #route{base = [],
+            path = ["static", static_resource],
+            exists = {?MODULE, static_file_exists},
+            provides = {?MODULE, static_types},
+            content = {?MODULE, static_file},
+            last_modified = {?MODULE, static_last_modified}},
+     %% Clusters.
      #route{path = ["clusters"],
             content = {?MODULE, clusters}},
      #route{path = ["clusters", key],
@@ -130,6 +147,30 @@ dispatch(Ip, Port) ->
      {nodelay, true},
      {log_dir, "log"},
      {dispatch, lists:flatten(Resources)}].
+
+%% Static.
+
+static_types(ReqData) ->
+    Resource = wrq:path_info(static_resource, ReqData),
+    CT = webmachine_util:guess_mime(Resource),
+    {[{CT, provide_static_content}], ReqData}.
+
+static_file_exists(ReqData) ->
+    Filename = static_filename(ReqData),
+    lager:info("Attempting to fetch static file: ~p", [Filename]),
+    Result = filelib:is_regular(Filename),
+    {Result, ReqData}.
+
+static_last_modified(ReqData) ->
+    LM = filelib:last_modified(static_filename(ReqData)),
+    {LM, ReqData}.
+
+static_file(ReqData) ->
+    Filename = static_filename(ReqData),
+    {ok, Response} = file:read_file(Filename),
+    ET = hash_body(Response),
+    ReqData1 = wrq:set_resp_header("ETag", webmachine_util:quoted_string(ET), ReqData),
+    {Response, ReqData1}.
 
 %% Clusters.
 
@@ -277,7 +318,13 @@ allowed_methods(ReqData, Ctx = #ctx{route = Route}) ->
     {Route#route.methods, ReqData, Ctx}.
 
 content_types_provided(ReqData, Ctx = #ctx{route = Route}) ->
-    {Route#route.provides, ReqData, Ctx}.
+    case Route#route.provides of
+        {M, F} ->
+            {CTs, ReqData1} = M:F(ReqData),
+            {CTs, ReqData1, Ctx};
+        Provides ->
+            {Provides, ReqData, Ctx}
+     end.
 
 content_types_accepted(ReqData, Ctx = #ctx{route = Route}) ->
     {Route#route.accepts, ReqData, Ctx}.
@@ -306,6 +353,10 @@ provide_text_content(ReqData, Ctx = #ctx{route = #route{content = {M, F}}}) ->
             {Body, ReqData1, Ctx}
     end.
 
+provide_static_content(ReqData, Ctx = #ctx{route = #route{content = {M, F}}}) ->
+    {Body, ReqData1} = M:F(ReqData),
+    {Body, ReqData1, Ctx}.
+
 accept_content(ReqData, Ctx = #ctx{route = #route{accept = {M, F}}}) ->
     {Success, ReqData1} = M:F(ReqData),
     {Success, ReqData1, Ctx};
@@ -322,6 +373,12 @@ post_is_create(ReqData, Ctx = #ctx{route = #route{post_create = PostCreate}}) ->
 create_path(ReqData, Ctx = #ctx{route = #route{post_path = {M, F}}}) ->
     {Path, ReqData1} = M:F(ReqData),
     {Path, ReqData1, Ctx}.
+
+last_modified(ReqData, Ctx = #ctx{route = #route{last_modified = undefined}}) ->
+    {undefined, ReqData, Ctx};
+last_modified(ReqData, Ctx = #ctx{route = #route{last_modified = {M, F}}}) ->
+    {LM, ReqData1} = M:F(ReqData),
+    {LM, ReqData1, Ctx}.
 
 %% Internal functions.
 
@@ -361,3 +418,9 @@ build_response(ok) ->
 build_response({error, Error}) ->
     ErrStr = iolist_to_binary(io_lib:format("~p", [Error])),
     [{success, false}, {error, ErrStr}].
+
+static_filename(ReqData) ->
+    Resource = wrq:path_info(static_resource, ReqData),
+    filename:join([?STATIC_ROOT, Resource]).
+
+hash_body(Body) -> mochihex:to_hex(binary_to_list(crypto:hash(sha,Body))).

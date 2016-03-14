@@ -20,7 +20,42 @@
 
 -module(rms_config).
 
+-export([webui_url/0, artifact_urls/0, framework_hostname/0]).
+
 -export([get_value/2, get_value/3]).
+
+-define(DEFAULT_HOSTNAME, "riak.mesos").
+
+%% Helper functions.
+
+framework_hostname() ->
+    case get_value(hostname, undefined, string) of
+        undefined ->
+            case inet:gethostname() of
+                {ok, LH} ->
+                    case inet:gethostbyname(LH) of
+                        {ok, {_, FullHostname, _, _, _, _}} ->
+                            FullHostname;
+                        _ -> ?DEFAULT_HOSTNAME
+                    end;
+                _ ->
+                    ?DEFAULT_HOSTNAME
+            end;
+        HN -> HN
+    end.
+
+webui_url() ->
+    Hostname = framework_hostname(),
+    Port = rms_config:get_value(port, 9090, integer),
+    Hostname ++ ":" ++ integer_to_list(Port).
+
+artifact_urls() ->
+    Base = "http://" ++ webui_url() ++ "/static/",
+    [
+     Base ++ get_value(executor_pkg, "riak.tar.gz", string),
+     Base ++ get_value(explorer_pkg, "riak_explorer.tar.gz", string),
+     Base ++ get_value(executor_pkg, "riak_mesos_executor.tar.gz", string)
+    ].
 
 %% External functions.
 
