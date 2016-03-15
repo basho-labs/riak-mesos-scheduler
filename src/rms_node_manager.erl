@@ -265,6 +265,8 @@ apply_reserved_offer(NodeKey, OfferHelper,
 
 			%% FIXME TaskName seems like it should be generated or something
 			TaskName = "riak",
+			%% FIXME Is this the appropriate place for ReservedResources?
+			ReservedResources = rms_offer_helper:get_reserved_resources(OfferHelper),
 			TaskInfo0 = erl_mesos_utils:task_info(TaskName, TaskId, AgentId, 
 												  ReservedResources, ExecutorInfo,
 												  undefined),
