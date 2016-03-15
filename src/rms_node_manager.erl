@@ -22,6 +22,8 @@
 
 -behaviour(supervisor).
 
+-include_lib("erl_mesos/include/scheduler_protobuf.hrl").
+
 -export([start_link/0]).
 
 -export([get_node_keys/0,
@@ -191,7 +193,7 @@ apply_unreserved_offer(_NodeKey, OfferHelper,
 -spec apply_reserved_offer(rms_node:key(), rms_offer_helper:offer_helper(),
     node_data()) ->
     {ok, rms_offer_helper:offer_helper()} | {error, not_enophe_resources}.
-apply_reserved_offer(_NodeKey, OfferHelper,
+apply_reserved_offer(NodeKey, OfferHelper,
                      #node_data{cpus = NodeCpus,
                                 mem = NodeMem,
                                 disk = NodeDisk,
@@ -206,67 +208,70 @@ apply_reserved_offer(_NodeKey, OfferHelper,
                                                            ?MEM_PER_EXECUTOR,
                                                            undefined,
                                                            NodeNumPorts,
-                                                           OfferHelper),
+														   OfferHelper),
 
-
-%%             lager:info("Launching node ~p", [Node]),
-%%
-%%             UrlBase = "file:///vagrant/riak-mesos-erlang",
-%%             ExecutorUrlStr = UrlBase ++ "/framework/riak-mesos-executor/packages/"
-%%             ++ "riak_mesos_executor-0.1.2-amd64.tar.gz",
-%%             RiakExplorerUrlStr = UrlBase ++ "/framework/riak_explorer/packages/"
-%%             ++ "riak_explorer-0.1.1.patch-amd64.tar.gz",
-%%             RiakUrlStr = UrlBase ++ "/riak/packages/riak-2.1.3-amd64.tar.gz",
-%%             CepmdUrlStr = "file:///vagrant/cepmd_linux_amd64",
-%%
-%%             ExecutorUrl = erl_mesos_utils:command_info_uri(ExecutorUrlStr, false, true),
-%%             RiakExplorerUrl = erl_mesos_utils:command_info_uri(RiakExplorerUrlStr, false, true),
-%%             RiakUrl = erl_mesos_utils:command_info_uri(RiakUrlStr, false, true),
-%%             CepmdUrl = erl_mesos_utils:command_info_uri(CepmdUrlStr, false, true),
-%%
-%%             CommandInfoValue = "./riak_mesos_executor/bin/ermf-executor",
-%%             UrlList = [ExecutorUrl, RiakExplorerUrl, RiakUrl, CepmdUrl],
-%%
-%%             CommandInfo = erl_mesos_utils:command_info(CommandInfoValue, UrlList),
-%%
-%%             TaskIdValue = Node#rms_node.key,
-%%             TaskId = erl_mesos_utils:task_id(TaskIdValue),
-%%
-%%             OfferHelper = riak_mesos_offer_helper:new(Offer),
-%%             ReservedPorts = riak_mesos_offer_helper:get_reserved_resources_ports(OfferHelper),
-%%             %% FIXME Make sure we actually have 3 ports available!
-%%             [HTTPPort, PBPort, DisterlPort | _Unused] = ReservedPorts,
-%%
-%%             FrameworkInfo = framework_info(),
-%%             FrameworkName = list_to_binary(FrameworkInfo#'FrameworkInfo'.name),
-%%             NodeName = iolist_to_binary([Node#rms_node.key, "@ubuntu.local"]), %% FIXME host name
-%%             TaskData = [
-%%                         {<<"FullyQualifiedNodeName">>, NodeName},
-%%                         {<<"Host">>,                   <<"localhost">>},
-%%                         {<<"Zookeepers">>,             [<<"master.mesos:2181">>]},
-%%                         {<<"FrameworkName">>,          FrameworkName},
-%%                         {<<"URI">>,                    <<"192.168.1.4:9090">>}, %% FIXME URI
-%%                         {<<"ClusterName">>,            list_to_binary(Node#rms_node.cluster)},
-%%                         {<<"HTTPPort">>,               HTTPPort},
-%%                         {<<"PBPort">>,                 PBPort},
-%%                         {<<"HandoffPort">>,            0},
-%%                         {<<"DisterlPort">>,            DisterlPort}],
-%%             TaskDataBin = iolist_to_binary(mochijson2:encode(TaskData)),
-%%
-%%             ExecutorId = erl_mesos_utils:executor_id("riak"),
-%%             ExecutorInfo0 = erl_mesos_utils:executor_info(ExecutorId, CommandInfo),
-%%             ExecutorInfo = ExecutorInfo0#'ExecutorInfo'{source = "riak"},
-%%
-%%             TaskInfo0 = erl_mesos_utils:task_info("riak", TaskId, AgentId, ReservedResources,
-%%                                                   ExecutorInfo, undefined),
-%%             TaskInfo = TaskInfo0#'TaskInfo'{data = TaskDataBin},
-%%             Operation = erl_mesos_utils:launch_offer_operation([TaskInfo]),
     case CanFitReserved and CanFitUnreserved of
         true ->
-            %% TODO: Create task to launch with Riak executor and put it to the offer helper.
-            {ok, OfferHelper};
+			%% FIXME FrameworkName needs come from deep in the bowels of the scheduler
+			%% specifically erl_mesos_scheduler: 
+			%% ((State#state.call_subscribe)#'Call.Subscribe'.framework_info).#'FrameworkInfo'.name
+			FrameworkName = <<"riak">>,
+
+			%% FIXME Where do we get the cluster name from?
+			%% I think we need to refactor some assumptions made here: it looks like nodes aren't necessarily set up
+			%% to have an idea of which cluster they are a part of?
+			ClusterName = <<"default">>,
+
+			%% FIXME AgentId? What on earth is that?
+			AgentId = erl_mesos_utils:agent_id("LOL_FIXME_some_agent_id"),
+
+			lager:info("Launching node ~p", [NodeKey]),
+
+			[RiakUrlStr, RiakExplorerUrlStr, ExecutorUrlStr] = rms_config:artifact_urls(),
+
+			ExecutorUrl = erl_mesos_utils:command_info_uri(ExecutorUrlStr, false, true),
+			RiakExplorerUrl = erl_mesos_utils:command_info_uri(RiakExplorerUrlStr, false, true),
+			RiakUrl = erl_mesos_utils:command_info_uri(RiakUrlStr, false, true),
+
+			CommandInfoValue = "./riak_mesos_executor/bin/ermf-executor",
+			UrlList = [ExecutorUrl, RiakExplorerUrl, RiakUrl],
+
+			CommandInfo = erl_mesos_utils:command_info(CommandInfoValue, UrlList),
+
+			TaskIdValue = NodeKey,
+			TaskId = erl_mesos_utils:task_id(TaskIdValue),
+
+			ReservedPorts = rms_offer_helper:get_reserved_resources_ports(OfferHelper),
+			%% FIXME Make sure we actually have 3 ports available!
+			[HTTPPort, PBPort, DisterlPort | _Unused] = ReservedPorts,
+
+			NodeName = iolist_to_binary([NodeKey, "@ubuntu.local"]), %% FIXME host name
+			TaskData = [
+				 {<<"FullyQualifiedNodeName">>, NodeName},
+				 {<<"Host">>,                   <<"localhost">>},
+				 {<<"Zookeepers">>,             [<<"master.mesos:2181">>]},
+				 {<<"FrameworkName">>,          FrameworkName},
+				 {<<"URI">>,                    <<"192.168.1.4:9090">>}, %% FIXME URI
+				 {<<"ClusterName">>,            ClusterName},
+				 {<<"HTTPPort">>,               HTTPPort},
+				 {<<"PBPort">>,                 PBPort},
+				 {<<"HandoffPort">>,            0},
+				 {<<"DisterlPort">>,            DisterlPort}],
+			TaskDataBin = iolist_to_binary(mochijson2:encode(TaskData)),
+
+			ExecutorId = erl_mesos_utils:executor_id("riak"),
+			ExecutorInfo0 = erl_mesos_utils:executor_info(ExecutorId, CommandInfo),
+			ExecutorInfo = ExecutorInfo0#'ExecutorInfo'{source = "riak"},
+
+			%% FIXME TaskName seems like it should be generated or something
+			TaskName = "riak",
+			TaskInfo0 = erl_mesos_utils:task_info(TaskName, TaskId, AgentId, 
+												  ReservedResources, ExecutorInfo,
+												  undefined),
+			TaskInfo = TaskInfo0#'TaskInfo'{data = TaskDataBin},
+            {ok, rms_offer_helper:add_task_to_launch(TaskInfo, OfferHelper)};
         false ->
-            {error, not_enophe_resources}
+            {error, not_enough_resources}
     end.
 
 %% supervisor callback function.
