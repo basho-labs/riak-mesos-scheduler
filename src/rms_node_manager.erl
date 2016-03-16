@@ -243,7 +243,7 @@ apply_reserved_offer(NodeKey, OfferHelper,
                         rms_offer_helper:apply_unreserved_resources(
                             undefined, undefined, undefined, NodeNumPorts,
                             OfferHelper1),
-
+                    
                     AgentId = erl_mesos_utils:agent_id(AgentIdValue),
 
                     [RiakUrlStr, RiakExplorerUrlStr, ExecutorUrlStr] =
