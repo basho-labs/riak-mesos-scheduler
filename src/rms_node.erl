@@ -24,7 +24,8 @@
 
 -export([start_link/2]).
 
--export([delete/1]).
+-export([set_reserved/3,
+         delete/1]).
 
 -export([init/1,
          handle_call/3,
@@ -41,14 +42,22 @@
                http_port :: pos_integer(),
                pb_port :: pos_integer(),
                disterl_port :: pos_integer(),
-               agent_id = "" :: string(),
+               agent_id_value = "" :: string(),
                container_path = "" :: string(),
                persistence_id = "" :: string()}).
 
 -type key() :: string().
 -export_type([key/0]).
 
--type status() :: undefined | requested | shutting_down.
+-type status() :: undefined | %% Possible state for waiting reconciliation.
+                  requested |
+                  reserved |
+                  starting |
+                  started |
+                  shutting_down |
+                  shutdown |
+                  failed |
+                  restarting.
 -export_type([status/0]).
 
 -type node_state() :: #node{}.
@@ -60,6 +69,10 @@
     {ok, pid()} | {error, term()}.
 start_link(Key, ClusterKey) ->
     gen_server:start_link(?MODULE, {Key, ClusterKey}, []).
+
+-spec set_reserved(pid(), string(), string()) -> ok | {error, term()}.
+set_reserved(Pid, Hostname, AgentIdValue) ->
+    gen_server:call(Pid, {reserved, Hostname, AgentIdValue}).
 
 -spec delete(pid()) -> ok | {error, term()}.
 delete(Pid) ->
@@ -81,6 +94,12 @@ init({Key, ClusterKey}) ->
                     {stop, Reason}
             end
     end.
+
+handle_call({reserved, Hostname, AgentIdValue}, _From, Node) ->
+    Node1 = Node#node{status = reserved,
+                      hostname = Hostname,
+                      agent_id_value = AgentIdValue},
+    update_node_state(Node, Node1);
 handle_call(delete, _From, Node) ->
     Node1 = Node#node{status = shutting_down},
     update_node_state(Node, Node1);
@@ -138,7 +157,7 @@ from_list(NodeList) ->
           http_port = proplists:get_value(http_port, NodeList),
           pb_port = proplists:get_value(pb_port, NodeList),
           disterl_port = proplists:get_value(disterl_port, NodeList),
-          agent_id = proplists:get_value(agent_id, NodeList),
+          agent_id_value = proplists:get_value(agent_id_value, NodeList),
           container_path = proplists:get_value(container_path, NodeList),
           persistence_id = proplists:get_value(persistence_id, NodeList)}.
 
@@ -151,7 +170,7 @@ to_list(#node{key = Key,
               http_port = HttpPort,
               pb_port = PbPort,
               disterl_port = DisterlPort,
-              agent_id = AgentId,
+              agent_id_value = AgentIdValue,
               container_path = ContainerPath,
               persistence_id = PersistenceId}) ->
     [{key, Key},
@@ -162,6 +181,6 @@ to_list(#node{key = Key,
      {http_port, HttpPort},
      {pb_port, PbPort},
      {disterl_port, DisterlPort},
-     {agent_id, AgentId},
+     {agent_id_value, AgentIdValue},
      {container_path, ContainerPath},
      {persistence_id, PersistenceId}].
