@@ -46,9 +46,11 @@
                     mem :: float(),
                     disk :: float(),
                     num_ports :: pos_integer(),
+                    name :: string(),
                     role :: string(),
                     principal :: string(),
-                    container_path :: string()}).
+                    container_path :: string(),
+                    artifact_urls :: [string()]}).
 
 -type node_data() :: #node_data{}.
 -export_type([node_data/0]).
@@ -76,7 +78,8 @@ get_node_keys(ClusterKey) ->
     [Key || {Key, Node} <- rms_metadata:get_nodes(),
      ClusterKey =:= proplists:get_value(cluster_key, Node)].
 
--spec get_node(rms_node:key()) -> {ok, rms_metadata:nd()} | {error, term()}.
+-spec get_node(rms_node:key()) ->
+    {ok, rms_metadata:node_state()} | {error, term()}.
 get_node(Key) ->
     rms_metadata:get_node(Key).
 
@@ -112,9 +115,11 @@ node_data(Options) ->
                mem = proplists:get_value(node_mem, Options),
                disk = proplists:get_value(node_disk, Options),
                num_ports = ?NODE_NUM_PORTS,
+               name = proplists:get_value(framework_name, Options),
                role = proplists:get_value(framework_role, Options),
                principal = proplists:get_value(framework_principal, Options),
-               container_path = ?NODE_CONTAINER_PATH}.
+               container_path = ?NODE_CONTAINER_PATH,
+               artifact_urls = proplists:get_value(artifact_urls, Options)}.
 
 -spec node_needs_to_be_reconciled(rms_node:key()) -> boolean().
 node_needs_to_be_reconciled(_NodeKey) ->
@@ -198,92 +203,96 @@ apply_unreserved_offer(OfferHelper,
 
 -spec apply_reserved_offer(rms_node:key(), rms_offer_helper:offer_helper(),
     node_data()) ->
-    {ok, rms_offer_helper:offer_helper()} | {error, not_enough_resources}.
+    {ok, rms_offer_helper:offer_helper()} |
+    {error, not_enough_resources | term()}.
 apply_reserved_offer(NodeKey, OfferHelper,
                      #node_data{cpus = NodeCpus,
                                 mem = NodeMem,
                                 disk = NodeDisk,
                                 num_ports = NodeNumPorts,
-                                role = _Role,
-                                principal = _Principal,
-                                container_path = _ContainerPath}) ->
-    CanFitReserved = rms_offer_helper:can_fit_reserved(NodeCpus, NodeMem,
-                                                       NodeDisk, undefined,
-                                                       OfferHelper),
-    CanFitUnreserved = rms_offer_helper:can_fit_unreserved(?CPUS_PER_EXECUTOR,
-                                                           ?MEM_PER_EXECUTOR,
-                                                           undefined,
-                                                           NodeNumPorts,
-                                                           OfferHelper),
+                                name = Name,
+                                role = Role,
+                                principal = Principal,
+                                container_path = ContainerPath,
+                                artifact_urls = ArtifactUrls}) ->
+    case get_node(NodeKey) of
+        {ok, Node} ->
+            CanFitReserved =
+                rms_offer_helper:can_fit_reserved(NodeCpus, NodeMem, NodeDisk,
+                                                  undefined, OfferHelper),
+            CanFitUnreserved =
+                rms_offer_helper:can_fit_unreserved(?CPUS_PER_EXECUTOR,
+                                                    ?MEM_PER_EXECUTOR,
+                                                    undefined, NodeNumPorts,
+                                                    OfferHelper),
+            case CanFitReserved and CanFitUnreserved of
+                true ->
+                    ClusterKey = proplists:get_value(cluster_key, Node),
+                    PersistenceId = proplists:get_value(persistence_id, Node),
+                    Hostname = proplists:get_value(hostname, Node),
+                    AgentIdValue = proplists:get_value(agent_id_value, Node),
 
-    case CanFitReserved and CanFitUnreserved of
-        true ->
-            %% TODO: apply reserved and unreserved resources here.
+                    %% Apply reserved resources.
+                    OfferHelper1 =
+                        rms_offer_helper:apply_reserved_resources(
+                            NodeCpus, NodeMem, NodeDisk, undefined, Role,
+                            Principal, PersistenceId, ContainerPath,
+                            OfferHelper),
+                    %% Apply unreserved resources.
+                    OfferHelper2 =
+                        rms_offer_helper:apply_unreserved_resources(
+                            undefined, undefined, undefined, NodeNumPorts,
+                            OfferHelper1),
+                    
+                    AgentId = erl_mesos_utils:agent_id(AgentIdValue),
 
+                    [RiakUrlStr, RiakExplorerUrlStr, ExecutorUrlStr] =
+                        ArtifactUrls,
 
-            %% FIXME FrameworkName needs come from deep in the bowels of the scheduler
-            %% specifically erl_mesos_scheduler:
-            %% %% ((State#state.call_subscribe)#'Call.Subscribe'.framework_info).#'FrameworkInfo'.name
+                    ExecutorUrl = erl_mesos_utils:command_info_uri(ExecutorUrlStr, false, true),
+                    RiakExplorerUrl = erl_mesos_utils:command_info_uri(RiakExplorerUrlStr, false, true),
+                    RiakUrl = erl_mesos_utils:command_info_uri(RiakUrlStr, false, true),
 
-            FrameworkName = <<"riak">>,
+                    CommandInfoValue = "./riak_mesos_executor/bin/ermf-executor",
+                    UrlList = [ExecutorUrl, RiakExplorerUrl, RiakUrl],
+                    CommandInfo = erl_mesos_utils:command_info(CommandInfoValue, UrlList),
 
-            %% FIXME Where do we get the cluster name from?
-            %% %% I think we need to refactor some assumptions made here: it looks like nodes aren't necessarily set up
-            %% to have an idea of which cluster they are a part of?
+                    TaskId = erl_mesos_utils:task_id(NodeKey),
 
-            ClusterName = <<"default">>,
+                    ReservedPorts =
+                        rms_offer_helper:get_unreserved_resources_ports(OfferHelper),
 
-            %% FIXME AgentId? What on earth is that?
-            AgentId = erl_mesos_utils:agent_id("LOL_FIXME_some_agent_id"),
+                    [HTTPPort, PBPort, DisterlPort | _Ports] = ReservedPorts,
 
-            lager:info("Launching node ~p", [NodeKey]),
+                    NodeName = iolist_to_binary([NodeKey, "@", Hostname]),
+                    TaskData = [{<<"FullyQualifiedNodeName">>, NodeName},
+                                {<<"Host">>,                   Hostname},
+                                {<<"Zookeepers">>,             [<<"master.mesos:2181">>]}, %% FIXME
+                                {<<"FrameworkName">>,          Name},
+                                {<<"URI">>,                    <<"192.168.1.4:9090">>}, %% FIXME
+                                {<<"ClusterName">>,            ClusterKey},
+                                {<<"HTTPPort">>,               HTTPPort},
+                                {<<"PBPort">>,                 PBPort},
+                                {<<"HandoffPort">>,            0},
+                                {<<"DisterlPort">>,            DisterlPort}],
+                    TaskDataBin = iolist_to_binary(mochijson2:encode(TaskData)),
 
-            [RiakUrlStr, RiakExplorerUrlStr, ExecutorUrlStr] = rms_config:artifact_urls(),
+                    ExecutorId = erl_mesos_utils:executor_id("riak"), %% FIXME
+                    ExecutorInfo = erl_mesos_utils:executor_info(ExecutorId, CommandInfo),
+                    ExecutorInfo1 = ExecutorInfo#'ExecutorInfo'{source = "riak"}, %% FIXME
 
-            ExecutorUrl = erl_mesos_utils:command_info_uri(ExecutorUrlStr, false, true),
-
-            RiakExplorerUrl = erl_mesos_utils:command_info_uri(RiakExplorerUrlStr, false, true),
-
-            RiakUrl = erl_mesos_utils:command_info_uri(RiakUrlStr, false, true),
-
-            CommandInfoValue = "./riak_mesos_executor/bin/ermf-executor",
-            UrlList = [ExecutorUrl, RiakExplorerUrl, RiakUrl],
-
-            CommandInfo = erl_mesos_utils:command_info(CommandInfoValue, UrlList),
-
-            TaskIdValue = NodeKey,
-            TaskId = erl_mesos_utils:task_id(TaskIdValue),
-
-            ReservedPorts = rms_offer_helper:get_reserved_resources_ports(OfferHelper),
-
-            [HTTPPort, PBPort, DisterlPort | _Unused] = ReservedPorts,
-
-            NodeName = iolist_to_binary([NodeKey, "@ubuntu.local"]), %% FIXME host name
-            TaskData = [{<<"FullyQualifiedNodeName">>, NodeName},
-                        {<<"Host">>,                   <<"localhost">>},
-                        {<<"Zookeepers">>,             [<<"master.mesos:2181">>]},
-                        {<<"FrameworkName">>,          FrameworkName},
-                        {<<"URI">>,                    <<"192.168.1.4:9090">>}, %% FIXME URI
-                        {<<"ClusterName">>,            ClusterName},
-                        {<<"HTTPPort">>,               HTTPPort},
-                        {<<"PBPort">>,                 PBPort},
-                        {<<"HandoffPort">>,            0},
-                        {<<"DisterlPort">>,            DisterlPort}],
-            TaskDataBin = iolist_to_binary(mochijson2:encode(TaskData)),
-            ExecutorId = erl_mesos_utils:executor_id("riak"),
-            ExecutorInfo0 = erl_mesos_utils:executor_info(ExecutorId, CommandInfo),
-            ExecutorInfo = ExecutorInfo0#'ExecutorInfo'{source = "riak"},
-            %% FIXME TaskName seems like it should be generated or something
-
-            TaskName = "riak",
-            %% FIXME Is this the appropriate place for ReservedResources?
-            ReservedResources = rms_offer_helper:get_reserved_resources(OfferHelper),
-            TaskInfo = erl_mesos_utils:task_info(TaskName, TaskId, AgentId,
-                                                 ReservedResources, ExecutorInfo),
-            TaskInfo1 = TaskInfo#'TaskInfo'{data = TaskDataBin},
-            {ok, rms_offer_helper:add_task_to_launch(TaskInfo1, OfferHelper)};
-        false ->
-            {error, not_enough_resources}
+                    TaskName = "riak",
+                    %% FIXME Is this the appropriate place for ReservedResources?
+                    ReservedResources = rms_offer_helper:get_reserved_resources(OfferHelper2),
+                    TaskInfo = erl_mesos_utils:task_info(TaskName, TaskId, AgentId,
+                                                         ReservedResources, ExecutorInfo1),
+                    TaskInfo1 = TaskInfo#'TaskInfo'{data = TaskDataBin},
+                    {ok, rms_offer_helper:add_task_to_launch(TaskInfo1, OfferHelper)};
+                false ->
+                    {error, not_enough_resources}
+            end;
+        {error, Reason} ->
+            {error, Reason}
     end.
 
 %% supervisor callback function.
