@@ -22,8 +22,6 @@
 
 -behaviour(supervisor).
 
--include_lib("erl_mesos/include/scheduler_protobuf.hrl").
-
 -export([start_link/0]).
 
 -export([get_node_keys/0,
@@ -280,16 +278,24 @@ apply_reserved_offer(NodeKey, OfferHelper,
                     TaskDataBin = iolist_to_binary(mochijson2:encode(TaskData)),
 
                     ExecutorId = erl_mesos_utils:executor_id("riak"), %% FIXME
-                    ExecutorInfo = erl_mesos_utils:executor_info(ExecutorId, CommandInfo),
-                    ExecutorInfo1 = ExecutorInfo#'ExecutorInfo'{source = "riak"}, %% FIXME
+
+                    Source = "riak", %% FIXME
+                    ExecutorInfo =
+                        erl_mesos_utils:executor_info(ExecutorId, CommandInfo,
+                                                      undefined, undefined,
+                                                      Source),
+
 
                     TaskName = "riak",
                     %% FIXME Is this the appropriate place for ReservedResources?
                     ReservedResources = rms_offer_helper:get_reserved_resources(OfferHelper2),
-                    TaskInfo = erl_mesos_utils:task_info(TaskName, TaskId, AgentId,
-                                                         ReservedResources, ExecutorInfo1),
-                    TaskInfo1 = TaskInfo#'TaskInfo'{data = TaskDataBin},
-                    {ok, rms_offer_helper:add_task_to_launch(TaskInfo1, OfferHelper)};
+                    TaskInfo =
+                        erl_mesos_utils:task_info(TaskName, TaskId, AgentId,
+                                                  ReservedResources,
+                                                  ExecutorInfo, undefined,
+                                                  TaskDataBin),
+                    {ok, rms_offer_helper:add_task_to_launch(TaskInfo,
+                                                             OfferHelper)};
                 false ->
                     {error, not_enough_resources}
             end;
