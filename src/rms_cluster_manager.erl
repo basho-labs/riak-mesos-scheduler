@@ -123,8 +123,7 @@ add_node(Key) ->
                   rms_node_manager:node_data()) ->
     rms_offer_helper:offer_helper().
 apply_offer(OfferHelper, NodeData) ->
-    %% TODO: replace with get_node_keys/0.
-    NodeKeys = rms_node_manager:node_keys(),
+    NodeKeys = rms_node_manager:get_node_keys(),
     case apply_offer(NodeKeys, false, OfferHelper, NodeData) of
         {true, OfferHelper1} ->
             OfferHelper1;
@@ -213,7 +212,16 @@ apply_unreserved_offer(NodeKey, NodeKeys, NeedsReconciliation, OfferHelper,
                         rms_offer_helper:get_offer_id_value(OfferHelper),
                         rms_offer_helper:resources_to_list(OfferHelper)]),
             apply_offer(NodeKeys, NeedsReconciliation, OfferHelper1, NodeData);
-        {error, _Reason} ->
+        {error, not_enough_resources} ->
+            apply_offer(NodeKeys, NeedsReconciliation, OfferHelper, NodeData);
+        {error, Reason} ->
+            lager:warning("Appling of unreserved resources error. "
+                          "Node key: ~s. "
+                          "Offer id: ~s. "
+                          "Error reason: ~p.",
+                          [NodeKey,
+                           rms_offer_helper:get_offer_id_value(OfferHelper),
+                           Reason]),
             apply_offer(NodeKeys, NeedsReconciliation, OfferHelper, NodeData)
     end.
 
