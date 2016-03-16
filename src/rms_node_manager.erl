@@ -150,12 +150,14 @@ apply_unreserved_offer(NodeKey, OfferHelper, NodeData) ->
         {ok, Pid} ->
             Hostname = rms_offer_helper:get_hostname(OfferHelper),
             AgentIdValue = rms_offer_helper:get_agent_id_value(OfferHelper),
-            case rms_node:set_reserved(Pid, Hostname, AgentIdValue) of
+            PersistenceId = node_persistence_id(),
+            case rms_node:set_reserved(Pid, Hostname, AgentIdValue,
+                                       PersistenceId) of
                 ok ->
                     %% Tmp solution for testing the resource management.
                     put(reg, true),
 
-                    apply_unreserved_offer(OfferHelper, NodeData);
+                    apply_unreserved(PersistenceId, OfferHelper, NodeData);
                 {error, Reason} ->
                     {error, Reason}
             end;
@@ -163,16 +165,17 @@ apply_unreserved_offer(NodeKey, OfferHelper, NodeData) ->
             {error, Reason}
     end.
 
--spec apply_unreserved_offer(rms_offer_helper:offer_helper(), node_data()) ->
+-spec apply_unreserved(string(), rms_offer_helper:offer_helper(),
+                       node_data()) ->
     {ok, rms_offer_helper:offer_helper()} | {error, not_enough_resources}.
-apply_unreserved_offer(OfferHelper,
-                       #node_data{cpus = NodeCpus,
-                                  mem = NodeMem,
-                                  disk = NodeDisk,
-                                  num_ports = NodeNumPorts,
-                                  role = Role,
-                                  principal = Principal,
-                                  container_path = ContainerPath}) ->
+apply_unreserved(PersistenceId, OfferHelper,
+                 #node_data{cpus = NodeCpus,
+                            mem = NodeMem,
+                            disk = NodeDisk,
+                            num_ports = NodeNumPorts,
+                            role = Role,
+                            principal = Principal,
+                            container_path = ContainerPath}) ->
     case rms_offer_helper:can_fit_unreserved(NodeCpus + ?CPUS_PER_EXECUTOR,
                                              NodeMem + ?MEM_PER_EXECUTOR,
                                              NodeDisk, NodeNumPorts,
@@ -191,7 +194,6 @@ apply_unreserved_offer(OfferHelper,
                                                   undefined, Role, Principal,
                                                   OfferHelper1),
             %% Make volume.
-            PersistenceId = node_persistence_id(),
             OfferHelper3 =
                 rms_offer_helper:make_volume(NodeDisk, Role, Principal,
                                              PersistenceId, ContainerPath,
@@ -243,7 +245,7 @@ apply_reserved_offer(NodeKey, OfferHelper,
                         rms_offer_helper:apply_unreserved_resources(
                             undefined, undefined, undefined, NodeNumPorts,
                             OfferHelper1),
-                    
+
                     AgentId = erl_mesos_utils:agent_id(AgentIdValue),
 
                     [RiakUrlStr, RiakExplorerUrlStr, ExecutorUrlStr] =

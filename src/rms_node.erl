@@ -24,7 +24,7 @@
 
 -export([start_link/2]).
 
--export([set_reserved/3,
+-export([set_reserved/4,
          delete/1]).
 
 -export([init/1,
@@ -70,9 +70,9 @@
 start_link(Key, ClusterKey) ->
     gen_server:start_link(?MODULE, {Key, ClusterKey}, []).
 
--spec set_reserved(pid(), string(), string()) -> ok | {error, term()}.
-set_reserved(Pid, Hostname, AgentIdValue) ->
-    gen_server:call(Pid, {reserved, Hostname, AgentIdValue}).
+-spec set_reserved(pid(), string(), string(), string()) -> ok | {error, term()}.
+set_reserved(Pid, Hostname, AgentIdValue, PersistenceId) ->
+    gen_server:call(Pid, {reserved, Hostname, AgentIdValue, PersistenceId}).
 
 -spec delete(pid()) -> ok | {error, term()}.
 delete(Pid) ->
@@ -95,10 +95,11 @@ init({Key, ClusterKey}) ->
             end
     end.
 
-handle_call({reserved, Hostname, AgentIdValue}, _From, Node) ->
+handle_call({reserved, Hostname, AgentIdValue, PersistenceId}, _From, Node) ->
     Node1 = Node#node{status = reserved,
                       hostname = Hostname,
-                      agent_id_value = AgentIdValue},
+                      agent_id_value = AgentIdValue,
+                      persistence_id = PersistenceId},
     update_node_state(Node, Node1);
 handle_call(delete, _From, Node) ->
     Node1 = Node#node{status = shutting_down},
