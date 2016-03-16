@@ -1,5 +1,9 @@
 [
-    {rms, []},
+    {kernel,
+        [
+            {cepmd_port, {{cepmdport}} }
+        ]
+    },
     {os_mon,
         [
             {start_disksup, false},
