@@ -305,6 +305,8 @@ apply_reserved_offer(NodeKey, OfferHelper,
 
 %% supervisor callback function.
 
+-spec init({}) ->
+    {ok, {{supervisor:strategy(), 10, 10}, [supervisor:child_spec()]}}.
 init({}) ->
     Specs = [node_spec(Key, proplists:get_value(cluster_key, Node)) ||
              {Key, Node} <- rms_metadata:get_nodes()],
@@ -312,6 +314,7 @@ init({}) ->
 
 %% Internal functions.
 
+-spec node_spec(rms_node:key(), rms_cluster:key()) -> supervisor:child_spec().
 node_spec(Key, ClusterKey) ->
     {Key,
         {rms_node, start_link, [Key, ClusterKey]},

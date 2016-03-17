@@ -138,6 +138,8 @@ apply_offer(OfferHelper, NodeData) ->
 
 %% supervisor callback function.
 
+-spec init({}) ->
+    {ok, {{supervisor:strategy(), 10, 10}, [supervisor:child_spec()]}}.
 init({}) ->
     Specs = [cluster_spec(Key) ||
              {Key, _Cluster} <- rms_metadata:get_clusters()],
@@ -145,6 +147,7 @@ init({}) ->
 
 %% Internal functions.
 
+-spec cluster_spec(rms_cluster:key()) -> supervisor:child_spec().
 cluster_spec(Key) ->
     {Key,
         {rms_cluster, start_link, [Key]},
