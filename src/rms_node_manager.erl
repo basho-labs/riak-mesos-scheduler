@@ -143,62 +143,55 @@ node_has_reservation(_NodeKey) ->
                              node_data()) ->
     {ok, rms_offer_helper:offer_helper()} |
     {error, not_enough_resources | term()}.
-apply_unreserved_offer(NodeKey, OfferHelper, NodeData) ->
+apply_unreserved_offer(NodeKey, OfferHelper,
+                       #node_data{cpus = NodeCpus,
+                                  mem = NodeMem,
+                                  disk = NodeDisk,
+                                  num_ports = NodeNumPorts,
+                                  role = Role,
+                                  principal = Principal,
+                                  container_path = ContainerPath}) ->
     case get_node_pid(NodeKey) of
         {ok, Pid} ->
             Hostname = rms_offer_helper:get_hostname(OfferHelper),
             AgentIdValue = rms_offer_helper:get_agent_id_value(OfferHelper),
             PersistenceId = node_persistence_id(),
-            case rms_node:set_reserved(Pid, Hostname, AgentIdValue,
-                                       PersistenceId) of
-                ok ->
+            ok = rms_node:set_reserved(Pid, Hostname, AgentIdValue,
+                                       PersistenceId),
+            case rms_offer_helper:can_fit_unreserved(NodeCpus +
+                                                     ?CPUS_PER_EXECUTOR,
+                                                     NodeMem +
+                                                     ?MEM_PER_EXECUTOR,
+                                                     NodeDisk, NodeNumPorts,
+                                                     OfferHelper) of
+                true ->
+                    %% Remove requirements from offer helper.
+                    OfferHelper1 =
+                        rms_offer_helper:apply_unreserved_resources(
+                            ?CPUS_PER_EXECUTOR, ?MEM_PER_EXECUTOR, undefined,
+                            NodeNumPorts, OfferHelper),
+                    %% Reserve resources.
+                    OfferHelper2 =
+                        rms_offer_helper:make_reservation(NodeCpus, NodeMem,
+                                                          NodeDisk, undefined,
+                                                          Role, Principal,
+                                                          OfferHelper1),
+                    %% Make volume.
+                    OfferHelper3 =
+                        rms_offer_helper:make_volume(NodeDisk, Role, Principal,
+                                                     PersistenceId,
+                                                     ContainerPath,
+                                                     OfferHelper2),
+
                     %% Tmp solution for testing the resource management.
                     put(reg, true),
 
-                    apply_unreserved(PersistenceId, OfferHelper, NodeData);
-                {error, Reason} ->
-                    {error, Reason}
+                    {ok, OfferHelper3};
+                false ->
+                    {error, not_enough_resources}
             end;
         {error, Reason} ->
             {error, Reason}
-    end.
-
--spec apply_unreserved(string(), rms_offer_helper:offer_helper(),
-                       node_data()) ->
-    {ok, rms_offer_helper:offer_helper()} | {error, not_enough_resources}.
-apply_unreserved(PersistenceId, OfferHelper,
-                 #node_data{cpus = NodeCpus,
-                            mem = NodeMem,
-                            disk = NodeDisk,
-                            num_ports = NodeNumPorts,
-                            role = Role,
-                            principal = Principal,
-                            container_path = ContainerPath}) ->
-    case rms_offer_helper:can_fit_unreserved(NodeCpus + ?CPUS_PER_EXECUTOR,
-                                             NodeMem + ?MEM_PER_EXECUTOR,
-                                             NodeDisk, NodeNumPorts,
-                                             OfferHelper) of
-        true ->
-            %% Remove requirements from offer helper.
-            OfferHelper1 =
-                rms_offer_helper:apply_unreserved_resources(?CPUS_PER_EXECUTOR,
-                                                            ?MEM_PER_EXECUTOR,
-                                                            undefined,
-                                                            NodeNumPorts,
-                                                            OfferHelper),
-            %% Reserve resources.
-            OfferHelper2 =
-                rms_offer_helper:make_reservation(NodeCpus, NodeMem, NodeDisk,
-                                                  undefined, Role, Principal,
-                                                  OfferHelper1),
-            %% Make volume.
-            OfferHelper3 =
-                rms_offer_helper:make_volume(NodeDisk, Role, Principal,
-                                             PersistenceId, ContainerPath,
-                                             OfferHelper2),
-            {ok, OfferHelper3};
-        false ->
-            {error, not_enough_resources}
     end.
 
 -spec apply_reserved_offer(rms_node:key(), rms_offer_helper:offer_helper(),
