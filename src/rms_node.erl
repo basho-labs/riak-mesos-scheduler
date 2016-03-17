@@ -29,6 +29,10 @@
          get_agent_id_value/1,
          get_persistence_id/1,
          set_reservation/4,
+         needs_to_be_reconciled/1,
+         can_be_scheduled/1,
+         has_reservation/1,
+         set_unreserve/1,
          delete/1]).
 
 -export([init/1,
@@ -53,7 +57,7 @@
 -type key() :: string().
 -export_type([key/0]).
 
--type status() :: undefined | %% Possible state for waiting reconciliation.
+-type status() :: undefined | %% Possible status for waiting reconciliation.
                   requested |
                   reserved |
                   starting |
@@ -80,7 +84,7 @@ get_cluster_key(Key) ->
         {ok, #node{cluster_key = ClusterKey}} ->
             {ok, ClusterKey};
         {error, Reason} ->
-            {stop, Reason}
+            {error, Reason}
     end.
 
 -spec get_hostname(key()) -> {ok, string()} | {error, term()}.
@@ -89,7 +93,7 @@ get_hostname(Key) ->
         {ok, #node{hostname = Hostname}} ->
             {ok, Hostname};
         {error, Reason} ->
-            {stop, Reason}
+            {error, Reason}
     end.
 
 -spec get_agent_id_value(key()) -> {ok, string()} | {error, term()}.
@@ -98,7 +102,41 @@ get_agent_id_value(Key) ->
         {ok, #node{agent_id_value = AgentIdValue}} ->
             {ok, AgentIdValue};
         {error, Reason} ->
-            {stop, Reason}
+            {error, Reason}
+    end.
+
+-spec needs_to_be_reconciled(key()) -> {ok, boolean()} | {error, term()}.
+needs_to_be_reconciled(Key) ->
+    case get_node(Key) of
+        {ok, #node{status = Status}} ->
+            %% Basic simple solution.
+            %% TODO: implement "needs to be reconciled" logic here.
+            NeedsReconciliation = Status =:= undefined,
+            {ok, NeedsReconciliation};
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+-spec can_be_scheduled(key()) -> {ok, boolean()} | {error, term()}.
+can_be_scheduled(Key) ->
+    case get_node(Key) of
+        {ok, #node{status = Status}} ->
+            %% Basic simple solution.
+            %% TODO: implement "can be scheduled" logic here.
+            CanBeScheduled = Status =:= requested,
+            {ok, CanBeScheduled};
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+-spec has_reservation(key()) -> {ok, boolean()} | {error, term()}.
+has_reservation(Key) ->
+    case get_node(Key) of
+        {ok, #node{persistence_id = PersistenceId}} ->
+            HasReservation = PersistenceId =/= "",
+            {ok, HasReservation};
+        {error, Reason} ->
+            {error, Reason}
     end.
 
 -spec get_persistence_id(key()) -> {ok, string()} | {error, term()}.
@@ -115,6 +153,11 @@ get_persistence_id(Key) ->
 set_reservation(Pid, Hostname, AgentIdValue, PersistenceId) ->
     gen_server:call(Pid, {set_reservation, Hostname, AgentIdValue,
                           PersistenceId}).
+
+-spec set_unreserve(pid()) -> ok | {error, term()}.
+set_unreserve(_Pid) ->
+    %% TODO: implement unreserve here via sync call to the node process.
+    ok.
 
 -spec delete(pid()) -> ok | {error, term()}.
 delete(Pid) ->
