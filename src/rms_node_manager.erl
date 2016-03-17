@@ -326,9 +326,6 @@ get_node_pid(Key) ->
             {error, not_found}
     end.
 
-%% Internal functions.
-
 -spec node_persistence_id() -> string().
 node_persistence_id() ->
-    %% TODO: Generate uuid here.
-    "uuid".
+    uuid:to_string(uuid:uuid4()).
