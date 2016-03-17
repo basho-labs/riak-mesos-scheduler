@@ -190,8 +190,9 @@ apply_offer([], NeedsReconciliation, OfferHelper, _FrameworkInfo) ->
 schedule_node(NodeKey, NodeKeys, NeedsReconciliation, OfferHelper, NodeData) ->
     case rms_node_manager:node_has_reservation(NodeKey) of
         true ->
-            %% TODO: launch Riak node by rms_node_manager:apply_reserved_offer/3.
-            apply_offer(NodeKeys, false, OfferHelper, NodeData);
+            %%
+            apply_reserved_offer(NodeKey, NodeKeys, NeedsReconciliation,
+                                 OfferHelper, NodeData);
         false ->
             %% New node.
             apply_unreserved_offer(NodeKey, NodeKeys, NeedsReconciliation,
@@ -226,6 +227,103 @@ apply_unreserved_offer(NodeKey, NodeKeys, NeedsReconciliation, OfferHelper,
                            rms_offer_helper:get_offer_id_value(OfferHelper),
                            Reason]),
             apply_offer(NodeKeys, NeedsReconciliation, OfferHelper, NodeData)
+    end.
+
+-spec apply_reserved_offer(rms_node:key(), [rms_node:key()], boolean(),
+                           rms_offer_helper:offer_helper(),
+                           rms_node_manager:node_data()) ->
+    {boolean(), rms_offer_helper:offer_helper()}.
+apply_reserved_offer(NodeKey, NodeKeys, NeedsReconciliation, OfferHelper,
+                     NodeData) ->
+    {ok, PersistenceId} = rms_node:get_persistence_id(NodeKey),
+    OfferIdValue = rms_offer_helper:get_offer_id_value(OfferHelper),
+    case rms_offer_helper:has_persistence_id(PersistenceId, OfferHelper) of
+        true ->
+            %% Found reserved resources for node.
+            %% Persistence id matches.
+            %% Try to launch the node.
+            case rms_node_manager:apply_reserved_offer(NodeKey, OfferHelper,
+                                                       NodeData) of
+                {ok, OfferHelper1} ->
+                    ResourcesList =
+                        rms_offer_helper:resources_to_list(OfferHelper),
+                    lager:info("New node added for scheduling. "
+                               "Node has persistence id. "
+                               "Node key: ~s. "
+                               "Persistence id: ~s. "
+                               "Offer id: ~s. "
+                               "Offer resources: ~p.",
+                               [NodeKey, PersistenceId, OfferIdValue,
+                                ResourcesList]),
+                    apply_offer(NodeKeys, NeedsReconciliation, OfferHelper1,
+                                NodeData);
+                {error, not_enough_resources} ->
+                    apply_offer(NodeKeys, true, OfferHelper, NodeData);
+                {error, Reason} ->
+                    lager:warning("Adding node for scheduling error. "
+                                  "Node has persistence id. "
+                                  "Node key: ~s. "
+                                  "Persistence id: ~s. "
+                                  "Offer id: ~s. "
+                                  "Error reason: ~p.",
+                                  [NodeKey, PersistenceId, OfferIdValue,
+                                   Reason]),
+                    apply_offer(NodeKeys, true, OfferHelper, NodeData)
+            end;
+        false ->
+            {ok, Hostname} = rms_node:get_hostname(NodeKey),
+            {ok, AgentIdValue} = rms_node:get_agent_id_value(NodeKey),
+            OfferHostname = rms_offer_helper:get_hostname(OfferHelper),
+            OfferAgentIdValue =
+                rms_offer_helper:get_agent_id_value(OfferHelper),
+            case Hostname =:= OfferHostname andalso
+                 AgentIdValue =:= OfferAgentIdValue of
+                true ->
+                    %% Found reserved resources for node.
+                    %% Agent id and hostname matches.
+                    %% Try to launch the node.
+                    %% If apply fails unreserve the resources for the node.
+                    case rms_node_manager:apply_reserved_offer(NodeKey,
+                                                               OfferHelper,
+                                                               NodeData) of
+                        {ok, OfferHelper1} ->
+                            ResourcesList =
+                                rms_offer_helper:resources_to_list(OfferHelper),
+                            lager:info("New node added for scheduling. "
+                                       "Agent id and hostname matches. "
+                                       "Node key: ~s. "
+                                       "Agent id: ~s. "
+                                       "Hostname: ~s. "
+                                       "Offer id: ~s. "
+                                       "Offer resources: ~p.",
+                                       [NodeKey, AgentIdValue, Hostname,
+                                        PersistenceId, OfferIdValue,
+                                        ResourcesList]),
+                            apply_offer(NodeKeys, NeedsReconciliation,
+                                        OfferHelper1, NodeData);
+                        {error, not_enough_resources} ->
+                            %% TODO: unreserve node here.
+                            apply_offer(NodeKeys, NeedsReconciliation,
+                                        OfferHelper, NodeData);
+                        {error, Reason} ->
+                            %% TODO: unreserve node here.
+                            lager:warning("Adding node for scheduling error. "
+                                          "Agent id and hostname matches. "
+                                          "Node key: ~s. "
+                                          "Agent id: ~s. "
+                                          "Hostname: ~s. "
+                                          "Offer id: ~s. "
+                                          "Error reason: ~p.",
+                                          [NodeKey, AgentIdValue, Hostname,
+                                           PersistenceId, OfferIdValue,
+                                           Reason]),
+                            apply_offer(NodeKeys, NeedsReconciliation,
+                                        OfferHelper, NodeData)
+                    end;
+                false ->
+                    apply_offer(NodeKeys, NeedsReconciliation, OfferHelper,
+                                NodeData)
+            end
     end.
 
 -spec unreserve_resources(rms_offer_helper:offer_helper()) ->
