@@ -156,8 +156,8 @@ apply_unreserved_offer(NodeKey, OfferHelper,
             Hostname = rms_offer_helper:get_hostname(OfferHelper),
             AgentIdValue = rms_offer_helper:get_agent_id_value(OfferHelper),
             PersistenceId = node_persistence_id(),
-            ok = rms_node:set_reserved(Pid, Hostname, AgentIdValue,
-                                       PersistenceId),
+            ok = rms_node:set_reservation(Pid, Hostname, AgentIdValue,
+                                          PersistenceId),
             case rms_offer_helper:can_fit_unreserved(NodeCpus +
                                                      ?CPUS_PER_EXECUTOR,
                                                      NodeMem +

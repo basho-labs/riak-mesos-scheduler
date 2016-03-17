@@ -28,7 +28,7 @@
          get_hostname/1,
          get_agent_id_value/1,
          get_persistence_id/1,
-         set_reserved/4,
+         set_reservation/4,
          delete/1]).
 
 -export([init/1,
@@ -110,9 +110,11 @@ get_persistence_id(Key) ->
             {stop, Reason}
     end.
 
--spec set_reserved(pid(), string(), string(), string()) -> ok | {error, term()}.
-set_reserved(Pid, Hostname, AgentIdValue, PersistenceId) ->
-    gen_server:call(Pid, {reserved, Hostname, AgentIdValue, PersistenceId}).
+-spec set_reservation(pid(), string(), string(), string()) ->
+    ok | {error, term()}.
+set_reservation(Pid, Hostname, AgentIdValue, PersistenceId) ->
+    gen_server:call(Pid, {set_reservation, Hostname, AgentIdValue,
+                          PersistenceId}).
 
 -spec delete(pid()) -> ok | {error, term()}.
 delete(Pid) ->
@@ -135,7 +137,8 @@ init({Key, ClusterKey}) ->
             end
     end.
 
-handle_call({reserved, Hostname, AgentIdValue, PersistenceId}, _From, Node) ->
+handle_call({set_reservation, Hostname, AgentIdValue, PersistenceId}, _From,
+            Node) ->
     Node1 = Node#node{status = reserved,
                       hostname = Hostname,
                       agent_id_value = AgentIdValue,
