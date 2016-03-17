@@ -26,23 +26,21 @@
          get_volumes_to_destroy/1,
          get_tasks_to_launch/1]).
 
--export([add_task_to_launch/2]).
-
--export([has_reservations/1, has_volumes/1]).
-
--export([make_reservation/7, make_volume/6]).
-
--export([apply_reserved_resources/9, apply_unreserved_resources/5]).
-
--export([can_fit_reserved/5, can_fit_unreserved/5]).
-
--export([has_persistence_id/2, has_tasks_to_launch/1]).
-
--export([unreserve_resources/1, unreserve_volumes/1]).
-
--export([operations/1]).
-
--export([resources_to_list/1]).
+-export([add_task_to_launch/2,
+         has_reservations/1,
+         has_volumes/1,
+         make_reservation/7,
+         make_volume/6,
+         apply_reserved_resources/9,
+         apply_unreserved_resources/5,
+         can_fit_reserved/5,
+         can_fit_unreserved/5,
+         has_persistence_id/2,
+         has_tasks_to_launch/1,
+         unreserve_resources/1,
+         unreserve_volumes/1,
+         operations/1,
+         resources_to_list/1]).
 
 -record(offer_helper, {offer :: erl_mesos:'Offer'(),
                        persistence_ids = [] :: [string()],
@@ -292,11 +290,23 @@ operations(#offer_helper{resources_to_reserve = ResourcesToReserve,
                          volumes_to_create = VolumesToCreate,
                          volumes_to_destroy = VolumesToDestroy,
                          tasks_to_launch = TasksToLaunch}) ->
-    [erl_mesos_utils:reserve_offer_operation(ResourcesToReserve),
-     erl_mesos_utils:unreserve_offer_operation(ResourcesToUnreserve),
-     erl_mesos_utils:create_offer_operation(VolumesToCreate),
-     erl_mesos_utils:destroy_offer_operation(VolumesToDestroy),
-     erl_mesos_utils:launch_offer_operation(TasksToLaunch)].
+    AppendOperationFun = fun({OperationFun, Operations}, OfferOperations) ->
+                             case Operations of
+                                 [] ->
+                                     OfferOperations;
+                                 _Operations ->
+                                     [OperationFun(Operations) |
+                                      OfferOperations]
+                             end
+                         end,
+    OfferOperations = [],
+    Funs =
+        [{fun erl_mesos_utils:reserve_offer_operation/1, ResourcesToReserve},
+         {fun erl_mesos_utils:unreserve_offer_operation/1, ResourcesToUnreserve},
+         {fun erl_mesos_utils:create_offer_operation/1, VolumesToCreate},
+         {fun erl_mesos_utils:destroy_offer_operation/1, VolumesToDestroy},
+         {fun erl_mesos_utils:launch_offer_operation/1, TasksToLaunch}],
+    lists:foldl(AppendOperationFun, OfferOperations, Funs).
 
 -spec resources_to_list(offer_helper()) ->
     [{reserved | unreserved, [{atom(), term()}]}].
