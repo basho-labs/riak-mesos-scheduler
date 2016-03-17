@@ -6,10 +6,4 @@ ebin
 logs
 *.beam
 rel/riak_mesos_scheduler
-.concrete/DEV_MODE
-log/
-logs/
-packages/
-.vagrant
-Vagrantfile
-provision.sh
+packages
