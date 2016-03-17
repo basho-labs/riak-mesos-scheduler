@@ -24,7 +24,11 @@
 
 -export([start_link/2]).
 
--export([set_reserved/4,
+-export([get_cluster_key/1,
+         get_hostname/1,
+         get_agent_id_value/1,
+         get_persistence_id/1,
+         set_reserved/4,
          delete/1]).
 
 -export([init/1,
@@ -69,6 +73,42 @@
     {ok, pid()} | {error, term()}.
 start_link(Key, ClusterKey) ->
     gen_server:start_link(?MODULE, {Key, ClusterKey}, []).
+
+-spec get_cluster_key(key()) -> {ok, rms_cluster:key()} | {error, term()}.
+get_cluster_key(Key) ->
+    case get_node(Key) of
+        {ok, #node{cluster_key = ClusterKey}} ->
+            {ok, ClusterKey};
+        {error, Reason} ->
+            {stop, Reason}
+    end.
+
+-spec get_hostname(key()) -> {ok, string()} | {error, term()}.
+get_hostname(Key) ->
+    case get_node(Key) of
+        {ok, #node{hostname = Hostname}} ->
+            {ok, Hostname};
+        {error, Reason} ->
+            {stop, Reason}
+    end.
+
+-spec get_agent_id_value(key()) -> {ok, string()} | {error, term()}.
+get_agent_id_value(Key) ->
+    case get_node(Key) of
+        {ok, #node{agent_id_value = AgentIdValue}} ->
+            {ok, AgentIdValue};
+        {error, Reason} ->
+            {stop, Reason}
+    end.
+
+-spec get_persistence_id(key()) -> {ok, string()} | {error, term()}.
+get_persistence_id(Key) ->
+    case get_node(Key) of
+        {ok, #node{persistence_id = PersistenceId}} ->
+            {ok, PersistenceId};
+        {error, Reason} ->
+            {stop, Reason}
+    end.
 
 -spec set_reserved(pid(), string(), string(), string()) -> ok | {error, term()}.
 set_reserved(Pid, Hostname, AgentIdValue, PersistenceId) ->
