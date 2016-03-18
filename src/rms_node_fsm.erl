@@ -3,10 +3,16 @@
 -behaviour(gen_fsm).
 
 -export([start_link/2]).
--export([
-		 set_reservation/4,
-		 delete/1
-		]).
+-export([get_cluster_key/1,
+         get_hostname/1,
+         get_agent_id_value/1,
+         get_persistence_id/1,
+         set_reservation/4,
+         needs_to_be_reconciled/1,
+         can_be_scheduled/1,
+         has_reservation/1,
+         set_unreserve/1,
+         delete/1]).
 
 -export([init/1,
          handle_event/3,
@@ -82,11 +88,90 @@
 start_link(Key, ClusterKey) ->
 	gen_fsm:start_link(?MODULE, {Key, ClusterKey}, []).
 
+%% TODO The following functions (down to get_persistence_id and maybe set_unreserve)
+%% operate only on the rms_metadata, but it feels like we should be asking the running
+%% FSM/server for that node, which should look in rms_metadata only if necessary.
+%% TODO Define "if necessary"
+-spec get_cluster_key(key()) -> {ok, rms_cluster:key()} | {error, term()}.
+get_cluster_key(Key) ->
+    case get_node(Key) of
+        {ok, #node{cluster_key = ClusterKey}} ->
+            {ok, ClusterKey};
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+-spec get_hostname(key()) -> {ok, string()} | {error, term()}.
+get_hostname(Key) ->
+    case get_node(Key) of
+        {ok, {_, #node{hostname = Hostname}}} ->
+            {ok, Hostname};
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+-spec get_agent_id_value(key()) -> {ok, string()} | {error, term()}.
+get_agent_id_value(Key) ->
+    case get_node(Key) of
+        {ok, {_, #node{agent_id_value = AgentIdValue}}} ->
+            {ok, AgentIdValue};
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+-spec needs_to_be_reconciled(key()) -> {ok, boolean()} | {error, term()}.
+needs_to_be_reconciled(Key) ->
+    case get_node(Key) of
+        {ok, {Status, _}} ->
+            %% Basic simple solution.
+            %% TODO: implement "needs to be reconciled" logic here.
+            NeedsReconciliation = Status =:= undefined,
+            {ok, NeedsReconciliation};
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+-spec can_be_scheduled(key()) -> {ok, boolean()} | {error, term()}.
+can_be_scheduled(Key) ->
+    case get_node(Key) of
+        {ok, {Status, _}} ->
+            %% Basic simple solution.
+            %% TODO: implement "can be scheduled" logic here.
+            CanBeScheduled = Status =:= requested,
+            {ok, CanBeScheduled};
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+-spec has_reservation(key()) -> {ok, boolean()} | {error, term()}.
+has_reservation(Key) ->
+    case get_node(Key) of
+        {ok, {_, #node{persistence_id = PersistenceId}}} ->
+            HasReservation = PersistenceId =/= "",
+            {ok, HasReservation};
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+-spec get_persistence_id(key()) -> {ok, string()} | {error, term()}.
+get_persistence_id(Key) ->
+    case get_node(Key) of
+        {ok, {_, #node{persistence_id = PersistenceId}}} ->
+            {ok, PersistenceId};
+        {error, Reason} ->
+            {stop, Reason}
+    end.
+
 -spec set_reservation(pid(), string(), string(), string()) ->
     ok | {error, term()}.
 set_reservation(Pid, Hostname, AgentIdValue, PersistenceId) ->
     gen_fsm:sync_send_all_state_event(
 	  Pid, {set_reservation, Hostname, AgentIdValue, PersistenceId}).
+
+-spec set_unreserve(pid()) -> ok | {error, term()}.
+set_unreserve(_Pid) ->
+    %% TODO: implement unreserve here via sync call to the node process.
+    ok.
 
 -spec delete(pid()) -> ok | {error, term()}.
 delete(Pid) ->
