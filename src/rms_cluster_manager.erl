@@ -52,17 +52,17 @@ get_cluster_keys() ->
 -spec get_cluster(rms_cluster:key()) ->
     {ok, rms_metadata:cluster_state()} | {error, term()}.
 get_cluster(Key) ->
-    rms_metadata:get_cluster(Key).
+    rms_cluster:get(Key).
 
 -spec get_cluster_riak_config(rms_cluster:key()) ->
     {ok, string()} | {error, term()}.
 get_cluster_riak_config(Key) ->
-    rms_cluster:get_riak_config(Key).
+    rms_cluster:get_field_value(riak_config, Key).
 
 -spec get_cluster_advanced_config(rms_cluster:key()) ->
     {ok, string()} | {error, term()}.
 get_cluster_advanced_config(Key) ->
-    rms_cluster:get_advanced_config(Key).
+    rms_cluster:get_field_value(advanced_config, Key).
 
 -spec add_cluster(rms_cluster:key()) -> ok | {error, term()}.
 add_cluster(Key) ->
@@ -190,7 +190,7 @@ apply_offer([], NeedsReconciliation, OfferHelper, _FrameworkInfo) ->
 schedule_node(NodeKey, NodeKeys, NeedsReconciliation, OfferHelper, NodeData) ->
     case rms_node_manager:node_has_reservation(NodeKey) of
         true ->
-            %%
+            %% Apply reserved resources.
             apply_reserved_offer(NodeKey, NodeKeys, NeedsReconciliation,
                                  OfferHelper, NodeData);
         false ->
