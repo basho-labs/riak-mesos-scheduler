@@ -24,14 +24,12 @@
 
 -export([start_link/2]).
 
--export([get_cluster_key/1,
-         get_hostname/1,
-         get_agent_id_value/1,
-         get_persistence_id/1,
-         set_reservation/4,
+-export([get/1,
+         get_field_value/2,
          needs_to_be_reconciled/1,
          can_be_scheduled/1,
          has_reservation/1,
+         set_reserve/4,
          set_unreserve/1,
          delete/1]).
 
@@ -78,29 +76,20 @@
 start_link(Key, ClusterKey) ->
     gen_server:start_link(?MODULE, {Key, ClusterKey}, []).
 
--spec get_cluster_key(key()) -> {ok, rms_cluster:key()} | {error, term()}.
-get_cluster_key(Key) ->
-    case get_node(Key) of
-        {ok, #node{cluster_key = ClusterKey}} ->
-            {ok, ClusterKey};
-        {error, Reason} ->
-            {error, Reason}
-    end.
+-spec get(key()) -> {ok, rms_metadata:node_state()} | {error, term()}.
+get(Key) ->
+    rms_metadata:get_node(Key).
 
--spec get_hostname(key()) -> {ok, string()} | {error, term()}.
-get_hostname(Key) ->
-    case get_node(Key) of
-        {ok, #node{hostname = Hostname}} ->
-            {ok, Hostname};
-        {error, Reason} ->
-            {error, Reason}
-    end.
-
--spec get_agent_id_value(key()) -> {ok, string()} | {error, term()}.
-get_agent_id_value(Key) ->
-    case get_node(Key) of
-        {ok, #node{agent_id_value = AgentIdValue}} ->
-            {ok, AgentIdValue};
+-spec get_field_value(atom(), key()) -> {ok, term()} | {error, term()}.
+get_field_value(Field, Key) ->
+    case rms_metadata:get_node(Key) of
+        {ok, Node} ->
+            case proplists:get_value(Field, Node, field_not_found) of
+                field_not_found ->
+                    {error, field_not_found};
+                Value ->
+                    {ok, Value}
+            end;
         {error, Reason} ->
             {error, Reason}
     end.
@@ -139,20 +128,10 @@ has_reservation(Key) ->
             {error, Reason}
     end.
 
--spec get_persistence_id(key()) -> {ok, string()} | {error, term()}.
-get_persistence_id(Key) ->
-    case get_node(Key) of
-        {ok, #node{persistence_id = PersistenceId}} ->
-            {ok, PersistenceId};
-        {error, Reason} ->
-            {stop, Reason}
-    end.
-
--spec set_reservation(pid(), string(), string(), string()) ->
+-spec set_reserve(pid(), string(), string(), string()) ->
     ok | {error, term()}.
-set_reservation(Pid, Hostname, AgentIdValue, PersistenceId) ->
-    gen_server:call(Pid, {set_reservation, Hostname, AgentIdValue,
-                          PersistenceId}).
+set_reserve(Pid, Hostname, AgentIdValue, PersistenceId) ->
+    gen_server:call(Pid, {set_reserve, Hostname, AgentIdValue, PersistenceId}).
 
 -spec set_unreserve(pid()) -> ok | {error, term()}.
 set_unreserve(_Pid) ->
@@ -180,7 +159,7 @@ init({Key, ClusterKey}) ->
             end
     end.
 
-handle_call({set_reservation, Hostname, AgentIdValue, PersistenceId}, _From,
+handle_call({set_reserve, Hostname, AgentIdValue, PersistenceId}, _From,
             Node) ->
     Node1 = Node#node{status = reserved,
                       hostname = Hostname,

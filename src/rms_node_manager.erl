@@ -27,6 +27,10 @@
 -export([get_node_keys/0,
          get_node_keys/1,
          get_node/1,
+         get_node_cluster_key/1,
+         get_node_hostname/1,
+         get_node_agent_id_value/1,
+         get_node_persistence_id/1,
          add_node/2,
          delete_node/1]).
 
@@ -79,7 +83,26 @@ get_node_keys(ClusterKey) ->
 -spec get_node(rms_node:key()) ->
     {ok, rms_metadata:node_state()} | {error, term()}.
 get_node(Key) ->
-    rms_metadata:get_node(Key).
+    rms_node:get(Key).
+
+-spec get_node_cluster_key(rms_node:key()) ->
+    {ok, rms_cluster:key()} | {error, term()}.
+get_node_cluster_key(Key) ->
+    rms_node:get_field_value(cluster_key, Key).
+
+-spec get_node_hostname(rms_node:key()) -> {ok, string()} | {error, term()}.
+get_node_hostname(Key) ->
+    rms_node:get_field_value(hostname, Key).
+
+-spec get_node_agent_id_value(rms_node:key()) ->
+    {ok, string()} | {error, term()}.
+get_node_agent_id_value(Key) ->
+    rms_node:get_field_value(agent_id_value, Key).
+
+-spec get_node_persistence_id(rms_node:key()) ->
+    {ok, string()} | {error, term()}.
+get_node_persistence_id(Key) ->
+    rms_node:get_field_value(persistence_id, Key).
 
 -spec add_node(rms_node:key(), rms_cluster:key()) -> ok | {error, term()}.
 add_node(Key, ClusterKey) ->
@@ -156,8 +179,8 @@ apply_unreserved_offer(NodeKey, OfferHelper,
             Hostname = rms_offer_helper:get_hostname(OfferHelper),
             AgentIdValue = rms_offer_helper:get_agent_id_value(OfferHelper),
             PersistenceId = node_persistence_id(),
-            ok = rms_node:set_reservation(Pid, Hostname, AgentIdValue,
-                                          PersistenceId),
+            ok = rms_node:set_reserve(Pid, Hostname, AgentIdValue,
+                                      PersistenceId),
             case rms_offer_helper:can_fit_unreserved(NodeCpus +
                                                      ?CPUS_PER_EXECUTOR,
                                                      NodeMem +
@@ -195,7 +218,7 @@ apply_unreserved_offer(NodeKey, OfferHelper,
     end.
 
 -spec apply_reserved_offer(rms_node:key(), rms_offer_helper:offer_helper(),
-    node_data()) ->
+                           node_data()) ->
     {ok, rms_offer_helper:offer_helper()} |
     {error, not_enough_resources | term()}.
 apply_reserved_offer(NodeKey, OfferHelper,
@@ -208,8 +231,8 @@ apply_reserved_offer(NodeKey, OfferHelper,
                                 principal = Principal,
                                 container_path = ContainerPath,
                                 artifact_urls = ArtifactUrls}) ->
-    case get_node(NodeKey) of
-        {ok, Node} ->
+    case get_node_pid(NodeKey) of
+        {ok, _Pid} ->
             CanFitReserved =
                 rms_offer_helper:can_fit_reserved(NodeCpus, NodeMem, NodeDisk,
                                                   undefined, OfferHelper),
@@ -220,10 +243,10 @@ apply_reserved_offer(NodeKey, OfferHelper,
                                                     OfferHelper),
             case CanFitReserved and CanFitUnreserved of
                 true ->
-                    ClusterKey = proplists:get_value(cluster_key, Node),
-                    PersistenceId = proplists:get_value(persistence_id, Node),
-                    Hostname = proplists:get_value(hostname, Node),
-                    AgentIdValue = proplists:get_value(agent_id_value, Node),
+                    ClusterKey = get_node_cluster_key(NodeKey),
+                    PersistenceId = get_node_persistence_id(NodeKey),
+                    Hostname = get_node_hostname(NodeKey),
+                    AgentIdValue = get_node_agent_id_value(NodeKey),
 
                     %% Apply reserved resources.
                     OfferHelper1 =
