@@ -3,6 +3,10 @@
 -behaviour(gen_fsm).
 
 -export([start_link/2]).
+-export([
+		 set_reservation/4,
+		 delete/1
+		]).
 
 -export([init/1,
          handle_event/3,
@@ -59,7 +63,7 @@
 -export_type([key/0]).
 
 
--type node_state() :: #node{}.
+-type node_state() :: {Status :: atom(), #node{}}.
 -export_type([node_state/0]).
 
 %%%===================================================================
@@ -78,23 +82,25 @@
 start_link(Key, ClusterKey) ->
 	gen_fsm:start_link(?MODULE, {Key, ClusterKey}, []).
 
+-spec set_reservation(pid(), string(), string(), string()) ->
+    ok | {error, term()}.
+set_reservation(Pid, Hostname, AgentIdValue, PersistenceId) ->
+    gen_fsm:sync_send_all_state_event(
+	  Pid, {set_reservation, Hostname, AgentIdValue, PersistenceId}).
+
+-spec delete(pid()) -> ok | {error, term()}.
+delete(Pid) ->
+	gen_fsm:sync_send_all_state_event(Pid, delete).
+
 %%%===================================================================
 %%% gen_fsm callbacks
 %%%===================================================================
 
-%%--------------------------------------------------------------------
-%% @private
-%% @doc
-%% Whenever a gen_fsm is started using gen_fsm:start/[3,4] or
-%% gen_fsm:start_link/[3,4], this function is called by the new
-%% process to initialize.
-%%
 %% @spec init(Args) -> {ok, StateName, State} |
 %%                     {ok, StateName, State, Timeout} |
 %%                     ignore |
 %%                     {stop, StopReason}
 %% @end
-%%--------------------------------------------------------------------
 init({Key, ClusterKey}) ->
 	case get_node(Key) of
 		{ok, Node} ->
@@ -110,21 +116,11 @@ init({Key, ClusterKey}) ->
 			end
 	end.
 
-%%--------------------------------------------------------------------
-%% @private
-%% @doc
-%% There should be one instance of this function for each possible
-%% state name. Whenever a gen_fsm receives an event sent using
-%% gen_fsm:send_event/2, the instance of this function with the same
-%% name as the current state name StateName is called to handle
-%% the event. It is also called if a timeout occurs.
-%%
 %% @spec state_name(Event, State) ->
 %%                   {next_state, NextStateName, NextState} |
 %%                   {next_state, NextStateName, NextState, Timeout} |
 %%                   {stop, Reason, NewState}
 %% @end
-%%--------------------------------------------------------------------
 undefined(_Event, Node) ->
 	{stop, {unhandled_event, _Event}, Node}.
 requested(_Event, Node) ->
@@ -144,15 +140,6 @@ failed(_Event, Node) ->
 restarting(_Event, Node) ->
 	{stop, {unhandled_event, _Event}, Node}.
 
-%%--------------------------------------------------------------------
-%% @private
-%% @doc
-%% There should be one instance of this function for each possible
-%% state name. Whenever a gen_fsm receives an event sent using
-%% gen_fsm:sync_send_event/[2,3], the instance of this function with
-%% the same name as the current state name StateName is called to
-%% handle the event.
-%%
 %% @spec state_name(Event, From, State) ->
 %%                   {next_state, NextStateName, NextState} |
 %%                   {next_state, NextStateName, NextState, Timeout} |
@@ -161,7 +148,6 @@ restarting(_Event, Node) ->
 %%                   {stop, Reason, NewState} |
 %%                   {stop, Reason, Reply, NewState}
 %% @end
-%%--------------------------------------------------------------------
 requested(_Event, _From, Node) ->
 	{reply, {error, unhandled_event}, requested, Node}.
 undefined(_Event, _From, Node) ->
@@ -180,6 +166,7 @@ failed(_Event, _From, Node) ->
 	{reply, {error, unhandled_event}, failed, Node}.
 restarting(_Event, _From, Node) ->
 	{reply, {error, unhandled_event}, restarting, Node}.
+
 %%--------------------------------------------------------------------
 %% @private
 %% @doc
@@ -212,6 +199,24 @@ handle_event(_Event, StateName, State) ->
 %%                   {stop, Reason, Reply, NewState}
 %% @end
 %%--------------------------------------------------------------------
+handle_sync_event({set_reservation, Hostname, AgentIdValue, PersistenceId},
+				  _From, Status, #node{key = Key} = Node) ->
+	Node1 = Node#node{hostname = Hostname,
+					  agent_id_value = AgentIdValue,
+					  persistence_id = PersistenceId},
+	case update_node(Key, {reserved, Node1}) of
+		ok ->
+			{reply, ok, reserved, Node1};
+		{error, Reason} ->
+			{reply, {error, Reason}, Status, Node}
+	end;
+handle_sync_event(delete, _From, Status, #node{key = Key} = Node) ->
+	case update_node(Key, {shutting_down, Node}) of
+		ok ->
+			{reply, ok, shutting_down, Node};
+		{error, Reason} ->
+			{reply, {error, Reason}, Status, Node}
+	end;
 handle_sync_event(_Event, _From, StateName, State) ->
         Reply = ok,
         {reply, Reply, StateName, State}.
@@ -262,9 +267,6 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
-
-
-
 -spec get_node(key()) -> {ok, node_state()} | {error, term()}.
 get_node(Key) ->
     case rms_metadata:get_node(Key) of
@@ -278,24 +280,14 @@ get_node(Key) ->
 add_node(Node) ->
     rms_metadata:add_node(to_list(Node)).
 
--spec update_node_state(node_state(), node_state()) ->
-    {reply, ok | {error, term()}, node_state()}.
-update_node_state(#node{key = Key} = Node, NewNode) ->
-    case update_node(Key, NewNode) of
-        ok ->
-            {reply, ok, NewNode};
-        {error, Reason} ->
-            {reply, {error, Reason}, Node}
-    end.
-
 -spec update_node(key(), node_state()) -> ok | {error, term()}.
 update_node(Key, Node) ->
     rms_metadata:update_node(Key, to_list(Node)).
 
 -spec from_list(rms_metadata:node_state()) -> node_state().
 from_list(NodeList) ->
+	{proplists:get_value(status, NodeList),
     #node{key = proplists:get_value(key, NodeList),
-          status = proplists:get_value(status, NodeList),
           cluster_key = proplists:get_value(cluster_key, NodeList),
           node_name = proplists:get_value(node_name, NodeList),
           hostname = proplists:get_value(hostname, NodeList),
@@ -304,20 +296,21 @@ from_list(NodeList) ->
           disterl_port = proplists:get_value(disterl_port, NodeList),
           agent_id_value = proplists:get_value(agent_id_value, NodeList),
           container_path = proplists:get_value(container_path, NodeList),
-          persistence_id = proplists:get_value(persistence_id, NodeList)}.
+          persistence_id = proplists:get_value(persistence_id, NodeList)}}.
 
 -spec to_list(node_state()) -> rms_metadata:node_state().
-to_list(#node{key = Key,
-              status = Status,
-              cluster_key = ClusterKey,
-              node_name = NodeName,
-              hostname = Hostname,
-              http_port = HttpPort,
-              pb_port = PbPort,
-              disterl_port = DisterlPort,
-              agent_id_value = AgentIdValue,
-              container_path = ContainerPath,
-              persistence_id = PersistenceId}) ->
+to_list(
+  {Status,
+   #node{key = Key,
+         cluster_key = ClusterKey,
+         node_name = NodeName,
+         hostname = Hostname,
+         http_port = HttpPort,
+         pb_port = PbPort,
+         disterl_port = DisterlPort,
+         agent_id_value = AgentIdValue,
+         container_path = ContainerPath,
+         persistence_id = PersistenceId}}) ->
     [{key, Key},
      {status, Status},
      {cluster_key, ClusterKey},
