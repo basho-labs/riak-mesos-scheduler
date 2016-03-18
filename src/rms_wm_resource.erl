@@ -107,14 +107,12 @@ routes() ->
      #route{path = ["clusters", key, "config"],
             methods = ['GET', 'PUT'],
             exists = {?MODULE, cluster_exists},
-            provides = ?PROVIDE_TEXT,
             content = {?MODULE, get_cluster_riak_config},
             accepts = ?ACCEPT_TEXT,
             accept = {?MODULE, set_cluster_riak_config}},
      #route{path = ["clusters", key, "advancedConfig"],
             methods = ['GET', 'PUT'],
             exists = {?MODULE, cluster_exists},
-            provides = ?PROVIDE_TEXT,
             content = {?MODULE, get_cluster_advanced_config},
             accepts = ?ACCEPT_TEXT,
             accept={?MODULE, set_cluster_advanced_config}},
@@ -135,7 +133,7 @@ routes() ->
             exists = {?MODULE, node_exists},
             accepts = ?ACCEPT_TEXT,
             accept = {?MODULE, restart_node}},
-     % Healthcheck
+     %% Healthcheck.
      #route{base = [],
             path = ["healthcheck"],
             content = {?MODULE, healthcheck}}].
@@ -225,7 +223,7 @@ get_cluster_riak_config(ReqData) ->
     {ok, RiakConfig} = rms_cluster_manager:get_cluster_riak_config(Key),
     Response = [{key, list_to_binary(Key)},
                 {riak_config, list_to_binary(RiakConfig)}],
-    {true, wrq:append_to_response_body(mochijson2:encode(Response), ReqData)}.
+    {Response, ReqData}.
 
 set_cluster_riak_config(ReqData) ->
     Key = wrq:path_info(key, ReqData),
@@ -239,7 +237,7 @@ get_cluster_advanced_config(ReqData) ->
     {ok, AdvancedConfig} = rms_cluster_manager:get_cluster_advanced_config(Key),
     Response = [{key, list_to_binary(Key)},
                 {advanced_config, list_to_binary(AdvancedConfig)}],
-    {true, wrq:append_to_response_body(mochijson2:encode(Response), ReqData)}.
+    {Response, ReqData}.
 
 set_cluster_advanced_config(ReqData) ->
     Key = wrq:path_info(key, ReqData),
