@@ -24,8 +24,8 @@
 
 -export([start_link/1]).
 
--export([get_riak_config/1,
-         get_advanced_config/1,
+-export([get/1,
+         get_field_value/2,
          set_riak_config/2,
          set_advanced_config/2,
          delete/1]).
@@ -62,22 +62,22 @@
 start_link(Key) ->
     gen_server:start_link(?MODULE, Key, []).
 
--spec get_riak_config(key()) -> {ok, string()} | {error, term()}.
-get_riak_config(Key) ->
-    case get_cluster(Key) of
-        {ok, #cluster{riak_config = RiakConfig}} ->
-            {ok, RiakConfig};
-        {error, Reason} ->
-            {stop, Reason}
-    end.
+-spec get(key()) -> {ok, rms_metadata:cluster_state()} | {error, term()}.
+get(Key) ->
+    rms_metadata:get_cluster(Key).
 
--spec get_advanced_config(key()) -> {ok, string()} | {error, term()}.
-get_advanced_config(Key) ->
-    case get_cluster(Key) of
-        {ok, #cluster{advanced_config = AdvancedConfig}} ->
-            {ok, AdvancedConfig};
+-spec get_field_value(atom(), key()) -> {ok, term()} | {error, term()}.
+get_field_value(Field, Key) ->
+    case rms_metadata:get_cluster(Key) of
+        {ok, Cluster} ->
+            case proplists:get_value(Field, Cluster, field_not_found) of
+                field_not_found ->
+                    {error, field_not_found};
+                Value ->
+                    {ok, Value}
+            end;
         {error, Reason} ->
-            {stop, Reason}
+            {error, Reason}
     end.
 
 -spec set_riak_config(pid(), string()) -> ok | {error, term()}.
