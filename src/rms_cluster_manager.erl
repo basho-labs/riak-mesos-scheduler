@@ -162,8 +162,7 @@ get_cluster_pid(Key) ->
             {error, not_found}
     end.
 
--spec apply_offer([rms_node:key()], boolean(),
-                  rms_offer_helper:offer_helper(),
+-spec apply_offer([rms_node:key()], boolean(), rms_offer_helper:offer_helper(),
                   rms_node_manager:node_data()) ->
     {boolean(), rms_offer_helper:offer_helper()}.
 apply_offer([NodeKey | NodeKeys], NeedsReconciliation, OfferHelper, NodeData) ->
@@ -235,7 +234,7 @@ apply_unreserved_offer(NodeKey, NodeKeys, NeedsReconciliation, OfferHelper,
     {boolean(), rms_offer_helper:offer_helper()}.
 apply_reserved_offer(NodeKey, NodeKeys, NeedsReconciliation, OfferHelper,
                      NodeData) ->
-    {ok, PersistenceId} = rms_node:get_persistence_id(NodeKey),
+    {ok, PersistenceId} = rms_node_manager:get_node_persistence_id(NodeKey),
     OfferIdValue = rms_offer_helper:get_offer_id_value(OfferHelper),
     case rms_offer_helper:has_persistence_id(PersistenceId, OfferHelper) of
         true ->
@@ -271,8 +270,9 @@ apply_reserved_offer(NodeKey, NodeKeys, NeedsReconciliation, OfferHelper,
                     apply_offer(NodeKeys, true, OfferHelper, NodeData)
             end;
         false ->
-            {ok, Hostname} = rms_node:get_hostname(NodeKey),
-            {ok, AgentIdValue} = rms_node:get_agent_id_value(NodeKey),
+            {ok, Hostname} = rms_node_manager:get_node_hostname(NodeKey),
+            {ok, AgentIdValue} =
+                rms_node_manager:get_node_agent_id_value(NodeKey),
             OfferHostname = rms_offer_helper:get_hostname(OfferHelper),
             OfferAgentIdValue =
                 rms_offer_helper:get_agent_id_value(OfferHelper),
