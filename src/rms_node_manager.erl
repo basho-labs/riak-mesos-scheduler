@@ -31,14 +31,13 @@
          get_node_hostname/1,
          get_node_agent_id_value/1,
          get_node_persistence_id/1,
+         node_needs_to_be_reconciled/1,
+         node_can_be_scheduled/1,
+         node_has_reservation/1,
          add_node/2,
          delete_node/1]).
 
 -export([node_data/1]).
-
--export([node_needs_to_be_reconciled/1,
-         node_can_be_scheduled/1,
-         node_has_reservation/1]).
 
 -export([apply_unreserved_offer/3, apply_reserved_offer/3]).
 
@@ -104,6 +103,33 @@ get_node_agent_id_value(Key) ->
 get_node_persistence_id(Key) ->
     rms_node:get_field_value(persistence_id, Key).
 
+-spec node_needs_to_be_reconciled(rms_node:key()) -> boolean().
+node_needs_to_be_reconciled(NodeKey) ->
+    case rms_node:needs_to_be_reconciled(NodeKey) of
+        {ok, NeedsToBeReconciled} ->
+            NeedsToBeReconciled;
+        {error, _Reason} ->
+            true
+    end.
+
+-spec node_can_be_scheduled(rms_node:key()) -> boolean().
+node_can_be_scheduled(NodeKey) ->
+    case rms_node:can_be_scheduled(NodeKey) of
+        {ok, CanBeScheduled} ->
+            CanBeScheduled;
+        {error, _Reason} ->
+            false
+    end.
+
+-spec node_has_reservation(rms_node:key()) -> boolean().
+node_has_reservation(NodeKey) ->
+    case rms_node:has_reservation(NodeKey) of
+        {ok, HasReservation} ->
+            HasReservation;
+        {error, _Reason} ->
+            false
+    end.
+
 -spec add_node(rms_node:key(), rms_cluster:key()) -> ok | {error, term()}.
 add_node(Key, ClusterKey) ->
     case get_node(Key) of
@@ -141,26 +167,6 @@ node_data(Options) ->
                principal = proplists:get_value(framework_principal, Options),
                container_path = ?NODE_CONTAINER_PATH,
                artifact_urls = proplists:get_value(artifact_urls, Options)}.
-
--spec node_needs_to_be_reconciled(rms_node:key()) -> boolean().
-node_needs_to_be_reconciled(_NodeKey) ->
-    %% Tmp solution for testing the resource management.
-    false.
-
--spec node_can_be_scheduled(rms_node:key()) -> boolean().
-node_can_be_scheduled(_NodeKey) ->
-    %% Tmp solution for testing the resource management.
-    true.
-
--spec node_has_reservation(rms_node:key()) -> boolean().
-node_has_reservation(_NodeKey) ->
-    %% Tmp solution for testing the resource management.
-    case get(reg) of
-        undefined ->
-            false;
-        _ ->
-            true
-    end.
 
 -spec apply_unreserved_offer(rms_node:key(), rms_offer_helper:offer_helper(),
                              node_data()) ->
@@ -205,10 +211,6 @@ apply_unreserved_offer(NodeKey, OfferHelper,
                                                      PersistenceId,
                                                      ContainerPath,
                                                      OfferHelper2),
-
-                    %% Tmp solution for testing the resource management.
-                    put(reg, true),
-
                     {ok, OfferHelper3};
                 false ->
                     {error, not_enough_resources}
@@ -304,10 +306,12 @@ apply_reserved_offer(NodeKey, OfferHelper,
 
                     TaskName = "riak",
                     %% FIXME Is this the appropriate place for ReservedResources?
-                    ReservedResources = rms_offer_helper:get_reserved_resources(OfferHelper2),
+                    ReservedResources = rms_offer_helper:get_resources_to_reserve(OfferHelper2),
+                    UnreservedResources = rms_offer_helper:get_resources_to_unreserve(OfferHelper2),
+                    TaskInfoResources = ReservedResources ++ UnreservedResources,
                     TaskInfo =
                         erl_mesos_utils:task_info(TaskName, TaskId, AgentId,
-                                                  ReservedResources,
+                                                  TaskInfoResources,
                                                   ExecutorInfo, undefined,
                                                   TaskDataBin),
                     {ok, rms_offer_helper:add_task_to_launch(TaskInfo,
