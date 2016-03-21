@@ -318,8 +318,7 @@ handle_sync_event(delete, _From, Status, #node{key = Key} = Node) ->
 			{reply, {error, Reason}, Status, Node}
 	end;
 handle_sync_event(_Event, _From, StateName, State) ->
-        Reply = ok,
-        {reply, Reply, StateName, State}.
+	{reply, {error, {unhandled_sync_event, _Event}}, StateName, State}.
 
 %%--------------------------------------------------------------------
 %% @private
