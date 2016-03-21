@@ -23,11 +23,8 @@
 -behaviour(gen_fsm).
 
 -export([start_link/2]).
--export([get_cluster_key/1,
-         get_hostname/1,
-         get_agent_id_value/1,
-         get_persistence_id/1,
-         set_reservation/4,
+-export([get/1,
+         get_field_value/2,
          needs_to_be_reconciled/1,
          can_be_scheduled/1,
          has_reservation/1,
@@ -108,33 +105,25 @@
 start_link(Key, ClusterKey) ->
 	gen_fsm:start_link(?MODULE, {Key, ClusterKey}, []).
 
-%% TODO The following functions (down to get_persistence_id and maybe set_unreserve)
-%% operate only on the rms_metadata, but it feels like we should be asking the running
-%% FSM/server for that node, which should look in rms_metadata only if necessary.
+%% TODO The following API functions operate only on the rms_metadata, but
+%% it feels like we should be asking the running FSM/server for that node,
+%% which should look in rms_metadata only if necessary.
 %% TODO Define "if necessary"
--spec get_cluster_key(key()) -> {ok, rms_cluster:key()} | {error, term()}.
-get_cluster_key(Key) ->
-    case get_node(Key) of
-        {ok, #node{cluster_key = ClusterKey}} ->
-            {ok, ClusterKey};
-        {error, Reason} ->
-            {error, Reason}
-    end.
 
--spec get_hostname(key()) -> {ok, string()} | {error, term()}.
-get_hostname(Key) ->
-    case get_node(Key) of
-        {ok, {_, #node{hostname = Hostname}}} ->
-            {ok, Hostname};
-        {error, Reason} ->
-            {error, Reason}
-    end.
+-spec get(key()) -> {ok, rms_metadata:node_state()} | {error, term()}.
+get(Key) ->
+    rms_metadata:get_node(Key).
 
--spec get_agent_id_value(key()) -> {ok, string()} | {error, term()}.
-get_agent_id_value(Key) ->
-    case get_node(Key) of
-        {ok, {_, #node{agent_id_value = AgentIdValue}}} ->
-            {ok, AgentIdValue};
+-spec get_field_value(atom(), key()) -> {ok, term()} | {error, term()}.
+get_field_value(Field, Key) ->
+    case rms_metadata:get_node(Key) of
+        {ok, Node} ->
+            case proplists:get_value(Field, Node, field_not_found) of
+                field_not_found ->
+                    {error, field_not_found};
+                Value ->
+                    {ok, Value}
+            end;
         {error, Reason} ->
             {error, Reason}
     end.
@@ -173,20 +162,11 @@ has_reservation(Key) ->
             {error, Reason}
     end.
 
--spec get_persistence_id(key()) -> {ok, string()} | {error, term()}.
-get_persistence_id(Key) ->
-    case get_node(Key) of
-        {ok, {_, #node{persistence_id = PersistenceId}}} ->
-            {ok, PersistenceId};
-        {error, Reason} ->
-            {stop, Reason}
-    end.
-
--spec set_reservation(pid(), string(), string(), string()) ->
+-spec set_reserve(pid(), string(), string(), string()) ->
     ok | {error, term()}.
-set_reservation(Pid, Hostname, AgentIdValue, PersistenceId) ->
+set_reserve(Pid, Hostname, AgentIdValue, PersistenceId) ->
     gen_fsm:sync_send_all_state_event(
-	  Pid, {set_reservation, Hostname, AgentIdValue, PersistenceId}).
+	  Pid, {set_reserve, Hostname, AgentIdValue, PersistenceId}).
 
 -spec set_unreserve(pid()) -> ok | {error, term()}.
 set_unreserve(_Pid) ->
@@ -304,7 +284,7 @@ handle_event(_Event, StateName, State) ->
 %%                   {stop, Reason, Reply, NewState}
 %% @end
 %%--------------------------------------------------------------------
-handle_sync_event({set_reservation, Hostname, AgentIdValue, PersistenceId},
+handle_sync_event({set_reserve, Hostname, AgentIdValue, PersistenceId},
 				  _From, Status, #node{key = Key} = Node) ->
 	Node1 = Node#node{hostname = Hostname,
 					  agent_id_value = AgentIdValue,
