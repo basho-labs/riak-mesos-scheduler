@@ -20,6 +20,7 @@
          get_unreserved_resources_mem/1,
          get_unreserved_resources_disk/1,
          get_unreserved_resources_ports/1,
+         get_applied_unreserved_resources_ports/1,
          get_resources_to_reserve/1,
          get_resources_to_unreserve/1,
          get_volumes_to_create/1,
@@ -33,6 +34,8 @@
          make_volume/6,
          apply_reserved_resources/9,
          apply_unreserved_resources/5,
+         get_reserved_applied_resources/1,
+         get_unreserved_applied_resources/1,
          can_fit_reserved/5,
          can_fit_unreserved/5,
          has_persistence_id/2,
@@ -44,6 +47,8 @@
 
 -record(offer_helper, {offer :: erl_mesos:'Offer'(),
                        persistence_ids = [] :: [string()],
+                       applied_reserved_resources = [] :: erl_mesos_utils:resources(),
+                       applied_unreserved_resources = [] :: erl_mesos_utils:resources(),
                        reserved_resources :: erl_mesos_utils:resources(),
                        unreserved_resources :: erl_mesos_utils:resources(),
                        resources_to_reserve = [] :: [erl_mesos:'Resource'()],
@@ -144,6 +149,10 @@ get_unreserved_resources_disk(OfferHelper) ->
 get_unreserved_resources_ports(OfferHelper) ->
     erl_mesos_utils:resources_ports(get_unreserved_resources(OfferHelper)).
 
+-spec get_applied_unreserved_resources_ports(offer_helper()) -> [non_neg_integer()].
+get_applied_unreserved_resources_ports(OfferHelper) ->
+    erl_mesos_utils:resources_ports(get_unreserved_applied_resources(OfferHelper)).
+
 -spec get_resources_to_reserve(offer_helper()) -> [erl_mesos:'Resource'()].
 get_resources_to_reserve(#offer_helper{resources_to_reserve =
                                        ResourcesToReserve}) ->
@@ -219,12 +228,16 @@ make_volume(Disk, Role, Principal, PersistenceId, ContainerPath,
     offer_helper().
 apply_reserved_resources(Cpus, Mem, Disk, NumPorts, Role, Principal,
                          PersistenceId, ContainerPath,
-                         #offer_helper{reserved_resources = ReservedResources} =
+                         #offer_helper{reserved_resources = ReservedResources,
+                                       applied_reserved_resources = 
+                                           AppliedReservedResources} =
                          OfferHelper) ->
-    {ReservedResources1, _} =
+    {ReservedResources1, AppliedReservedResources1} =
         apply(Cpus, Mem, Disk, NumPorts, Role, Principal, PersistenceId,
               ContainerPath, ReservedResources),
-    OfferHelper#offer_helper{reserved_resources = ReservedResources1}.
+    OfferHelper#offer_helper{reserved_resources = ReservedResources1,
+                             applied_reserved_resources = 
+                                 AppliedReservedResources ++ AppliedReservedResources1}.
 
 -spec apply_unreserved_resources(undefined | float(), undefined | float(),
                                  undefined | float(), undefined | pos_integer(),
@@ -232,12 +245,28 @@ apply_reserved_resources(Cpus, Mem, Disk, NumPorts, Role, Principal,
     offer_helper().
 apply_unreserved_resources(Cpus, Mem, Disk, NumPorts,
                            #offer_helper{unreserved_resources =
-                                             UnreservedResources} =
+                                             UnreservedResources, 
+                                         applied_unreserved_resources = 
+                                             AppliedUnreservedResources} =
                            OfferHelper) ->
-    {UnreservedResources1, _} =
+    {UnreservedResources1, AppliedUnreservedResources1} =
         apply(Cpus, Mem, Disk, NumPorts, undefined, undefined, undefined,
               undefined, UnreservedResources),
-    OfferHelper#offer_helper{unreserved_resources = UnreservedResources1}.
+    OfferHelper#offer_helper{unreserved_resources = UnreservedResources1,
+                             applied_unreserved_resources = 
+                                 AppliedUnreservedResources ++ AppliedUnreservedResources1}.
+
+-spec get_reserved_applied_resources(offer_helper()) ->
+                                           erl_mesos_utils:resources().
+get_reserved_applied_resources(#offer_helper{applied_reserved_resources =
+                                                 AppliedReservedResources}) ->
+    AppliedReservedResources.
+
+-spec get_unreserved_applied_resources(offer_helper()) ->
+                                           erl_mesos_utils:resources().
+get_unreserved_applied_resources(#offer_helper{applied_unreserved_resources =
+                                                 AppliedUnreservedResources}) ->
+    AppliedUnreservedResources.
 
 -spec can_fit_reserved(undefined | float(), undefined | float(),
                        undefined | float(), undefined | pos_integer(),
