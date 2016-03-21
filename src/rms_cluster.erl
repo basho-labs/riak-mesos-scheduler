@@ -18,7 +18,7 @@
 %%
 %% -------------------------------------------------------------------
 
--module(rms_cluster_fsm).
+-module(rms_cluster).
 
 -behaviour(gen_fsm).
 
