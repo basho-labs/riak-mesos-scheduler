@@ -106,6 +106,10 @@ disconnected(_SchedulerInfo, State) ->
 resource_offers(SchedulerInfo, #'Event.Offers'{offers = Offers},
                 #state{node_data = NodeData} = State) ->
     {OfferIds, Operations} = apply_offers(Offers, NodeData),
+    case length(Operations) of
+        0 -> ok;
+        _ -> lager:info("Created Operations: ~p", [Operations])
+    end,
     Filters = #'Filters'{refuse_seconds = ?OFFER_INTERVAL},
     ok = erl_mesos_scheduler:accept(SchedulerInfo, OfferIds, Operations,
                                     Filters),

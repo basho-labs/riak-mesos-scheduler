@@ -168,13 +168,16 @@ get_cluster_pid(Key) ->
 apply_offer([NodeKey | NodeKeys], NeedsReconciliation, OfferHelper, NodeData) ->
     case rms_node_manager:node_needs_to_be_reconciled(NodeKey) of
         true ->
+            lager:info("Node ~p needs to be reconciled.", [NodeKey]),
             apply_offer(NodeKeys, true, OfferHelper, NodeData);
         false ->
             case rms_node_manager:node_can_be_scheduled(NodeKey) of
                 true ->
+                    lager:info("Node ~p can be scheduled.", [NodeKey]),
                     schedule_node(NodeKey, NodeKeys, NeedsReconciliation,
                                   OfferHelper, NodeData);
                 false ->
+                    lager:info("Node ~p cannot be scheduled.", [NodeKey]),
                     apply_offer(NodeKeys, NeedsReconciliation, OfferHelper,
                                 NodeData)
             end
@@ -189,10 +192,12 @@ apply_offer([], NeedsReconciliation, OfferHelper, _FrameworkInfo) ->
 schedule_node(NodeKey, NodeKeys, NeedsReconciliation, OfferHelper, NodeData) ->
     case rms_node_manager:node_has_reservation(NodeKey) of
         true ->
+            lager:info("Node ~p has reservation.", [NodeKey]),
             %% Apply reserved resources.
             apply_reserved_offer(NodeKey, NodeKeys, NeedsReconciliation,
                                  OfferHelper, NodeData);
         false ->
+            lager:info("Node ~p does not have reservation.", [NodeKey]),
             %% New node.
             apply_unreserved_offer(NodeKey, NodeKeys, NeedsReconciliation,
                                    OfferHelper, NodeData)

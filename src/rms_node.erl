@@ -141,7 +141,12 @@ can_be_scheduled(Key) ->
         {ok, {Status, _}} ->
             %% Basic simple solution.
             %% TODO: implement "can be scheduled" logic here.
-            CanBeScheduled = Status =:= requested,
+            CanBeScheduled = case Status of
+                                 requested -> true;
+                                 reserved -> true;
+                                 _ -> false
+                             end,
+            lager:info("Node Status: ~p, CanBeScheduled: ~p", [Status, CanBeScheduled]),
             {ok, CanBeScheduled};
         {error, Reason} ->
             {error, Reason}

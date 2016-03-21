@@ -330,11 +330,12 @@ operations(#offer_helper{resources_to_reserve = ResourcesToReserve,
                          end,
     OfferOperations = [],
     Funs =
-        [{fun erl_mesos_utils:reserve_offer_operation/1, ResourcesToReserve},
-         {fun erl_mesos_utils:unreserve_offer_operation/1, ResourcesToUnreserve},
-         {fun erl_mesos_utils:create_offer_operation/1, VolumesToCreate},
+        [{fun erl_mesos_utils:launch_offer_operation/1, TasksToLaunch},
          {fun erl_mesos_utils:destroy_offer_operation/1, VolumesToDestroy},
-         {fun erl_mesos_utils:launch_offer_operation/1, TasksToLaunch}],
+         {fun erl_mesos_utils:create_offer_operation/1, VolumesToCreate},
+         {fun erl_mesos_utils:unreserve_offer_operation/1, ResourcesToUnreserve},
+         {fun erl_mesos_utils:reserve_offer_operation/1, ResourcesToReserve}
+         ],
     lists:foldl(AppendOperationFun, OfferOperations, Funs).
 
 -spec resources_to_list(offer_helper()) ->

@@ -126,8 +126,8 @@ add_node(Pid) ->
 	| {stop, reason()}.
 init(Key) ->
     case get_cluster(Key) of
-        {ok, Cluster} ->
-            {ok, requested, Cluster};
+        {ok, {State, Cluster}} ->
+            {ok, State, Cluster};
         {error, not_found} ->
             Cluster = #cluster{key = Key},
             case add_cluster({requested, Cluster}) of
