@@ -75,8 +75,6 @@
                   restarting.
 -export_type([status/0]).
 
--define(SERVER, ?MODULE).
-
 -record(node, {key :: key(),
                cluster_key :: rms_cluster:key(),
                node_name = "" :: string(),
@@ -178,7 +176,7 @@ delete(Pid) ->
 
 -spec init({key(), rms_cluster:key()}) ->
 	{ok, StateName :: atom(), node_state()}
-	| {stop, Reason :: term()}.
+	| {stop, reason()}.
 init({Key, ClusterKey}) ->
 	case get_node(Key) of
 		{ok, Node} ->
@@ -197,44 +195,49 @@ init({Key, ClusterKey}) ->
 % Async per-state event handling
 % Note that, as of now, there is none.
 -type timeout() :: non_neg_integer() | infinity.
+-type state() :: atom().
+-type from() :: {pid(), Tag :: term()}.
+-type event() :: term().
+-type reply() :: term().
+-type reason() :: term().
 -type state_cb_return() ::
-	{stop, Reason :: term(), node_state()}
-	| {next_state, NextStateName :: atom(), node_state()}
-	| {next_state, NextStateName :: atom(), node_state(), timeout()}.
+	{stop, reason(), New::node_state()}
+	| {next_state, Next::state(), New::node_state()}
+	| {next_state, Next::state(), New::node_state(), timeout()}.
 
--spec undefined(Event :: term(), node_state()) -> state_cb_return().
+-spec undefined(event(), node_state()) -> state_cb_return().
 undefined(_Event, Node) ->
 	{stop, {unhandled_event, _Event}, Node}.
 
--spec requested(Event :: term(), node_state()) -> state_cb_return().
+-spec requested(event(), node_state()) -> state_cb_return().
 requested(_Event, Node) ->
 	{stop, {unhandled_event, _Event}, Node}.
 
--spec reserved(Event :: term(), node_state()) -> state_cb_return().
+-spec reserved(event(), node_state()) -> state_cb_return().
 reserved(_Event, Node) ->
 	{stop, {unhandled_event, _Event}, Node}.
 
--spec starting(Event :: term(), node_state()) -> state_cb_return().
+-spec starting(event(), node_state()) -> state_cb_return().
 starting(_Event, Node) ->
 	{stop, {unhandled_event, _Event}, Node}.
 
--spec started(Event :: term(), node_state()) -> state_cb_return().
+-spec started(event(), node_state()) -> state_cb_return().
 started(_Event, Node) ->
 	{stop, {unhandled_event, _Event}, Node}.
 
--spec shutting_down(Event :: term(), node_state()) -> state_cb_return().
+-spec shutting_down(event(), node_state()) -> state_cb_return().
 shutting_down(_Event, Node) ->
 	{stop, {unhandled_event, _Event}, Node}.
 
--spec shutdown(Event :: term(), node_state()) -> state_cb_return().
+-spec shutdown(event(), node_state()) -> state_cb_return().
 shutdown(_Event, Node) ->
 	{stop, {unhandled_event, _Event}, Node}.
 
--spec failed(Event :: term(), node_state()) -> state_cb_return().
+-spec failed(event(), node_state()) -> state_cb_return().
 failed(_Event, Node) ->
 	{stop, {unhandled_event, _Event}, Node}.
 
--spec restarting(Event :: term(), node_state()) -> state_cb_return().
+-spec restarting(event(), node_state()) -> state_cb_return().
 restarting(_Event, Node) ->
 	{stop, {unhandled_event, _Event}, Node}.
 
@@ -242,78 +245,60 @@ restarting(_Event, Node) ->
 % Note that, as of now, there is none.
 -type state_cb_reply() ::
 	state_cb_return()
-	| {stop, Reason :: term(), Reply :: term(), node_state()}
-	| {reply, Reply :: term(), NextStateName :: atom(), node_state()}
-	| {reply, Reply :: term(), NextStateName :: atom(), node_state(), timeout()}.
+	| {stop, reason(), reply(), New::node_state()}
+	| {reply, reply(), Next::state(), New::node_state()}
+	| {reply, reply(), Next::state(), New::node_state(), timeout()}.
 
--spec requested(Event :: term(), From :: pid(), node_state()) -> state_cb_reply().
+-spec requested(event(), from(), node_state()) -> state_cb_reply().
 requested(_Event, _From, Node) ->
 	{reply, {error, unhandled_event}, requested, Node}.
 
--spec undefined(Event :: term(), From :: pid(), node_state()) -> state_cb_return().
+-spec undefined(event(), from(), node_state()) -> state_cb_return().
 undefined(_Event, _From, Node) ->
 	{reply, {error, unhandled_event}, undefined, Node}.
 
--spec reserved(Event :: term(), From :: pid(), node_state()) -> state_cb_return().
+-spec reserved(event(), from(), node_state()) -> state_cb_return().
 reserved(_Event, _From, Node) ->
 	{reply, {error, unhandled_event}, reserved, Node}.
 
--spec starting(Event :: term(), From :: pid(), node_state()) -> state_cb_return().
+-spec starting(event(), from(), node_state()) -> state_cb_return().
 starting(_Event, _From, Node) ->
 	{reply, {error, unhandled_event}, starting, Node}.
 
--spec started(Event :: term(), From :: pid(), node_state()) -> state_cb_return().
+-spec started(event(), from(), node_state()) -> state_cb_return().
 started(_Event, _From, Node) ->
 	{reply, {error, unhandled_event}, started, Node}.
 
--spec shutting_down(Event :: term(), From :: pid(), node_state()) -> state_cb_return().
+-spec shutting_down(event(), from(), node_state()) -> state_cb_return().
 shutting_down(_Event, _From, Node) ->
 	{reply, {error, unhandled_event}, shutting_down, Node}.
 
--spec shutdown(Event :: term(), From :: pid(), node_state()) -> state_cb_return().
+-spec shutdown(event(), from(), node_state()) -> state_cb_return().
 shutdown(_Event, _From, Node) ->
 	{reply, {error, unhandled_event}, shutdown, Node}.
 
--spec failed(Event :: term(), From :: pid(), node_state()) -> state_cb_return().
+-spec failed(event(), from(), node_state()) -> state_cb_return().
 failed(_Event, _From, Node) ->
 	{reply, {error, unhandled_event}, failed, Node}.
 
--spec restarting(Event :: term(), From :: pid(), node_state()) -> state_cb_return().
+-spec restarting(event(), from(), node_state()) -> state_cb_return().
 restarting(_Event, _From, Node) ->
 	{reply, {error, unhandled_event}, restarting, Node}.
 
-%%--------------------------------------------------------------------
-%% @private
-%% @doc
-%% Whenever a gen_fsm receives an event sent using
-%% gen_fsm:send_all_state_event/2, this function is called to handle
-%% the event.
-%%
-%% @spec handle_event(Event, StateName, State) ->
-%%                   {next_state, NextStateName, NextState} |
-%%                   {next_state, NextStateName, NextState, Timeout} |
-%%                   {stop, Reason, NewState}
-%% @end
-%%--------------------------------------------------------------------
+-spec handle_event(event(), StateName :: atom(), node_state()) ->
+	{stop, reason(), node_state()}
+	| {next_state, Next::state(), node_state()}
+	| {next_state, Next::state(), node_state(), timeout()}.
 handle_event(_Event, StateName, State) ->
         {next_state, StateName, State}.
 
-%%--------------------------------------------------------------------
-%% @private
-%% @doc
-%% Whenever a gen_fsm receives an event sent using
-%% gen_fsm:sync_send_all_state_event/[2,3], this function is called
-%% to handle the event.
-%%
-%% @spec handle_sync_event(Event, From, StateName, State) ->
-%%                   {next_state, NextStateName, NextState} |
-%%                   {next_state, NextStateName, NextState, Timeout} |
-%%                   {reply, Reply, NextStateName, NextState} |
-%%                   {reply, Reply, NextStateName, NextState, Timeout} |
-%%                   {stop, Reason, NewState} |
-%%                   {stop, Reason, Reply, NewState}
-%% @end
-%%--------------------------------------------------------------------
+-spec handle_sync_event(event(), from(), state(), node_state()) ->
+	{next_state, Next::state(), New::node_state()}
+	| {next_state, Next::state(), New::node_state(), timeout()}
+	| {reply, reply(), Next::state(), New::node_state()}
+	| {reply, reply(), Next::state(), New::node_state(), timeout()}
+	| {stop, reason(), New::node_state()}
+	| {stop, reason(), reply(), New::node_state()}.
 handle_sync_event({set_reserve, Hostname, AgentIdValue, PersistenceId},
 				  _From, Status, #node{key = Key} = Node) ->
 	Node1 = Node#node{hostname = Hostname,
