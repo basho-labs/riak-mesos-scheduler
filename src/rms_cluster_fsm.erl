@@ -90,19 +90,19 @@ get_field_value(Field, Key) ->
 
 -spec set_riak_config(pid(), string()) -> ok | {error, term()}.
 set_riak_config(Pid, RiakConfig) ->
-    gen_server:call(Pid, {set_riak_config, RiakConfig}).
+	gen_fsm:sync_send_all_state_event(Pid, {set_riak_config, RiakConfig}).
 
 -spec set_advanced_config(pid(), string()) -> ok | {error, term()}.
 set_advanced_config(Pid, AdvancedConfig) ->
-    gen_server:call(Pid, {set_advanced_config, AdvancedConfig}).
+    gen_fsm:sync_send_all_state_event(Pid, {set_advanced_config, AdvancedConfig}).
 
 -spec delete(pid()) -> ok | {error, term()}.
 delete(Pid) ->
-    gen_server:call(Pid, delete).
+    gen_fsm:sync_send_all_state_event(Pid, delete).
 
 -spec add_node(pid()) -> ok | {error, term()}.
 add_node(Pid) ->
-    gen_server:call(Pid, add_node).
+    gen_fsm:sync_send_all_state_event(Pid, add_node).
 
 %%% gen_fsm callbacks
 -type timeout() :: non_neg_integer() | infinity.
@@ -121,11 +121,22 @@ add_node(Pid) ->
 	| {reply, reply(), Next::state(), New::cluster_state()}
 	| {reply, reply(), Next::state(), New::cluster_state(), timeout()}.
 
--spec init({key(), rms_cluster:key()}) ->
-	{ok, StateName :: atom(), cluster_state()}
+-spec init(key()) ->
+	{ok, state(), cluster_state()}
 	| {stop, reason()}.
-init([]) ->
-	{ok, requested, #cluster{}}.
+init(Key) ->
+    case get_cluster(Key) of
+        {ok, Cluster} ->
+            {ok, requested, Cluster};
+        {error, not_found} ->
+            Cluster = #cluster{key = Key},
+            case add_cluster({requested, Cluster}) of
+                ok ->
+                    {ok, requested, Cluster};
+                {error, Reason} ->
+                    {stop, Reason}
+            end
+    end.
 
 % Async per-state handling
 % Note that there is none.
@@ -163,9 +174,44 @@ handle_event(_Event, StateName, State) ->
 
 -spec handle_sync_event(event(), from(), state(), cluster_state()) ->
 	state_cb_reply().
+handle_sync_event({set_riak_config, RiakConfig}, _From, StateName, Cluster) ->
+	Cluster1 = Cluster#cluster{riak_config = RiakConfig},
+	case update_cluster(Cluster#cluster.key, {StateName, Cluster1}) of
+		ok ->
+			{reply, ok, StateName, Cluster1};
+		{error, _}=Err ->
+			{reply, Err, StateName, Cluster}
+	end;
+handle_sync_event({set_advanced_config, AdvConfig}, _From, StateName, Cluster) ->
+	Cluster1 = Cluster#cluster{advanced_config = AdvConfig},
+	case update_cluster(Cluster#cluster.key, {StateName, Cluster1}) of
+		ok ->
+			{reply, ok, StateName, Cluster1};
+		{error,_}=Err ->
+			{reply, Err, StateName, Cluster}
+	end;
+handle_sync_event(delete, _From, _StateName, Cluster) ->
+	{reply, ok, shutting_down, Cluster};
+handle_sync_event(add_node, _From, StateName, Cluster) ->
+	#cluster{key = Key,
+			 node_keys = NodeKeys,
+			 generation = Generation} = Cluster,
+    NodeKey = Key ++ "-" ++ integer_to_list(Generation),
+	case rms_node_manager:add_node(NodeKey, Key) of
+		ok ->
+			Cluster1 = Cluster#cluster{node_keys = [NodeKey | NodeKeys],
+									   generation = (Generation + 1)},
+			case update_cluster(Cluster#cluster.key, {StateName, Cluster1}) of
+				ok ->
+					{reply, ok, StateName, Cluster1};
+				{error,_}=Err ->
+					{reply, Err, StateName, Cluster}
+			end;
+		{error,_}=Err ->
+			{reply, Err, StateName, Cluster}
+	end;
 handle_sync_event(_Event, _From, StateName, State) ->
-        Reply = ok,
-        {reply, Reply, StateName, State}.
+	{reply, {error, {unhandled_event, _Event}}, StateName, State}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -210,6 +256,43 @@ code_change(_OldVsn, StateName, State, _Extra) ->
         {ok, StateName, State}.
 
 %%% Internal functions
+-spec get_cluster(key()) -> {ok, cluster_state()} | {error, term()}.
+get_cluster(Key) ->
+    case rms_metadata:get_cluster(Key) of
+        {ok, Cluster} ->
+            {ok, from_list(Cluster)};
+        {error, Reason} ->
+            {error, Reason}
+    end.
 
+-spec add_cluster(cluster_state()) -> ok | {error, term()}.
+add_cluster({State, Cluster}) ->
+    rms_metadata:add_cluster(to_list({State, Cluster})).
 
+-spec update_cluster(key(), cluster_state()) -> ok | {error, term()}.
+update_cluster(Key, {State, Cluster}) ->
+    rms_metadata:update_cluster(Key, to_list({State, Cluster})).
 
+-spec from_list(rms_metadata:cluster_state()) -> cluster_state().
+from_list(ClusterList) ->
+	{proplist:get_value(status, ClusterList),
+    #cluster{key = proplists:get_value(key, ClusterList),
+             riak_config = proplists:get_value(riak_config, ClusterList),
+             advanced_config = proplists:get_value(advanced_config,
+                                                   ClusterList),
+             node_keys = proplists:get_value(node_keys, ClusterList),
+             generation = proplists:get_value(generation, ClusterList)}}.
+
+-spec to_list(cluster_state()) -> rms_metadata:cluster_state().
+to_list({State,
+		 #cluster{key = Key,
+                  riak_config = RiakConf,
+                  advanced_config = AdvancedConfig,
+                  node_keys = NodeKeys,
+                  generation = Generation}}) ->
+    [{key, Key},
+     {status, State},
+     {riak_config, RiakConf},
+     {advanced_config, AdvancedConfig},
+     {node_keys, NodeKeys},
+     {generation, Generation}].
