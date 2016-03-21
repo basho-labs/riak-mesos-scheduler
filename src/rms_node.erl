@@ -184,7 +184,7 @@ init({Key, ClusterKey}) ->
 		{error, not_found} ->
 			Node = #node{key = Key,
 						 cluster_key = ClusterKey},
-			case add_node(Node) of
+			case add_node({requested, Node}) of
 				ok ->
 					{ok, requested, Node};
 				{error, Reason} ->
