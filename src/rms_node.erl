@@ -90,7 +90,7 @@
 -export_type([key/0]).
 
 
--type node_state() :: {Status :: atom(), #node{}}.
+-type node_state() :: #node{}.
 -export_type([node_state/0]).
 
 %%% API
@@ -98,7 +98,7 @@
 -spec start_link(key(), rms_cluster:key()) ->
 	{ok, pid()} | {error, Error :: term()}.
 start_link(Key, ClusterKey) ->
-	gen_fsm:start_link(?MODULE, {Key, ClusterKey}, []).
+	gen_fsm:start_link(?MODULE, {Key, ClusterKey}, [{dbg, [log, trace]}]).
 
 %% TODO The following API functions operate only on the rms_metadata, but
 %% it feels like we should be asking the running FSM/server for that node,
@@ -285,20 +285,12 @@ failed(_Event, _From, Node) ->
 restarting(_Event, _From, Node) ->
 	{reply, {error, unhandled_event}, restarting, Node}.
 
--spec handle_event(event(), StateName :: atom(), node_state()) ->
-	{stop, reason(), node_state()}
-	| {next_state, Next::state(), node_state()}
-	| {next_state, Next::state(), node_state(), timeout()}.
+-spec handle_event(event(), StateName :: atom(), node_state()) -> state_cb_return().
 handle_event(_Event, StateName, State) ->
-        {next_state, StateName, State}.
+	{next_state, StateName, State}.
 
 -spec handle_sync_event(event(), from(), state(), node_state()) ->
-	{next_state, Next::state(), New::node_state()}
-	| {next_state, Next::state(), New::node_state(), timeout()}
-	| {reply, reply(), Next::state(), New::node_state()}
-	| {reply, reply(), Next::state(), New::node_state(), timeout()}
-	| {stop, reason(), New::node_state()}
-	| {stop, reason(), reply(), New::node_state()}.
+	state_cb_reply().
 handle_sync_event({set_reserve, Hostname, AgentIdValue, PersistenceId},
 				  _From, Status, #node{key = Key} = Node) ->
 	Node1 = Node#node{hostname = Hostname,
