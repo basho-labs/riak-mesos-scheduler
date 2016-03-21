@@ -18,7 +18,7 @@
 %%
 %% -------------------------------------------------------------------
 
--module(rms_node).
+-module(rms_node_genserv).
 
 -behaviour(gen_server).
 
