@@ -22,21 +22,26 @@
 
 -behaviour(gen_fsm).
 
+% API
 -export([start_link/2]).
 -export([get/1,
          get_field_value/2,
          needs_to_be_reconciled/1,
          can_be_scheduled/1,
          has_reservation/1,
+         set_reserve/4,
          set_unreserve/1,
          delete/1]).
 
+% gen_fsm callbacks
 -export([init/1,
          handle_event/3,
          handle_sync_event/4,
          handle_info/3,
          terminate/3,
          code_change/4]).
+
+% States
 -export([
 		 undefined/2,
 		 undefined/3,
@@ -58,6 +63,7 @@
 		 failed/3
 		]).
 
+%% TODO Remove  this type
 -type status() :: undefined | %% Possible status for waiting reconciliation.
                   requested |
                   reserved |
@@ -89,19 +95,10 @@
 -type node_state() :: {Status :: atom(), #node{}}.
 -export_type([node_state/0]).
 
-%%%===================================================================
 %%% API
-%%%===================================================================
 
-%%--------------------------------------------------------------------
-%% @doc
-%% Creates a gen_fsm process which calls Module:init/1 to
-%% initialize. To ensure a synchronized start-up procedure, this
-%% function does not return until Module:init/1 has returned.
-%%
-%% @spec start_link() -> {ok, Pid} | ignore | {error, Error}
-%% @end
-%%--------------------------------------------------------------------
+-spec start_link(key(), rms_cluster:key()) ->
+	{ok, pid()} | {error, Error :: term()}.
 start_link(Key, ClusterKey) ->
 	gen_fsm:start_link(?MODULE, {Key, ClusterKey}, []).
 
@@ -177,15 +174,11 @@ set_unreserve(_Pid) ->
 delete(Pid) ->
 	gen_fsm:sync_send_all_state_event(Pid, delete).
 
-%%%===================================================================
 %%% gen_fsm callbacks
-%%%===================================================================
 
-%% @spec init(Args) -> {ok, StateName, State} |
-%%                     {ok, StateName, State, Timeout} |
-%%                     ignore |
-%%                     {stop, StopReason}
-%% @end
+-spec init({key(), rms_cluster:key()}) ->
+	{ok, StateName :: atom(), node_state()}
+	| {stop, Reason :: term()}.
 init({Key, ClusterKey}) ->
 	case get_node(Key) of
 		{ok, Node} ->
@@ -201,54 +194,91 @@ init({Key, ClusterKey}) ->
 			end
 	end.
 
-%% @spec state_name(Event, State) ->
-%%                   {next_state, NextStateName, NextState} |
-%%                   {next_state, NextStateName, NextState, Timeout} |
-%%                   {stop, Reason, NewState}
-%% @end
+% Async per-state event handling
+% Note that, as of now, there is none.
+-type timeout() :: non_neg_integer() | infinity.
+-type state_cb_return() ::
+	{stop, Reason :: term(), node_state()}
+	| {next_state, NextStateName :: atom(), node_state()}
+	| {next_state, NextStateName :: atom(), node_state(), timeout()}.
+
+-spec undefined(Event :: term(), node_state()) -> state_cb_return().
 undefined(_Event, Node) ->
 	{stop, {unhandled_event, _Event}, Node}.
+
+-spec requested(Event :: term(), node_state()) -> state_cb_return().
 requested(_Event, Node) ->
 	{stop, {unhandled_event, _Event}, Node}.
+
+-spec reserved(Event :: term(), node_state()) -> state_cb_return().
 reserved(_Event, Node) ->
 	{stop, {unhandled_event, _Event}, Node}.
+
+-spec starting(Event :: term(), node_state()) -> state_cb_return().
 starting(_Event, Node) ->
 	{stop, {unhandled_event, _Event}, Node}.
+
+-spec started(Event :: term(), node_state()) -> state_cb_return().
 started(_Event, Node) ->
 	{stop, {unhandled_event, _Event}, Node}.
+
+-spec shutting_down(Event :: term(), node_state()) -> state_cb_return().
 shutting_down(_Event, Node) ->
 	{stop, {unhandled_event, _Event}, Node}.
+
+-spec shutdown(Event :: term(), node_state()) -> state_cb_return().
 shutdown(_Event, Node) ->
 	{stop, {unhandled_event, _Event}, Node}.
+
+-spec failed(Event :: term(), node_state()) -> state_cb_return().
 failed(_Event, Node) ->
 	{stop, {unhandled_event, _Event}, Node}.
+
+-spec restarting(Event :: term(), node_state()) -> state_cb_return().
 restarting(_Event, Node) ->
 	{stop, {unhandled_event, _Event}, Node}.
 
-%% @spec state_name(Event, From, State) ->
-%%                   {next_state, NextStateName, NextState} |
-%%                   {next_state, NextStateName, NextState, Timeout} |
-%%                   {reply, Reply, NextStateName, NextState} |
-%%                   {reply, Reply, NextStateName, NextState, Timeout} |
-%%                   {stop, Reason, NewState} |
-%%                   {stop, Reason, Reply, NewState}
-%% @end
+% Sync per-state event handling
+% Note that, as of now, there is none.
+-type state_cb_reply() ::
+	state_cb_return()
+	| {stop, Reason :: term(), Reply :: term(), node_state()}
+	| {reply, Reply :: term(), NextStateName :: atom(), node_state()}
+	| {reply, Reply :: term(), NextStateName :: atom(), node_state(), timeout()}.
+
+-spec requested(Event :: term(), From :: pid(), node_state()) -> state_cb_reply().
 requested(_Event, _From, Node) ->
 	{reply, {error, unhandled_event}, requested, Node}.
+
+-spec undefined(Event :: term(), From :: pid(), node_state()) -> state_cb_return().
 undefined(_Event, _From, Node) ->
 	{reply, {error, unhandled_event}, undefined, Node}.
+
+-spec reserved(Event :: term(), From :: pid(), node_state()) -> state_cb_return().
 reserved(_Event, _From, Node) ->
 	{reply, {error, unhandled_event}, reserved, Node}.
+
+-spec starting(Event :: term(), From :: pid(), node_state()) -> state_cb_return().
 starting(_Event, _From, Node) ->
 	{reply, {error, unhandled_event}, starting, Node}.
+
+-spec started(Event :: term(), From :: pid(), node_state()) -> state_cb_return().
 started(_Event, _From, Node) ->
 	{reply, {error, unhandled_event}, started, Node}.
+
+-spec shutting_down(Event :: term(), From :: pid(), node_state()) -> state_cb_return().
 shutting_down(_Event, _From, Node) ->
 	{reply, {error, unhandled_event}, shutting_down, Node}.
+
+-spec shutdown(Event :: term(), From :: pid(), node_state()) -> state_cb_return().
 shutdown(_Event, _From, Node) ->
 	{reply, {error, unhandled_event}, shutdown, Node}.
+
+-spec failed(Event :: term(), From :: pid(), node_state()) -> state_cb_return().
 failed(_Event, _From, Node) ->
 	{reply, {error, unhandled_event}, failed, Node}.
+
+-spec restarting(Event :: term(), From :: pid(), node_state()) -> state_cb_return().
 restarting(_Event, _From, Node) ->
 	{reply, {error, unhandled_event}, restarting, Node}.
 
@@ -333,6 +363,7 @@ handle_info(_Info, StateName, State) ->
 %% @spec terminate(Reason, StateName, State) -> void()
 %% @end
 %%--------------------------------------------------------------------
+%% FIXME Node cleanup goes here
 terminate(_Reason, _StateName, _State) ->
         ok.
 
