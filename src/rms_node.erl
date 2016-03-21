@@ -377,15 +377,15 @@ get_node(Key) ->
             {error, Reason}
     end.
 
--spec add_node(node_state()) -> ok | {error, term()}.
-add_node(Node) ->
-    rms_metadata:add_node(to_list(Node)).
+-spec add_node({state(), node_state()}) -> ok | {error, term()}.
+add_node({State, Node}) ->
+    rms_metadata:add_node(to_list({State, Node})).
 
--spec update_node(key(), node_state()) -> ok | {error, term()}.
-update_node(Key, Node) ->
-    rms_metadata:update_node(Key, to_list(Node)).
+-spec update_node(key(), {state(), node_state()}) -> ok | {error, term()}.
+update_node(Key, {State, Node}) ->
+    rms_metadata:update_node(Key, to_list({State, Node})).
 
--spec from_list(rms_metadata:node_state()) -> node_state().
+-spec from_list(rms_metadata:node_state()) -> {state(), node_state()}.
 from_list(NodeList) ->
 	{proplists:get_value(status, NodeList),
     #node{key = proplists:get_value(key, NodeList),
@@ -399,7 +399,7 @@ from_list(NodeList) ->
           container_path = proplists:get_value(container_path, NodeList),
           persistence_id = proplists:get_value(persistence_id, NodeList)}}.
 
--spec to_list(node_state()) -> rms_metadata:node_state().
+-spec to_list({state(), node_state()}) -> rms_metadata:node_state().
 to_list(
   {Status,
    #node{key = Key,
