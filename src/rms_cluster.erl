@@ -275,7 +275,7 @@ update_cluster(Key, {State, Cluster}) ->
 
 -spec from_list(rms_metadata:cluster_state()) -> cluster_state().
 from_list(ClusterList) ->
-	{proplist:get_value(status, ClusterList),
+	{proplists:get_value(status, ClusterList),
     #cluster{key = proplists:get_value(key, ClusterList),
              riak_config = proplists:get_value(riak_config, ClusterList),
              advanced_config = proplists:get_value(advanced_config,
