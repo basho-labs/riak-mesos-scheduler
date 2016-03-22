@@ -107,12 +107,14 @@ routes() ->
      #route{path = ["clusters", key, "config"],
             methods = ['GET', 'PUT'],
             exists = {?MODULE, cluster_exists},
+            provides = ?PROVIDE_TEXT,
             content = {?MODULE, get_cluster_riak_config},
             accepts = ?ACCEPT_TEXT,
             accept = {?MODULE, set_cluster_riak_config}},
      #route{path = ["clusters", key, "advancedConfig"],
             methods = ['GET', 'PUT'],
             exists = {?MODULE, cluster_exists},
+            provides = ?PROVIDE_TEXT,
             content = {?MODULE, get_cluster_advanced_config},
             accepts = ?ACCEPT_TEXT,
             accept={?MODULE, set_cluster_advanced_config}},
@@ -220,9 +222,7 @@ restart_cluster(ReqData) ->
 
 get_cluster_riak_config(ReqData) ->
     Key = wrq:path_info(key, ReqData),
-    {ok, RiakConfig} = rms_cluster_manager:get_cluster_riak_config(Key),
-    Response = [{key, list_to_binary(Key)},
-                {riak_config, list_to_binary(RiakConfig)}],
+    {ok, Response} = rms_cluster_manager:get_cluster_riak_config(Key),
     {Response, ReqData}.
 
 set_cluster_riak_config(ReqData) ->
@@ -234,9 +234,7 @@ set_cluster_riak_config(ReqData) ->
 
 get_cluster_advanced_config(ReqData) ->
     Key = wrq:path_info(key, ReqData),
-    {ok, AdvancedConfig} = rms_cluster_manager:get_cluster_advanced_config(Key),
-    Response = [{key, list_to_binary(Key)},
-                {advanced_config, list_to_binary(AdvancedConfig)}],
+    {ok, Response} = rms_cluster_manager:get_cluster_advanced_config(Key),
     {Response, ReqData}.
 
 set_cluster_advanced_config(ReqData) ->

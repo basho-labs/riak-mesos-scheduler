@@ -39,6 +39,10 @@
 
 -export([init/1]).
 
+-define(CONFIG_ROOT, "priv/").
+-define(RIAK_CONFIG, ?CONFIG_ROOT ++ "riak.conf.default").
+-define(ADVANCED_CONFIG, ?CONFIG_ROOT ++ "advanced.config.default").
+
 %% External functions.
 
 -spec start_link() -> {ok, pid()}.
@@ -73,6 +77,10 @@ add_cluster(Key) ->
             ClusterSpec = cluster_spec(Key),
             case supervisor:start_child(?MODULE, ClusterSpec) of
                 {ok, _Pid} ->
+                    {ok, RiakConfig} = file:read_file(?RIAK_CONFIG),
+                    {ok, AdvancedConfig} = file:read_file(?ADVANCED_CONFIG),
+                    ok = set_cluster_riak_config(Key, RiakConfig),
+                    ok = set_cluster_advanced_config(Key, AdvancedConfig),
                     ok;
                 {error, {already_started, _Pid}} ->
                     {error, exists};
