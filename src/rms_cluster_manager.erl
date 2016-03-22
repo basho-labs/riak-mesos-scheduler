@@ -37,6 +37,8 @@
 
 -export([apply_offer/2]).
 
+-export([handle_status_update/2]).
+
 -export([init/1]).
 
 -define(CONFIG_ROOT, "priv/").
@@ -143,6 +145,10 @@ apply_offer(OfferHelper, NodeData) ->
                     unreserve_volumes(unreserve_resources(OfferHelper1))
             end
     end.
+
+handle_status_update(TaskID, NodeState) ->
+    rms_node_manager:update_node_state(element(2, TaskID), NodeState),
+    ok.
 
 %% supervisor callback function.
 

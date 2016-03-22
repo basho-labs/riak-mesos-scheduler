@@ -41,6 +41,8 @@
 
 -export([apply_unreserved_offer/3, apply_reserved_offer/3]).
 
+-export([update_node_state/2]).
+
 -export([init/1]).
 
 -record(node_data, {cpus :: float(),
@@ -340,6 +342,20 @@ apply_reserved_offer(NodeKey, OfferHelper,
         {error, Reason} ->
             {error, Reason}
     end.
+
+update_node_state(NodeKey, TaskState) ->
+    %%TODO: Stub. **MC LOOK HERE**
+    %% State Transitions:
+    %%     TASK_STAGING
+    %%     TASK_STARTING
+    %%     TASK_RUNNING
+    %%     TASK_FINISHED
+    %%     TASK_KILLED
+    %%     TASK_FAILED
+    %%     TASK_LOST
+    %%     TASK_ERROR
+    rms_node:state_change(NodeKey, TaskState),
+    ok.
 
 %% supervisor callback function.
 

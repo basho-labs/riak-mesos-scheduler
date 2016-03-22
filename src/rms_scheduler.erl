@@ -121,10 +121,10 @@ offer_rescinded(_SchedulerInfo, #'Event.Rescind'{} = EventRescind, State) ->
                [EventRescind]),
     {ok, State}.
 
-status_update(_SchedulerInfo, EventUpdate, State) ->
-    %% TODO: handle update event and update node state via cluster manager.
+status_update(_SchedulerInfo, #'Event.Update'{status=#'TaskStatus'{task_id=TaskID, state=NodeState}} = EventUpdate, State)->
     lager:info("Scheduler received status update event. "
                "Update: ~p~n", [EventUpdate]),
+    rms_cluster_manager:handle_status_update(TaskID, NodeState),
     {ok, State}.
 
 framework_message(_SchedulerInfo, EventMessage, State) ->

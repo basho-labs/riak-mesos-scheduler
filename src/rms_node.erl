@@ -31,7 +31,8 @@
          has_reservation/1,
          set_reserve/4,
          set_unreserve/1,
-         delete/1]).
+         delete/1,
+         state_change/2]). %% **MC LOOK HERE
 
 % gen_fsm callbacks
 -export([init/1,
@@ -177,6 +178,10 @@ set_unreserve(_Pid) ->
 delete(Pid) ->
 	gen_fsm:sync_send_all_state_event(Pid, delete).
 
+
+state_change(_Key, _State) ->
+    %%TODO: Update FSM State **MC LOOK HERE
+    ok.
 %%% gen_fsm callbacks
 
 -spec init({key(), rms_cluster:key()}) ->
