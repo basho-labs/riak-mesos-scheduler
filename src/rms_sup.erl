@@ -38,7 +38,7 @@ init([]) ->
     Port = rms_config:get_value(port, 9090, integer),
     WebConfig = rms_wm_resource:dispatch(Ip, Port),
 
-    ZooKeeper = rms_config:get_value(zk, "localhost:2181", string),
+    ZooKeeper = rms_config:zk(),
     [ZooKeeperHost,P] = string:tokens(ZooKeeper, ":"),
     ZooKeeperPort = list_to_integer(P),
 
@@ -66,8 +66,11 @@ init([]) ->
     ExecutorCpus = rms_config:get_value(executor_cpus, 0.1, float),
     ExecutorMem = rms_config:get_value(executor_mem, 512.0, float),
 
+    ArtifactUrls = rms_config:artifact_urls(),
+
     Ref = riak_mesos_scheduler,
     Scheduler = rms_scheduler,
+
     SchedulerOptions = [{framework_user, FrameworkUser},
                         {framework_name, FrameworkName},
                         {framework_role, FrameworkRole},
@@ -79,13 +82,14 @@ init([]) ->
                         {node_mem, NodeMem},
                         {node_disk, NodeDisk},
                         {executor_cpus, ExecutorCpus},
-                        {executor_mem, ExecutorMem}],
+                        {executor_mem, ExecutorMem},
+                        {artifact_urls, ArtifactUrls}],
     Options = [{master_hosts, [Master]}],
 
     MetadataManagerSpec = {mesos_metadata_manager,
                                {mesos_metadata_manager, start_link,
                                [[{ZooKeeperHost, ZooKeeperPort}],
-                                "rms_scheduler"]},
+                                FrameworkName]},
                                permanent, 5000, worker,
                                [mesos_metadata_manager]},
     MetadataSpec = {rms_metadata,

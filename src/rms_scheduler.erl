@@ -106,6 +106,10 @@ disconnected(_SchedulerInfo, State) ->
 resource_offers(SchedulerInfo, #'Event.Offers'{offers = Offers},
                 #state{node_data = NodeData} = State) ->
     {OfferIds, Operations} = apply_offers(Offers, NodeData),
+    case length(Operations) of
+        0 -> ok;
+        _ -> lager:info("Created Operations: ~p", [Operations])
+    end,
     Filters = #'Filters'{refuse_seconds = ?OFFER_INTERVAL},
     call(accept, [SchedulerInfo, OfferIds, Operations, Filters], State).
 
@@ -117,7 +121,7 @@ offer_rescinded(_SchedulerInfo, #'Event.Rescind'{} = EventRescind, State) ->
 
 status_update(_SchedulerInfo, EventUpdate, State) ->
     %% TODO: handle update event and update node state via cluster manager.
-    lager:info("Scheduler received stauts update event. "
+    lager:info("Scheduler received status update event. "
                "Update: ~p~n", [EventUpdate]),
     {ok, State}.
 

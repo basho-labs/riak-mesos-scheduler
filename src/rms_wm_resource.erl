@@ -135,7 +135,7 @@ routes() ->
             exists = {?MODULE, node_exists},
             accepts = ?ACCEPT_TEXT,
             accept = {?MODULE, restart_node}},
-     % Healthcheck
+     %% Healthcheck.
      #route{base = [],
             path = ["healthcheck"],
             content = {?MODULE, healthcheck}}].
@@ -222,10 +222,8 @@ restart_cluster(ReqData) ->
 
 get_cluster_riak_config(ReqData) ->
     Key = wrq:path_info(key, ReqData),
-    {ok, RiakConfig} = rms_cluster_manager:get_cluster_riak_config(Key),
-    Response = [{key, list_to_binary(Key)},
-                {riak_config, list_to_binary(RiakConfig)}],
-    {true, wrq:append_to_response_body(mochijson2:encode(Response), ReqData)}.
+    {ok, Response} = rms_cluster_manager:get_cluster_riak_config(Key),
+    {Response, ReqData}.
 
 set_cluster_riak_config(ReqData) ->
     Key = wrq:path_info(key, ReqData),
@@ -236,10 +234,8 @@ set_cluster_riak_config(ReqData) ->
 
 get_cluster_advanced_config(ReqData) ->
     Key = wrq:path_info(key, ReqData),
-    {ok, AdvancedConfig} = rms_cluster_manager:get_cluster_advanced_config(Key),
-    Response = [{key, list_to_binary(Key)},
-                {advanced_config, list_to_binary(AdvancedConfig)}],
-    {true, wrq:append_to_response_body(mochijson2:encode(Response), ReqData)}.
+    {ok, Response} = rms_cluster_manager:get_cluster_advanced_config(Key),
+    {Response, ReqData}.
 
 set_cluster_advanced_config(ReqData) ->
     Key = wrq:path_info(key, ReqData),
@@ -273,7 +269,7 @@ get_node(ReqData) ->
     HttpPort = proplists:get_value(http_port, Node),
     PbPort = proplists:get_value(pb_port, Node),
     DisterlPort = proplists:get_value(disterl_port, Node),
-    AgentId = proplists:get_value(agent_id, Node),
+    AgentIdValue = proplists:get_value(agent_id_value, Node),
     ContainerPath = proplists:get_value(container_path, Node),
     PersistenceId = proplists:get_value(persistence_id, Node),
     Location = [{node_name, list_to_binary(NodeName)},
@@ -281,7 +277,7 @@ get_node(ReqData) ->
                 {http_port, HttpPort},
                 {pb_port, PbPort},
                 {disterl_port, DisterlPort},
-                {slave_id, list_to_binary(AgentId)}],
+                {agent_id_value, list_to_binary(AgentIdValue)}],
     NodeData = [{NodeKey, [{key, list_to_binary(NodeKey)},
                            {status, Status},
                            {location, Location},
