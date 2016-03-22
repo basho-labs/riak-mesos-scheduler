@@ -299,12 +299,13 @@ apply_reserved_offer(NodeKey, NodeKeys, NeedsReconciliation, OfferHelper,
                             apply_offer(NodeKeys, NeedsReconciliation,
                                         OfferHelper1, NodeData);
                         {error, Reason} ->
-                            %% TODO: unreserve node here.
+                            %% TODO: unreserve node here,
                             lager:warning("Adding node for scheduling error. "
                                           "Agent id and hostname matches. "
                                           "Node key: ~s. "
                                           "Agent id: ~s. "
                                           "Hostname: ~s. "
+                                          "Persistence id: ~s"
                                           "Offer id: ~s. "
                                           "Error reason: ~p.",
                                           [NodeKey, AgentIdValue, Hostname,

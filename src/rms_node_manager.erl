@@ -305,9 +305,9 @@ apply_reserved_offer(NodeKey, OfferHelper,
                     NodeName = iolist_to_binary([NodeKey, "@", Hostname]),
                     TaskData = [{<<"FullyQualifiedNodeName">>, NodeName},
                                 {<<"Host">>,                   list_to_binary(Hostname)},
-                                {<<"Zookeepers">>,             [<<"master.mesos:2181">>]}, %% FIXME
+                                {<<"Zookeepers">>,             [list_to_binary(rms_config:zk())]},
                                 {<<"FrameworkName">>,          list_to_binary(Name)},
-                                {<<"URI">>,                    <<"192.168.1.4:9090">>}, %% FIXME
+                                {<<"URI">>,                    list_to_binary(rms_config:webui_url())},
                                 {<<"ClusterName">>,            list_to_binary(ClusterKey)},
                                 {<<"HTTPPort">>,               HTTPPort},
                                 {<<"PBPort">>,                 PBPort},

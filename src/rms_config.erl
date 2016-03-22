@@ -20,13 +20,21 @@
 
 -module(rms_config).
 
--export([webui_url/0, artifact_urls/0, framework_hostname/0]).
+-export([
+         zk/0, 
+         webui_url/0, 
+         artifact_urls/0, 
+         framework_hostname/0]).
 
 -export([get_value/2, get_value/3]).
 
 -define(DEFAULT_HOSTNAME, "riak.mesos").
+-define(DEFAULT_ZK, "master.mesos:2181").
 
 %% Helper functions.
+
+zk() ->
+    get_value(zk, ?DEFAULT_ZK, string).
 
 framework_hostname() ->
     case get_value(hostname, undefined, string) of

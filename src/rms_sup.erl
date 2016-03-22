@@ -38,7 +38,7 @@ init([]) ->
     Port = rms_config:get_value(port, 9090, integer),
     WebConfig = rms_wm_resource:dispatch(Ip, Port),
 
-    ZooKeeper = rms_config:get_value(zk, "localhost:2181", string),
+    ZooKeeper = rms_config:zk(),
     [ZooKeeperHost,P] = string:tokens(ZooKeeper, ":"),
     ZooKeeperPort = list_to_integer(P),
 
