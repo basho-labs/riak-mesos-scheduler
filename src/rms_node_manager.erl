@@ -51,7 +51,8 @@
                     role :: string(),
                     principal :: string(),
                     container_path :: string(),
-                    artifact_urls :: [string()]}).
+                    artifact_urls :: [string()],
+                    webui_url :: string()}).
 
 -type node_data() :: #node_data{}.
 -export_type([node_data/0]).
@@ -166,7 +167,8 @@ node_data(Options) ->
                role = proplists:get_value(framework_role, Options),
                principal = proplists:get_value(framework_principal, Options),
                container_path = ?NODE_CONTAINER_PATH,
-               artifact_urls = proplists:get_value(artifact_urls, Options)}.
+               artifact_urls = proplists:get_value(artifact_urls, Options),
+               webui_url = proplists:get_value(framework_webui_url, Options)}.
 
 -spec apply_unreserved_offer(rms_node:key(), rms_offer_helper:offer_helper(),
                              node_data()) ->
@@ -232,7 +234,8 @@ apply_reserved_offer(NodeKey, OfferHelper,
                                 role = Role,
                                 principal = Principal,
                                 container_path = ContainerPath,
-                                artifact_urls = ArtifactUrls}) ->
+                                artifact_urls = ArtifactUrls,
+                                webui_url = WebuiUrl}) ->
     case get_node_pid(NodeKey) of
         {ok, _Pid} ->
             CanFitReserved =
@@ -307,7 +310,7 @@ apply_reserved_offer(NodeKey, OfferHelper,
                                 {<<"Host">>,                   list_to_binary(Hostname)},
                                 {<<"Zookeepers">>,             [list_to_binary(rms_config:zk())]},
                                 {<<"FrameworkName">>,          list_to_binary(Name)},
-                                {<<"URI">>,                    list_to_binary(rms_config:webui_url())},
+                                {<<"URI">>,                    list_to_binary(WebuiUrl)},
                                 {<<"ClusterName">>,            list_to_binary(ClusterKey)},
                                 {<<"HTTPPort">>,               HTTPPort},
                                 {<<"PBPort">>,                 PBPort},
