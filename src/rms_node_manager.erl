@@ -237,30 +237,50 @@ apply_reserved_offer(NodeKey, OfferHelper,
         {ok, _Pid} ->
             CanFitReserved =
                 rms_offer_helper:can_fit_reserved(NodeCpus, NodeMem, NodeDisk,
-                                                  undefined, OfferHelper),
+                                                  0, OfferHelper),
             CanFitUnreserved =
                 rms_offer_helper:can_fit_unreserved(?CPUS_PER_EXECUTOR,
                                                     ?MEM_PER_EXECUTOR,
-                                                    undefined, NodeNumPorts,
+                                                    0, NodeNumPorts,
                                                     OfferHelper),
             case CanFitReserved and CanFitUnreserved of
                 true ->
-                    ClusterKey = get_node_cluster_key(NodeKey),
-                    PersistenceId = get_node_persistence_id(NodeKey),
-                    Hostname = get_node_hostname(NodeKey),
-                    AgentIdValue = get_node_agent_id_value(NodeKey),
+                    {ok, ClusterKey} = get_node_cluster_key(NodeKey),
+                    {ok, PersistenceId} = get_node_persistence_id(NodeKey),
+                    {ok, Hostname} = get_node_hostname(NodeKey),
+                    {ok, AgentIdValue} = get_node_agent_id_value(NodeKey),
 
-                    %% Apply reserved resources.
+                    %% Apply reserved resources for task.
                     OfferHelper1 =
                         rms_offer_helper:apply_reserved_resources(
                             NodeCpus, NodeMem, NodeDisk, undefined, Role,
                             Principal, PersistenceId, ContainerPath,
                             OfferHelper),
-                    %% Apply unreserved resources.
+                    %% Apply unreserved resources for task.
                     OfferHelper2 =
                         rms_offer_helper:apply_unreserved_resources(
                             undefined, undefined, undefined, NodeNumPorts,
                             OfferHelper1),
+                    %% Grab Task resources from offer helper in current state.
+                    TaskInfoReservedResources = 
+                        rms_offer_helper:get_reserved_applied_resources(OfferHelper2),
+                    TaskInfoUnreservedResources = 
+                        rms_offer_helper:get_unreserved_applied_resources(OfferHelper2),
+                    TaskInfoResources = TaskInfoReservedResources ++ TaskInfoUnreservedResources,
+
+                    %% Apply Executor Resources against original offer helper.
+                    OfferHelperExec =
+                        rms_offer_helper:apply_unreserved_resources(
+                          ?CPUS_PER_EXECUTOR, ?MEM_PER_EXECUTOR, undefined, undefined,
+                          OfferHelper),
+                    %% Grab Executor resources from exec offer helper in current state.
+                    ExecutorInfoResources = 
+                        rms_offer_helper:get_unreserved_applied_resources(OfferHelperExec),
+                    %% Apply Executor Resources against the real offer helper.
+                    OfferHelper3 =
+                        rms_offer_helper:apply_unreserved_resources(
+                          ?CPUS_PER_EXECUTOR, ?MEM_PER_EXECUTOR, undefined, undefined,
+                          OfferHelper2),
 
                     AgentId = erl_mesos_utils:agent_id(AgentIdValue),
 
@@ -277,45 +297,40 @@ apply_reserved_offer(NodeKey, OfferHelper,
 
                     TaskId = erl_mesos_utils:task_id(NodeKey),
 
-                    ReservedPorts =
-                        rms_offer_helper:get_unreserved_resources_ports(OfferHelper),
+                    TaskDataPorts =
+                        rms_offer_helper:get_unreserved_applied_resources_ports(OfferHelper3),
 
-                    [HTTPPort, PBPort, DisterlPort | _Ports] = ReservedPorts,
+                    [HTTPPort, PBPort, DisterlPort | _Ports] = TaskDataPorts,
 
                     NodeName = iolist_to_binary([NodeKey, "@", Hostname]),
                     TaskData = [{<<"FullyQualifiedNodeName">>, NodeName},
-                                {<<"Host">>,                   Hostname},
+                                {<<"Host">>,                   list_to_binary(Hostname)},
                                 {<<"Zookeepers">>,             [<<"master.mesos:2181">>]}, %% FIXME
-                                {<<"FrameworkName">>,          Name},
+                                {<<"FrameworkName">>,          list_to_binary(Name)},
                                 {<<"URI">>,                    <<"192.168.1.4:9090">>}, %% FIXME
-                                {<<"ClusterName">>,            ClusterKey},
+                                {<<"ClusterName">>,            list_to_binary(ClusterKey)},
                                 {<<"HTTPPort">>,               HTTPPort},
                                 {<<"PBPort">>,                 PBPort},
                                 {<<"HandoffPort">>,            0},
                                 {<<"DisterlPort">>,            DisterlPort}],
                     TaskDataBin = iolist_to_binary(mochijson2:encode(TaskData)),
 
-                    ExecutorId = erl_mesos_utils:executor_id("riak"), %% FIXME
+                    ExecutorId = erl_mesos_utils:executor_id(NodeKey),
 
                     Source = "riak", %% FIXME
                     ExecutorInfo =
                         erl_mesos_utils:executor_info(ExecutorId, CommandInfo,
-                                                      undefined, undefined,
+                                                      ExecutorInfoResources, undefined, %% FrameworkID
                                                       Source),
 
-
                     TaskName = "riak",
-                    %% FIXME Is this the appropriate place for ReservedResources?
-                    ReservedResources = rms_offer_helper:get_resources_to_reserve(OfferHelper2),
-                    UnreservedResources = rms_offer_helper:get_resources_to_unreserve(OfferHelper2),
-                    TaskInfoResources = ReservedResources ++ UnreservedResources,
                     TaskInfo =
                         erl_mesos_utils:task_info(TaskName, TaskId, AgentId,
                                                   TaskInfoResources,
                                                   ExecutorInfo, undefined,
                                                   TaskDataBin),
                     {ok, rms_offer_helper:add_task_to_launch(TaskInfo,
-                                                             OfferHelper)};
+                                                             OfferHelper3)};
                 false ->
                     {error, not_enough_resources}
             end;
