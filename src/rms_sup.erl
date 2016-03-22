@@ -89,7 +89,7 @@ init([]) ->
     MetadataManagerSpec = {mesos_metadata_manager,
                                {mesos_metadata_manager, start_link,
                                [[{ZooKeeperHost, ZooKeeperPort}],
-                                "rms_scheduler"]},
+                                FrameworkName]},
                                permanent, 5000, worker,
                                [mesos_metadata_manager]},
     MetadataSpec = {rms_metadata,
