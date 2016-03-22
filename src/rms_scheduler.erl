@@ -38,9 +38,7 @@
          handle_info/3,
          terminate/3]).
 
--record(scheduler, {framework_id :: undefined | erl_mesos:'FrameworkID'(),
-                    cluster_keys = [] :: [rms_cluster:key()],
-                    removed_cluster_keys = [] :: [rms_cluster:key()]}).
+-record(scheduler, {framework_id :: undefined | erl_mesos:'FrameworkID'()}).
 
 -record(state, {scheduler :: scheduler_state(),
                 node_data :: rms_node_manager:node_data()}).
@@ -228,19 +226,12 @@ set_scheduler(Scheduler) ->
     rms_metadata:set_scheduler(to_list(Scheduler)).
 
 -spec to_list(scheduler_state()) -> rms_metadata:scheduler_state().
-to_list(#scheduler{framework_id = FrameworkId,
-                   cluster_keys = ClusterKeys,
-                   removed_cluster_keys = RemovedClusterKeys}) ->
-    [{framework_id, FrameworkId},
-     {cluster_keys, ClusterKeys},
-     {removed_cluster_keys, RemovedClusterKeys}].
+to_list(#scheduler{framework_id = FrameworkId}) ->
+    [{framework_id, FrameworkId}].
 
 -spec from_list(rms_metadata:scheduler_state()) -> scheduler_state().
 from_list(SchedulerList) ->
-    #scheduler{framework_id = proplists:get_value(framework_id, SchedulerList),
-               cluster_keys = proplists:get_value(cluster_keys, SchedulerList),
-               removed_cluster_keys =
-                   proplists:get_value(removed_cluster_keys, SchedulerList)}.
+    #scheduler{framework_id = proplists:get_value(framework_id, SchedulerList)}.
 
 -spec apply_offers([erl_mesos:'Offer'()], rms_node_manager:node_data()) ->
     {[erl_mesos:'OfferID'()], [erl_mesos:'Offer.Operation'()]}.

@@ -196,7 +196,8 @@ handle_sync_event(add_node, _From, StateName, Cluster) ->
 	#cluster{key = Key,
 			 node_keys = NodeKeys,
 			 generation = Generation} = Cluster,
-    NodeKey = Key ++ "-" ++ integer_to_list(Generation),
+    FrameworkName = rms_config:framework_name(),
+    NodeKey = FrameworkName ++ "-" ++ Key ++ "-" ++ integer_to_list(Generation),
 	case rms_node_manager:add_node(NodeKey, Key) of
 		ok ->
 			Cluster1 = Cluster#cluster{node_keys = [NodeKey | NodeKeys],
