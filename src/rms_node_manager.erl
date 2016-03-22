@@ -322,13 +322,13 @@ apply_reserved_offer(NodeKey, OfferHelper,
 
                     ExecutorId = erl_mesos_utils:executor_id(NodeKey),
 
-                    Source = "riak", %% FIXME
+                    Source = Name,
                     ExecutorInfo =
                         erl_mesos_utils:executor_info(ExecutorId, CommandInfo,
                                                       ExecutorInfoResources, undefined, %% FrameworkID
                                                       Source),
 
-                    TaskName = "riak",
+                    TaskName = Name ++ "-" ++ ClusterKey,
                     TaskInfo =
                         erl_mesos_utils:task_info(TaskName, TaskId, AgentId,
                                                   TaskInfoResources,
