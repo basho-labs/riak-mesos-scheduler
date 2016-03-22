@@ -220,8 +220,6 @@ apply_unreserved_offer(NodeKey, NodeKeys, NeedsReconciliation, OfferHelper,
                         rms_offer_helper:get_offer_id_value(OfferHelper),
                         rms_offer_helper:resources_to_list(OfferHelper)]),
             apply_offer(NodeKeys, NeedsReconciliation, OfferHelper1, NodeData);
-        {error, not_enough_resources} ->
-            apply_offer(NodeKeys, NeedsReconciliation, OfferHelper, NodeData);
         {error, Reason} ->
             lager:warning("Appling of unreserved resources error. "
                           "Node key: ~s. "
@@ -261,8 +259,6 @@ apply_reserved_offer(NodeKey, NodeKeys, NeedsReconciliation, OfferHelper,
                                 ResourcesList]),
                     apply_offer(NodeKeys, NeedsReconciliation, OfferHelper1,
                                 NodeData);
-                {error, not_enough_resources} ->
-                    apply_offer(NodeKeys, true, OfferHelper, NodeData);
                 {error, Reason} ->
                     lager:warning("Adding node for scheduling error. "
                                   "Node has persistence id. "
@@ -275,6 +271,7 @@ apply_reserved_offer(NodeKey, NodeKeys, NeedsReconciliation, OfferHelper,
                     apply_offer(NodeKeys, true, OfferHelper, NodeData)
             end;
         false ->
+            %% TODO: Why is any of the stuff below here happening if the persistence id isn't there?
             {ok, Hostname} = rms_node_manager:get_node_hostname(NodeKey),
             {ok, AgentIdValue} =
                 rms_node_manager:get_node_agent_id_value(NodeKey),
@@ -306,10 +303,6 @@ apply_reserved_offer(NodeKey, NodeKeys, NeedsReconciliation, OfferHelper,
                                         ResourcesList]),
                             apply_offer(NodeKeys, NeedsReconciliation,
                                         OfferHelper1, NodeData);
-                        {error, not_enough_resources} ->
-                            %% TODO: unreserve node here.
-                            apply_offer(NodeKeys, NeedsReconciliation,
-                                        OfferHelper, NodeData);
                         {error, Reason} ->
                             %% TODO: unreserve node here.
                             lager:warning("Adding node for scheduling error. "
@@ -326,6 +319,14 @@ apply_reserved_offer(NodeKey, NodeKeys, NeedsReconciliation, OfferHelper,
                                         OfferHelper, NodeData)
                     end;
                 false ->
+                    lager:info("Hostname or AgentId didn't match. "
+                               "Node key: ~s. "
+                               "Agent id: ~s. "
+                               "Offer Agent id: ~s. "
+                               "Hostname: ~s. "
+                               "Offer id: ~s. ",
+                               [NodeKey, AgentIdValue, OfferAgentIdValue, 
+                                Hostname, PersistenceId, OfferIdValue]),
                     apply_offer(NodeKeys, NeedsReconciliation, OfferHelper,
                                 NodeData)
             end

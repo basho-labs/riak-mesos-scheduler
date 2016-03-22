@@ -16,11 +16,12 @@
          get_reserved_resources_mem/1,
          get_reserved_resources_disk/1,
          get_reserved_resources_ports/1,
+         get_unreserved_resources/1,
          get_unreserved_resources_cpus/1,
          get_unreserved_resources_mem/1,
          get_unreserved_resources_disk/1,
          get_unreserved_resources_ports/1,
-         get_applied_unreserved_resources_ports/1,
+         get_unreserved_applied_resources_ports/1,
          get_resources_to_reserve/1,
          get_resources_to_unreserve/1,
          get_volumes_to_create/1,
@@ -149,9 +150,13 @@ get_unreserved_resources_disk(OfferHelper) ->
 get_unreserved_resources_ports(OfferHelper) ->
     erl_mesos_utils:resources_ports(get_unreserved_resources(OfferHelper)).
 
--spec get_applied_unreserved_resources_ports(offer_helper()) -> [non_neg_integer()].
-get_applied_unreserved_resources_ports(OfferHelper) ->
-    erl_mesos_utils:resources_ports(get_unreserved_applied_resources(OfferHelper)).
+-spec get_unreserved_applied_resources_ports(offer_helper()) -> [non_neg_integer()].
+get_unreserved_applied_resources_ports(OfferHelper) ->
+    UnreservedPorts = get_ranges_resource_values("ports", false, 
+                          get_unreserved_applied_resources(OfferHelper)),
+    UnreservedResources = resources(0, 0,
+                                    0, UnreservedPorts),
+    erl_mesos_utils:resources_ports(UnreservedResources).
 
 -spec get_resources_to_reserve(offer_helper()) -> [erl_mesos:'Resource'()].
 get_resources_to_reserve(#offer_helper{resources_to_reserve =

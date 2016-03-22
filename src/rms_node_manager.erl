@@ -237,18 +237,18 @@ apply_reserved_offer(NodeKey, OfferHelper,
         {ok, _Pid} ->
             CanFitReserved =
                 rms_offer_helper:can_fit_reserved(NodeCpus, NodeMem, NodeDisk,
-                                                  undefined, OfferHelper),
+                                                  0, OfferHelper),
             CanFitUnreserved =
                 rms_offer_helper:can_fit_unreserved(?CPUS_PER_EXECUTOR,
                                                     ?MEM_PER_EXECUTOR,
-                                                    undefined, NodeNumPorts,
+                                                    0, NodeNumPorts,
                                                     OfferHelper),
             case CanFitReserved and CanFitUnreserved of
                 true ->
-                    ClusterKey = get_node_cluster_key(NodeKey),
-                    PersistenceId = get_node_persistence_id(NodeKey),
-                    Hostname = get_node_hostname(NodeKey),
-                    AgentIdValue = get_node_agent_id_value(NodeKey),
+                    {ok, ClusterKey} = get_node_cluster_key(NodeKey),
+                    {ok, PersistenceId} = get_node_persistence_id(NodeKey),
+                    {ok, Hostname} = get_node_hostname(NodeKey),
+                    {ok, AgentIdValue} = get_node_agent_id_value(NodeKey),
 
                     %% Apply reserved resources for task.
                     OfferHelper1 =
@@ -298,24 +298,24 @@ apply_reserved_offer(NodeKey, OfferHelper,
                     TaskId = erl_mesos_utils:task_id(NodeKey),
 
                     TaskDataPorts =
-                        rms_offer_helper:get_applied_unreserved_resources_ports(OfferHelper3),
+                        rms_offer_helper:get_unreserved_applied_resources_ports(OfferHelper3),
 
                     [HTTPPort, PBPort, DisterlPort | _Ports] = TaskDataPorts,
 
                     NodeName = iolist_to_binary([NodeKey, "@", Hostname]),
                     TaskData = [{<<"FullyQualifiedNodeName">>, NodeName},
-                                {<<"Host">>,                   Hostname},
+                                {<<"Host">>,                   list_to_binary(Hostname)},
                                 {<<"Zookeepers">>,             [<<"master.mesos:2181">>]}, %% FIXME
-                                {<<"FrameworkName">>,          Name},
+                                {<<"FrameworkName">>,          list_to_binary(Name)},
                                 {<<"URI">>,                    <<"192.168.1.4:9090">>}, %% FIXME
-                                {<<"ClusterName">>,            ClusterKey},
+                                {<<"ClusterName">>,            list_to_binary(ClusterKey)},
                                 {<<"HTTPPort">>,               HTTPPort},
                                 {<<"PBPort">>,                 PBPort},
                                 {<<"HandoffPort">>,            0},
                                 {<<"DisterlPort">>,            DisterlPort}],
                     TaskDataBin = iolist_to_binary(mochijson2:encode(TaskData)),
 
-                    ExecutorId = erl_mesos_utils:executor_id("riak"), %% FIXME
+                    ExecutorId = erl_mesos_utils:executor_id(NodeKey),
 
                     Source = "riak", %% FIXME
                     ExecutorInfo =
