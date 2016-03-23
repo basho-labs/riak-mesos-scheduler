@@ -146,8 +146,10 @@ apply_offer(OfferHelper, NodeData) ->
             end
     end.
 
-handle_status_update(TaskID, NodeState) ->
-    rms_node_manager:update_node_state(element(2, TaskID), NodeState),
+handle_status_update(ClusterNodeName, NodeState) ->
+    io:format("** ClusterNodeName: ~p~n", [ClusterNodeName]),
+    %%TODO: This isn't right now, due to tuple change from incoming call. Cluster is element 2, Node is element 3.
+    rms_node_manager:update_node_state(ClusterNodeName, NodeState),
     ok.
 
 %% supervisor callback function.
