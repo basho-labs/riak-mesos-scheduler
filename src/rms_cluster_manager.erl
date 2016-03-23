@@ -151,7 +151,7 @@ apply_offer(OfferHelper, NodeData) ->
 init({}) ->
     Specs = [cluster_spec(Key) ||
              {Key, _Cluster} <- rms_metadata:get_clusters()],
-    {ok, {{one_for_one, 10, 10}, Specs}}.
+    {ok, {{one_for_one, 1, 1}, Specs}}.
 
 %% Internal functions.
 
