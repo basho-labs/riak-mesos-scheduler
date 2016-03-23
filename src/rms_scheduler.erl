@@ -122,8 +122,15 @@ offer_rescinded(_SchedulerInfo, #'Event.Rescind'{} = EventRescind, State) ->
 status_update(_SchedulerInfo, #'Event.Update'{status=#'TaskStatus'{task_id=TaskID, state=NodeState}} = EventUpdate, State)->
     lager:info("Scheduler received status update event. "
                "Update: ~p~n", [EventUpdate]),
-    rms_cluster_manager:handle_status_update(list_to_tuple(string:tokens(element(2, TaskID), "-")), NodeState), %% This is probably ugly.
+	{ok, NodeName} = nodename_from_task_id(TaskID),
+	{ok, ClusterName} = rms_node_manager:get_node_cluster_key(NodeName),
+    ok = rms_cluster_manager:handle_status_update(ClusterName, NodeName, NodeState),
     {ok, State}.
+
+%% TODO Move this function elsewhere in the module
+%% TODO This cannot possibly be this easy, can it?
+nodename_from_task_id(#'TaskID'{value = NodeName}) ->
+	{ok, NodeName}.
 
 framework_message(_SchedulerInfo, EventMessage, State) ->
     lager:info("Scheduler received framework message. "

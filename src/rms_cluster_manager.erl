@@ -37,7 +37,7 @@
 
 -export([apply_offer/2]).
 
--export([handle_status_update/2]).
+-export([handle_status_update/3]).
 
 -export([init/1]).
 
@@ -146,11 +146,11 @@ apply_offer(OfferHelper, NodeData) ->
             end
     end.
 
-handle_status_update(ClusterNodeName, NodeState) ->
+handle_status_update(ClusterNodeName, NodeName, NodeState) ->
     io:format("** ClusterNodeName: ~p~n", [ClusterNodeName]),
-    %%TODO: This isn't right now, due to tuple change from incoming call. Cluster is element 2, Node is element 3.
-    rms_node_manager:update_node_state(ClusterNodeName, NodeState),
-    ok.
+	{ok, C} = get_cluster_pid(ClusterNodeName),
+	ok = gen_fsm:sync_send_all_state_event(C, {update_node_state, NodeName, NodeState}),
+    rms_node_manager:update_node_state(NodeName, NodeState).
 
 %% supervisor callback function.
 
