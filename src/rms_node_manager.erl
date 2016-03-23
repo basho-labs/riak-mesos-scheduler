@@ -348,7 +348,7 @@ apply_reserved_offer(NodeKey, OfferHelper,
 init({}) ->
     Specs = [node_spec(Key, proplists:get_value(cluster_key, Node)) ||
              {Key, Node} <- rms_metadata:get_nodes()],
-    {ok, {{one_for_one, 10, 10}, Specs}}.
+    {ok, {{one_for_one, 1, 1}, Specs}}.
 
 %% Internal functions.
 
