@@ -354,7 +354,8 @@ update_node_state(NodeKey, TaskState) ->
     %%     TASK_FAILED
     %%     TASK_LOST
     %%     TASK_ERROR
-    rms_node:state_change(NodeKey, TaskState),
+	{ok, N} = get_node_pid(NodeKey),
+    rms_node:state_change(N, TaskState),
     ok.
 
 %% supervisor callback function.

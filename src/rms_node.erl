@@ -178,10 +178,10 @@ set_unreserve(_Pid) ->
 delete(Pid) ->
 	gen_fsm:sync_send_all_state_event(Pid, delete).
 
+-spec state_change(pid(), term()) -> ok.
+state_change(Pid, State) ->
+	ok = gen_fsm:sync_send_all_state_event(Pid, {update_node_state, State}).
 
-state_change(_Key, _State) ->
-    %%TODO: Update FSM State **MC LOOK HERE
-    ok.
 %%% gen_fsm callbacks
 
 -spec init({key(), rms_cluster:key()}) ->
@@ -301,6 +301,18 @@ handle_event(_Event, StateName, State) ->
 
 -spec handle_sync_event(event(), from(), state(), node_state()) ->
 	state_cb_reply().
+handle_sync_event({update_node_state, 'TASK_RUNNING'},
+				  _From, Status, #node{key = Key} = Node) ->
+	NewStatus = started,
+	case update_node(Key, {NewStatus, Node}) of
+		ok -> {reply, ok, NewStatus, Node};
+		{error, Reason} ->
+			{reply, {error, Reason}, Status, Node}
+	end;
+handle_sync_event({update_node_state, _UnexpectedTaskState},
+				  _From, Status, #node{} = Node) ->
+	{reply, {error, unexpected_task_state}, Status, Node};
+	
 handle_sync_event({set_reserve, Hostname, AgentIdValue, PersistenceId},
 				  _From, Status, #node{key = Key} = Node) ->
 	Node1 = Node#node{hostname = Hostname,
