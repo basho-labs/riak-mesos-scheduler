@@ -35,7 +35,7 @@
 
 -export([add_node/1]).
 
--export([apply_offer/2]).
+-export([apply_offer/1]).
 
 -export([executors_to_shutdown/0]).
 
@@ -46,7 +46,9 @@
 -export([init/1]).
 
 -define(CONFIG_ROOT, "priv/").
+
 -define(RIAK_CONFIG, ?CONFIG_ROOT ++ "riak.conf.default").
+
 -define(ADVANCED_CONFIG, ?CONFIG_ROOT ++ "advanced.config.default").
 
 %% External functions.
@@ -133,7 +135,6 @@ add_node(Key) ->
             {error, Reason}
     end.
 
-
 executors_to_shutdown() ->
   NodeKeys = rms_node_manager:get_node_keys(),
   executors_to_shutdown(NodeKeys, []).
@@ -151,12 +152,11 @@ executors_to_shutdown([NodeKey|Rest], Accum) ->
       executors_to_shutdown(Rest, Accum)
   end.
 
--spec apply_offer(rms_offer_helper:offer_helper(),
-                  rms_node_manager:node_data()) ->
+-spec apply_offer(rms_offer_helper:offer_helper()) ->
     rms_offer_helper:offer_helper().
-apply_offer(OfferHelper, NodeData) ->
+apply_offer(OfferHelper) ->
     NodeKeys = rms_node_manager:get_node_keys(),
-    case apply_offer(NodeKeys, false, OfferHelper, NodeData) of
+    case apply_offer(NodeKeys, false, OfferHelper) of
         {true, OfferHelper1} ->
             OfferHelper1;
         {false, OfferHelper1} ->
@@ -215,50 +215,45 @@ get_cluster_pid(Key) ->
             {error, not_found}
     end.
 
--spec apply_offer([rms_node:key()], boolean(), rms_offer_helper:offer_helper(),
-                  rms_node_manager:node_data()) ->
+-spec apply_offer([rms_node:key()], boolean(),
+                  rms_offer_helper:offer_helper()) ->
     {boolean(), rms_offer_helper:offer_helper()}.
-apply_offer([NodeKey | NodeKeys], NeedsReconciliation, OfferHelper, NodeData) ->
+apply_offer([NodeKey | NodeKeys], NeedsReconciliation, OfferHelper) ->
     case rms_node_manager:node_needs_to_be_reconciled(NodeKey) of
         true ->
-            apply_offer(NodeKeys, true, OfferHelper, NodeData);
+            apply_offer(NodeKeys, true, OfferHelper);
         false ->
             case rms_node_manager:node_can_be_scheduled(NodeKey) of
                 true ->
                     schedule_node(NodeKey, NodeKeys, NeedsReconciliation,
-                                  OfferHelper, NodeData);
+                                  OfferHelper);
                 false ->
-                    apply_offer(NodeKeys, NeedsReconciliation, OfferHelper,
-                                NodeData)
+                    apply_offer(NodeKeys, NeedsReconciliation, OfferHelper)
             end
     end;
-apply_offer([], NeedsReconciliation, OfferHelper, _FrameworkInfo) ->
+apply_offer([], NeedsReconciliation, OfferHelper) ->
     {NeedsReconciliation, OfferHelper}.
 
 -spec schedule_node(rms_node:key(), [rms_node:key()], boolean(),
-                    rms_offer_helper:offer_helper(),
-                    rms_node_manager:node_data()) ->
+                    rms_offer_helper:offer_helper()) ->
     {boolean(), rms_offer_helper:offer_helper()}.
-schedule_node(NodeKey, NodeKeys, NeedsReconciliation, OfferHelper, NodeData) ->
+schedule_node(NodeKey, NodeKeys, NeedsReconciliation, OfferHelper) ->
     case rms_node_manager:node_has_reservation(NodeKey) of
         true ->
             %% Apply reserved resources.
             apply_reserved_offer(NodeKey, NodeKeys, NeedsReconciliation,
-                                 OfferHelper, NodeData);
+                                 OfferHelper);
         false ->
             %% New node.
             apply_unreserved_offer(NodeKey, NodeKeys, NeedsReconciliation,
-                                   OfferHelper, NodeData)
+                                   OfferHelper)
     end.
 
 -spec apply_unreserved_offer(rms_node:key(), [rms_node:key()], boolean(),
-                             rms_offer_helper:offer_helper(),
-                             rms_node_manager:node_data()) ->
+                             rms_offer_helper:offer_helper()) ->
     {boolean(), rms_offer_helper:offer_helper()}.
-apply_unreserved_offer(NodeKey, NodeKeys, NeedsReconciliation, OfferHelper,
-                       NodeData) ->
-    case rms_node_manager:apply_unreserved_offer(NodeKey, OfferHelper,
-                                                 NodeData) of
+apply_unreserved_offer(NodeKey, NodeKeys, NeedsReconciliation, OfferHelper) ->
+    case rms_node_manager:apply_unreserved_offer(NodeKey, OfferHelper) of
         {ok, OfferHelper1} ->
             lager:info("Found new offer for node. "
                        "Node key: ~s. "
@@ -267,7 +262,7 @@ apply_unreserved_offer(NodeKey, NodeKeys, NeedsReconciliation, OfferHelper,
                        [NodeKey,
                         rms_offer_helper:get_offer_id_value(OfferHelper),
                         rms_offer_helper:resources_to_list(OfferHelper)]),
-            apply_offer(NodeKeys, NeedsReconciliation, OfferHelper1, NodeData);
+            apply_offer(NodeKeys, NeedsReconciliation, OfferHelper1);
         {error, Reason} ->
             lager:warning("Appling of unreserved resources error. "
                           "Node key: ~s. "
@@ -276,15 +271,13 @@ apply_unreserved_offer(NodeKey, NodeKeys, NeedsReconciliation, OfferHelper,
                           [NodeKey,
                            rms_offer_helper:get_offer_id_value(OfferHelper),
                            Reason]),
-            apply_offer(NodeKeys, NeedsReconciliation, OfferHelper, NodeData)
+            apply_offer(NodeKeys, NeedsReconciliation, OfferHelper)
     end.
 
 -spec apply_reserved_offer(rms_node:key(), [rms_node:key()], boolean(),
-                           rms_offer_helper:offer_helper(),
-                           rms_node_manager:node_data()) ->
+                           rms_offer_helper:offer_helper()) ->
     {boolean(), rms_offer_helper:offer_helper()}.
-apply_reserved_offer(NodeKey, NodeKeys, NeedsReconciliation, OfferHelper,
-                     NodeData) ->
+apply_reserved_offer(NodeKey, NodeKeys, NeedsReconciliation, OfferHelper) ->
     {ok, PersistenceId} = rms_node_manager:get_node_persistence_id(NodeKey),
     OfferIdValue = rms_offer_helper:get_offer_id_value(OfferHelper),
     case rms_offer_helper:has_persistence_id(PersistenceId, OfferHelper) of
@@ -292,8 +285,7 @@ apply_reserved_offer(NodeKey, NodeKeys, NeedsReconciliation, OfferHelper,
             %% Found reserved resources for node.
             %% Persistence id matches.
             %% Try to launch the node.
-            case rms_node_manager:apply_reserved_offer(NodeKey, OfferHelper,
-                                                       NodeData) of
+            case rms_node_manager:apply_reserved_offer(NodeKey, OfferHelper) of
                 {ok, OfferHelper1} ->
                     ResourcesList =
                         rms_offer_helper:resources_to_list(OfferHelper),
@@ -305,8 +297,7 @@ apply_reserved_offer(NodeKey, NodeKeys, NeedsReconciliation, OfferHelper,
                                "Offer resources: ~p.",
                                [NodeKey, PersistenceId, OfferIdValue,
                                 ResourcesList]),
-                    apply_offer(NodeKeys, NeedsReconciliation, OfferHelper1,
-                                NodeData);
+                    apply_offer(NodeKeys, NeedsReconciliation, OfferHelper1);
                 {error, Reason} ->
                     lager:warning("Adding node for scheduling error. "
                                   "Node has persistence id. "
@@ -316,7 +307,7 @@ apply_reserved_offer(NodeKey, NodeKeys, NeedsReconciliation, OfferHelper,
                                   "Error reason: ~p.",
                                   [NodeKey, PersistenceId, OfferIdValue,
                                    Reason]),
-                    apply_offer(NodeKeys, true, OfferHelper, NodeData)
+                    apply_offer(NodeKeys, true, OfferHelper)
             end;
         false ->
             %% TODO: Why is any of the stuff below here happening if the persistence id isn't there?
@@ -334,8 +325,7 @@ apply_reserved_offer(NodeKey, NodeKeys, NeedsReconciliation, OfferHelper,
                     %% Try to launch the node.
                     %% If apply fails unreserve the resources for the node.
                     case rms_node_manager:apply_reserved_offer(NodeKey,
-                                                               OfferHelper,
-                                                               NodeData) of
+                                                               OfferHelper) of
                         {ok, OfferHelper1} ->
                             ResourcesList =
                                 rms_offer_helper:resources_to_list(OfferHelper),
@@ -350,7 +340,7 @@ apply_reserved_offer(NodeKey, NodeKeys, NeedsReconciliation, OfferHelper,
                                         PersistenceId, OfferIdValue,
                                         ResourcesList]),
                             apply_offer(NodeKeys, NeedsReconciliation,
-                                        OfferHelper1, NodeData);
+                                        OfferHelper1);
                         {error, Reason} ->
                             %% TODO: unreserve node here,
                             lager:warning("Adding node for scheduling error. "
@@ -365,7 +355,7 @@ apply_reserved_offer(NodeKey, NodeKeys, NeedsReconciliation, OfferHelper,
                                            PersistenceId, OfferIdValue,
                                            Reason]),
                             apply_offer(NodeKeys, NeedsReconciliation,
-                                        OfferHelper, NodeData)
+                                        OfferHelper)
                     end;
                 false ->
                     lager:info("Hostname or AgentId didn't match. "
@@ -376,8 +366,7 @@ apply_reserved_offer(NodeKey, NodeKeys, NeedsReconciliation, OfferHelper,
                                "Offer id: ~s. ",
                                [NodeKey, AgentIdValue, OfferAgentIdValue, 
                                 Hostname, PersistenceId, OfferIdValue]),
-                    apply_offer(NodeKeys, NeedsReconciliation, OfferHelper,
-                                NodeData)
+                    apply_offer(NodeKeys, NeedsReconciliation, OfferHelper)
             end
     end.
 
