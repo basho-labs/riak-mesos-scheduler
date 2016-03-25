@@ -309,17 +309,22 @@ maybe_do_join(_, []) ->
 maybe_do_join(NodeKey, [NodeKey|Rest]) ->
     maybe_do_join(NodeKey, Rest);
 maybe_do_join(NodeKey, [ExistingNodeKey|Rest]) ->
-    {ok, URL} = rms_node_manager:get_node_http_url(ExistingNodeKey),
-    {ok, NodeName} = rms_node_manager:get_node_name(NodeKey),
-    {ok, ExistingNodeName} = rms_node_manager:get_node_name(ExistingNodeKey),
-    case riak_explorer_client:join(
-           list_to_binary(URL),
-           list_to_binary(NodeName), 
-           list_to_binary(ExistingNodeName)) of
-        {ok, _} ->
-            ok;
-        {error, Reason} ->
-            lager:warning("Failed node join attempt from node ~s to node ~s. Reason: ~p", [NodeName, ExistingNodeName, Reason]),
+    case {rms_node_manager:get_node_http_url(ExistingNodeKey),
+          rms_node_manager:get_node_name(NodeKey),
+          rms_node_manager:get_node_name(ExistingNodeKey)} of
+        {{ok,U},{ok,N},{ok,E}} when
+              is_list(U) and is_list(N) and is_list(E) ->
+            case riak_explorer_client:join(
+                   list_to_binary(U),
+                   list_to_binary(N), 
+                   list_to_binary(E)) of
+                {ok, _} ->
+                    ok;
+                {error, Reason} ->
+                    lager:warning("Failed node join attempt from node ~s to node ~s. Reason: ~p", [N, E, Reason]),
+                    maybe_do_join(NodeKey, Rest)
+            end;
+        _ ->
             maybe_do_join(NodeKey, Rest)
     end.
 
@@ -330,18 +335,23 @@ do_leave(_, []) ->
 do_leave(NodeKey, [NodeKey|Rest]) ->
     do_leave(NodeKey, Rest);
 do_leave(NodeKey, [ExistingNodeKey|Rest]) ->
-    {ok, URL} = rms_node_manager:get_node_http_url(ExistingNodeKey),
-    {ok, NodeName} = rms_node_manager:get_node_name(NodeKey),
-    {ok, ExistingNodeName} = rms_node_manager:get_node_name(ExistingNodeKey),
-    case riak_explorer_client:leave(
-           list_to_binary(URL),
-           list_to_binary(ExistingNodeName), 
-           list_to_binary(NodeName)) of
-        {ok, _} ->
-            ok;
-        {error, Reason} ->
-            lager:warning("Failed node join attempt from node ~s to node ~s. Reason: ~p", [NodeName, ExistingNodeName, Reason]),
-            do_leave(NodeKey, Rest)
+    case {rms_node_manager:get_node_http_url(ExistingNodeKey),
+          rms_node_manager:get_node_name(NodeKey),
+          rms_node_manager:get_node_name(ExistingNodeKey)} of
+        {{ok,U},{ok,N},{ok,E}} when
+              is_list(U) and is_list(N) and is_list(E) ->
+            case riak_explorer_client:leave(
+                   list_to_binary(U),
+                   list_to_binary(E), 
+                   list_to_binary(N)) of
+                {ok, _} ->
+                    ok;
+                {error, Reason} ->
+                    lager:warning("Failed node join attempt from node ~s to node ~s. Reason: ~p", [N, E, Reason]),
+                    do_leave(NodeKey, Rest)
+            end;
+        _ ->
+            maybe_do_join(NodeKey, Rest)
     end.
 
 -spec from_list(rms_metadata:cluster_state()) -> cluster_state().

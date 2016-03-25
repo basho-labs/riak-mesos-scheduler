@@ -70,27 +70,27 @@ get_node_keys() ->
 -spec get_node_keys(rms_cluster:key()) -> [rms_node:key()].
 get_node_keys(ClusterKey) ->
     [Key || {Key, Node} <- rms_metadata:get_nodes(),
-     ClusterKey =:= proplists:get_value(cluster_key, Node)].
+            ClusterKey =:= proplists:get_value(cluster_key, Node)].
 
 -spec get_active_node_keys(rms_cluster:key()) -> [rms_node:key()].
 get_active_node_keys(ClusterKey) ->
     [Key || {Key, Node} <- rms_metadata:get_nodes(),
-     ClusterKey =:= proplists:get_value(cluster_key, Node), 
+            ClusterKey =:= proplists:get_value(cluster_key, Node), 
             shutdown =/= proplists:get_value(status, Node)].
 
 -spec get_running_node_keys(rms_cluster:key()) -> [rms_node:key()].
 get_running_node_keys(ClusterKey) ->
     [Key || {Key, Node} <- rms_metadata:get_nodes(),
-     ClusterKey =:= proplists:get_value(cluster_key, Node), 
+            ClusterKey =:= proplists:get_value(cluster_key, Node), 
             started =:= proplists:get_value(status, Node)].
 
 -spec get_node(rms_node:key()) ->
-    {ok, rms_metadata:node_state()} | {error, term()}.
+                      {ok, rms_metadata:node_state()} | {error, term()}.
 get_node(Key) ->
     rms_node:get(Key).
 
 -spec get_node_cluster_key(rms_node:key()) ->
-    {ok, rms_cluster:key()} | {error, term()}.
+                                  {ok, rms_cluster:key()} | {error, term()}.
 get_node_cluster_key(Key) ->
     rms_node:get_field_value(cluster_key, Key).
 
@@ -108,26 +108,20 @@ get_node_name(Key) ->
 
 -spec get_node_http_url(rms_node:key()) -> {ok, string()} | {error, term()}.
 get_node_http_url(Key) ->
-  case get_node_hostname(Key) of
-      {ok, undefined} -> 
-          {error, not_found};
-      {ok, Host} -> 
-          Port = case get_node_http_port(Key) of
-                     {ok, undefined} ->
-                         {error, not_found};
-                     {ok, P} ->
-                         integer_to_list(P)
-                 end,
-          {ok, Host ++ ":" ++ Port}
-  end.
+    case {get_node_hostname(Key),
+          get_node_http_port(Key)} of
+        {{ok, H},{ok, P}} when is_list(H) and is_integer(P) ->
+            {ok, H ++ ":" ++ integer_to_list(P)};
+        _ -> {error, not_found}
+    end.
 
 -spec get_node_agent_id_value(rms_node:key()) ->
-    {ok, string()} | {error, term()}.
+                                     {ok, string()} | {error, term()}.
 get_node_agent_id_value(Key) ->
     rms_node:get_field_value(agent_id_value, Key).
 
 -spec get_node_persistence_id(rms_node:key()) ->
-    {ok, string()} | {error, term()}.
+                                     {ok, string()} | {error, term()}.
 get_node_persistence_id(Key) ->
     rms_node:get_field_value(persistence_id, Key).
 
@@ -160,12 +154,12 @@ node_has_reservation(NodeKey) ->
 
 -spec node_can_be_shutdown(rms_node:key()) -> boolean().
 node_can_be_shutdown(NodeKey) ->
-  case rms_node:can_be_shutdown(NodeKey) of
-    {ok, CanBeShutDown} ->
-      CanBeShutDown;
-    {error, _Reason} ->
-      false
-  end.
+    case rms_node:can_be_shutdown(NodeKey) of
+        {ok, CanBeShutDown} ->
+            CanBeShutDown;
+        {error, _Reason} ->
+            false
+    end.
 
 -spec add_node(rms_node:key(), rms_cluster:key()) -> ok | {error, term()}.
 add_node(Key, ClusterKey) ->
@@ -194,8 +188,8 @@ delete_node(Key) ->
     end.
 
 -spec apply_unreserved_offer(rms_node:key(), rms_offer_helper:offer_helper()) ->
-    {ok, rms_offer_helper:offer_helper()} |
-    {error, not_enough_resources | term()}.
+                                    {ok, rms_offer_helper:offer_helper()} |
+                                    {error, not_enough_resources | term()}.
 apply_unreserved_offer(NodeKey, OfferHelper) ->
     case get_node_pid(NodeKey) of
         {ok, Pid} ->
@@ -212,17 +206,17 @@ apply_unreserved_offer(NodeKey, OfferHelper) ->
             ok = rms_node:set_reserve(Pid, Hostname, AgentIdValue,
                                       PersistenceId),
             case rms_offer_helper:can_fit_unreserved(NodeCpus +
-                                                     ?CPUS_PER_EXECUTOR,
+                                                         ?CPUS_PER_EXECUTOR,
                                                      NodeMem +
-                                                     ?MEM_PER_EXECUTOR,
+                                                         ?MEM_PER_EXECUTOR,
                                                      NodeDisk, NodeNumPorts,
                                                      OfferHelper) of
                 true ->
                     %% Remove requirements from offer helper.
                     OfferHelper1 =
                         rms_offer_helper:apply_unreserved_resources(
-                            ?CPUS_PER_EXECUTOR, ?MEM_PER_EXECUTOR, undefined,
-                            NodeNumPorts, OfferHelper),
+                          ?CPUS_PER_EXECUTOR, ?MEM_PER_EXECUTOR, undefined,
+                          NodeNumPorts, OfferHelper),
                     %% Reserve resources.
                     OfferHelper2 =
                         rms_offer_helper:make_reservation(NodeCpus, NodeMem,
@@ -244,8 +238,8 @@ apply_unreserved_offer(NodeKey, OfferHelper) ->
     end.
 
 -spec apply_reserved_offer(rms_node:key(), rms_offer_helper:offer_helper()) ->
-    {ok, rms_offer_helper:offer_helper()} |
-    {error, not_enough_resources | term()}.
+                                  {ok, rms_offer_helper:offer_helper()} |
+                                  {error, not_enough_resources | term()}.
 apply_reserved_offer(NodeKey, OfferHelper) ->
     case get_node_pid(NodeKey) of
         {ok, _Pid} ->
@@ -278,14 +272,14 @@ apply_reserved_offer(NodeKey, OfferHelper) ->
                     %% Apply reserved resources for task.
                     OfferHelper1 =
                         rms_offer_helper:apply_reserved_resources(
-                            NodeCpus, NodeMem, NodeDisk, undefined, Role,
-                            Principal, PersistenceId, ContainerPath,
-                            OfferHelper),
+                          NodeCpus, NodeMem, NodeDisk, undefined, Role,
+                          Principal, PersistenceId, ContainerPath,
+                          OfferHelper),
                     %% Apply unreserved resources for task.
                     OfferHelper2 =
                         rms_offer_helper:apply_unreserved_resources(
-                            undefined, undefined, undefined, NodeNumPorts,
-                            OfferHelper1),
+                          undefined, undefined, undefined, NodeNumPorts,
+                          OfferHelper1),
                     %% Grab Task resources from offer helper in current state.
                     TaskInfoReservedResources = 
                         rms_offer_helper:get_reserved_applied_resources(OfferHelper2),
@@ -365,16 +359,16 @@ apply_reserved_offer(NodeKey, OfferHelper) ->
     end.
 
 handle_status_update(NodeKey, TaskStatus, Reason) ->
-  {ok, N} = get_node_pid(NodeKey),
-  rms_node:handle_status_update(N, TaskStatus, Reason).
+    {ok, N} = get_node_pid(NodeKey),
+    rms_node:handle_status_update(N, TaskStatus, Reason).
 
 %% supervisor callback function.
 
 -spec init({}) ->
-    {ok, {{supervisor:strategy(), 1, 1}, [supervisor:child_spec()]}}.
+                  {ok, {{supervisor:strategy(), 1, 1}, [supervisor:child_spec()]}}.
 init({}) ->
     Specs = [node_spec(Key, proplists:get_value(cluster_key, Node)) ||
-             {Key, Node} <- rms_metadata:get_nodes()],
+                {Key, Node} <- rms_metadata:get_nodes()],
     {ok, {{one_for_one, 1, 1}, Specs}}.
 
 %% Internal functions.
@@ -382,8 +376,8 @@ init({}) ->
 -spec node_spec(rms_node:key(), rms_cluster:key()) -> supervisor:child_spec().
 node_spec(Key, ClusterKey) ->
     {Key,
-        {rms_node, start_link, [Key, ClusterKey]},
-        transient, 5000, worker, [rms_node]}.
+     {rms_node, start_link, [Key, ClusterKey]},
+     transient, 5000, worker, [rms_node]}.
 
 -spec get_node_pid(rms_node:key()) -> {ok, pid()} | {error, not_found}.
 get_node_pid(Key) ->
