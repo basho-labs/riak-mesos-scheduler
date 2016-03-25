@@ -44,7 +44,7 @@
          set_unreserve/1,
          delete/1,
          state_change/2,
-         handle_status_update/2]).
+         handle_status_update/3]).
 
 %%% gen_fsm callbacks
 -export([init/1,
@@ -85,7 +85,8 @@
                disterl_port :: pos_integer(),
                agent_id_value = "" :: string(),
                container_path = "" :: string(),
-               persistence_id = "" :: string()}).
+               persistence_id = "" :: string(),
+               reconciled = false :: boolean()}).
 
 -type key() :: string().
 -export_type([key/0]).
@@ -126,10 +127,8 @@ get_field_value(Field, Key) ->
 -spec needs_to_be_reconciled(key()) -> {ok, boolean()} | {error, term()}.
 needs_to_be_reconciled(Key) ->
     case get_node(Key) of
-        {ok, {Status, _}} ->
-            %% Basic simple solution.
-            %% TODO: implement "needs to be reconciled" logic here.
-            NeedsReconciliation = Status =:= undefined,
+        {ok, {_, #node{reconciled = Reconciled}}} ->
+            NeedsReconciliation = Reconciled =:= false,
             {ok, NeedsReconciliation};
         {error, Reason} ->
             {error, Reason}
@@ -139,8 +138,6 @@ needs_to_be_reconciled(Key) ->
 can_be_scheduled(Key) ->
     case get_node(Key) of
         {ok, {Status, _}} ->
-            %% Basic simple solution.
-            %% TODO: implement "can be scheduled" logic here.
             CanBeScheduled = case Status of
                                  requested -> true;
                                  reserved -> true;
@@ -175,17 +172,27 @@ has_reservation(Key) ->
             {error, Reason}
     end.
 
--spec handle_status_update(pid(), atom()) -> ok | {error, term()}.
-handle_status_update(Pid, TaskStatus) ->
-    case gen_fsm:sync_send_event(Pid, {status_update, TaskStatus}) of
+-spec handle_status_update(pid(), atom(), atom()) -> ok | {error, term()}.
+handle_status_update(Pid, TaskStatus, Reason) ->
+    case Reason of
+        'REASON_RECONCILIATION' ->
+            set_reconciled(Pid);
+        _ ->
+            ok
+    end,
+    case gen_fsm:sync_send_event(Pid, {status_update, TaskStatus, Reason}) of
         ok ->
             ok;
         {error, unhandled_event} ->
             gen_fsm:sync_send_all_state_event(
-              Pid, {status_update, TaskStatus});
-        {error, Reason} ->
-            {error, Reason}
+              Pid, {status_update, TaskStatus, Reason});
+        {error, E} ->
+            {error, E}
     end.
+
+-spec set_reconciled(pid()) -> ok | {error, term()}.
+set_reconciled(Pid) ->
+    gen_fsm:sync_send_all_state_event(Pid, set_reconciled).
 
 -spec set_reserve(pid(), string(), string(), string()) ->
                          ok | {error, term()}.
@@ -287,7 +294,7 @@ handle_event(_Event, StateName, State) ->
       | {reply, reply(), Next::state(), New::node_state(), state_timeout()}.
 
 -spec requested(event(), from(), node_state()) -> state_cb_reply().
-requested({status_update, StatusUpdate}, _From, Node) ->
+requested({status_update, StatusUpdate, _}, _From, Node) ->
     case StatusUpdate of
         'TASK_FAILED' -> {reply, ok, requested, Node};
         'TASK_LOST' -> {reply, ok, requested, Node};
@@ -298,15 +305,11 @@ requested(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, requested, Node}.
 
 -spec undefined(event(), from(), node_state()) -> state_cb_reply().
-undefined({status_update, UndefinedStatusUpdate}, _From, Node) ->
-    %% If we end up here, it means mesos gave us a status update that
-    %% we don't know how to respond to, kill it.
-    {stop, {undefined_status_update, UndefinedStatusUpdate}, Node};
 undefined(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, undefined, Node}.
 
 -spec reserved(event(), from(), node_state()) -> state_cb_reply().
-reserved({status_update, StatusUpdate}, _From, Node) ->
+reserved({status_update, StatusUpdate, _}, _From, Node) ->
     case StatusUpdate of
         'TASK_FAILED' -> {reply, ok, reserved, Node};
         'TASK_LOST' -> unreserve(reserved, requested, Node);
@@ -319,7 +322,7 @@ reserved(_Event, _From, Node) ->
 
 -spec starting(event(), from(), node_state()) -> state_cb_reply().
 
-starting({status_update, StatusUpdate}, _From, Node) ->
+starting({status_update, StatusUpdate, _}, _From, Node) ->
     case StatusUpdate of
         'TASK_FAILED' -> sync_update_node(starting, reserved, Node);
         'TASK_LOST' -> sync_update_node(starting, reserved, Node);
@@ -332,7 +335,7 @@ starting(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, starting, Node}.
 
 -spec started(event(), from(), node_state()) -> state_cb_reply().
-started({status_update, StatusUpdate}, _From, Node) ->
+started({status_update, StatusUpdate, _}, _From, Node) ->
     case StatusUpdate of
         'TASK_FAILED' -> sync_update_node(started, restarting, Node);
         'TASK_LOST' -> sync_update_node(started, restarting, Node);
@@ -344,7 +347,7 @@ started(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, started, Node}.
 
 -spec shutting_down(event(), from(), node_state()) -> state_cb_reply().
-shutting_down({status_update, StatusUpdate}, _From, Node) ->
+shutting_down({status_update, StatusUpdate, _}, _From, Node) ->
     case StatusUpdate of
         'TASK_FINISHED' -> leave(shutting_down, Node);
         'TASK_KILLED' -> leave(shutting_down, Node);
@@ -357,7 +360,7 @@ shutting_down(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, shutting_down, Node}.
 
 -spec shutdown(event(), from(), node_state()) -> state_cb_reply().
-shutdown({status_update, _}, _From, Node) ->
+shutdown({status_update, _, _}, _From, Node) ->
     {reply, ok, shutdown, Node};
 shutdown(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, shutdown, Node}.
@@ -367,7 +370,7 @@ failed(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, failed, Node}.
 
 -spec restarting(event(), from(), node_state()) -> state_cb_reply().
-restarting({status_update, StatusUpdate}, _From, Node) ->
+restarting({status_update, StatusUpdate, _}, _From, Node) ->
     case StatusUpdate of
         'TASK_FINISHED' -> sync_update_node(restarting, reserved, Node);
         'TASK_KILLED' -> sync_update_node(restarting, reserved, Node);
@@ -381,7 +384,7 @@ restarting(_Event, _From, Node) ->
 
 -spec handle_sync_event(event(), from(), state(), node_state()) ->
                                state_cb_reply().
-handle_sync_event({status_update, StatusUpdate},
+handle_sync_event({status_update, StatusUpdate, _},
                   _From, State, Node) ->
     NewState = case StatusUpdate of
                    'TASK_STAGING' -> starting;
@@ -410,6 +413,10 @@ handle_sync_event({set_reserve, Hostname, AgentIdValue, PersistenceId},
                       agent_id_value = AgentIdValue,
                       persistence_id = PersistenceId},
     sync_update_node(State, reserved, Node, Node1);
+handle_sync_event(set_reconciled, _From, State, Node) ->
+    lager:info("Setting reconciliation for node: ~p", [Node]),
+    Node1 = Node#node{reconciled = true},
+    sync_update_node(State, State, Node, Node1);
 handle_sync_event(set_unreserve, _From, State, Node) ->
     lager:info("Removing reservation for node: ~p", [Node]),
     unreserve(State, requested, Node);

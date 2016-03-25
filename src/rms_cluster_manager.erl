@@ -41,7 +41,7 @@
 
 -export([maybe_join/2, leave/2]).
 
--export([handle_status_update/3]).
+-export([handle_status_update/4]).
 
 -export([init/1]).
 
@@ -184,8 +184,8 @@ leave(Key, NodeKey) ->
             {error, Reason}
     end.
 
-handle_status_update(_Key, NodeKey, TaskStatus) ->
-    rms_node_manager:handle_status_update(NodeKey, TaskStatus).
+handle_status_update(_Key, NodeKey, TaskStatus, Reason) ->
+    rms_node_manager:handle_status_update(NodeKey, TaskStatus, Reason).
 
 %% supervisor callback function.
 

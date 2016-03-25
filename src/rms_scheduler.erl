@@ -132,6 +132,7 @@ offer_rescinded(_SchedulerInfo, #'Event.Rescind'{} = EventRescind, State) ->
 
 status_update(SchedulerInfo, #'Event.Update'{
                                  status=#'TaskStatus'{
+                                           reason=Reason,
                                            task_id=TaskId, 
                                            agent_id=AgentId, 
                                            state=NodeState, 
@@ -140,7 +141,7 @@ status_update(SchedulerInfo, #'Event.Update'{
                "Update: ~p~n", [EventUpdate]),
     {ok, NodeName} = nodename_from_task_id(TaskId),
     {ok, ClusterName} = rms_node_manager:get_node_cluster_key(NodeName),
-    case rms_cluster_manager:handle_status_update(ClusterName, NodeName, NodeState) of
+    case rms_cluster_manager:handle_status_update(ClusterName, NodeName, NodeState, Reason) of
         ok -> 
             case Uuid of 
                 undefined -> 

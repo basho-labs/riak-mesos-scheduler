@@ -43,7 +43,7 @@
 
 -export([apply_unreserved_offer/2, apply_reserved_offer/2]).
 
--export([handle_status_update/2]).
+-export([handle_status_update/3]).
 
 -export([init/1]).
 
@@ -341,9 +341,9 @@ apply_reserved_offer(NodeKey, OfferHelper) ->
             {error, Reason}
     end.
 
-handle_status_update(NodeKey, TaskStatus) ->
+handle_status_update(NodeKey, TaskStatus, Reason) ->
   {ok, N} = get_node_pid(NodeKey),
-  rms_node:handle_status_update(N, TaskStatus).
+  rms_node:handle_status_update(N, TaskStatus, Reason).
 
 %% supervisor callback function.
 
