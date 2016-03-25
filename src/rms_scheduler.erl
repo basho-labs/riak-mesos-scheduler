@@ -41,7 +41,8 @@
 -record(scheduler, {framework_id :: undefined | erl_mesos:'FrameworkID'()}).
 
 -record(state, {scheduler :: scheduler_state(),
-                node_data :: rms_node_manager:node_data()}).
+                node_data :: rms_node_manager:node_data(),
+                calls_queue :: erl_mesos_calls_queue:calls_queue()}).
 
 -type scheduler_state() :: #scheduler{}.
 -export_type([scheduler_state/0]).
@@ -90,12 +91,11 @@ registered(SchedulerInfo, _EventSubscribed,
     TaskIdValues = rms_node_manager:get_node_keys(),
     lager:info("Scheduler task ids to reconcile: ~p.", [TaskIdValues]),
     ReconcileTasks = reconcile_tasks(TaskIdValues),
-    ok = erl_mesos_scheduler:reconcile(SchedulerInfo, ReconcileTasks),
-    {ok, State}.
+    call(reconcile, [SchedulerInfo, ReconcileTasks], State).
 
 reregistered(_SchedulerInfo, State) ->
     lager:warning("Scheduler reregistered.", []),
-    {ok, State}.
+    exec_calls(State).
 
 disconnected(_SchedulerInfo, State) ->
     lager:warning("Scheduler disconnected.", []),
@@ -109,9 +109,7 @@ resource_offers(SchedulerInfo, #'Event.Offers'{offers = Offers},
         _ -> lager:info("Created Operations: ~p", [Operations])
     end,
     Filters = #'Filters'{refuse_seconds = ?OFFER_INTERVAL},
-    ok = erl_mesos_scheduler:accept(SchedulerInfo, OfferIds, Operations,
-                                    Filters),
-    {ok, State}.
+    call(accept, [SchedulerInfo, OfferIds, Operations, Filters], State).
 
 offer_rescinded(_SchedulerInfo, #'Event.Rescind'{} = EventRescind, State) ->
     lager:info("Scheduler received offer rescinded event. "
@@ -169,8 +167,10 @@ init(Options, Scheduler) ->
     lager:info("Start scheduler. Framework info: ~p.",
                [framework_info_to_list(FrameworkInfo)]),
     NodeData = rms_node_manager:node_data(Options),
+    CallsQueue = erl_mesos_calls_queue:new(),
     {ok, FrameworkInfo, true, #state{scheduler = Scheduler,
-                                     node_data = NodeData}}.
+                                     node_data = NodeData,
+                                     calls_queue = CallsQueue}}.
 
 -spec framework_id_value(undefined | erl_mesos:'FrameworkID'()) ->
     undefined | string().
@@ -239,6 +239,51 @@ to_list(#scheduler{framework_id = FrameworkId}) ->
 -spec from_list(rms_metadata:scheduler_state()) -> scheduler_state().
 from_list(SchedulerList) ->
     #scheduler{framework_id = proplists:get_value(framework_id, SchedulerList)}.
+
+-spec call(atom(), [term()], state()) ->
+    {ok, state()} | {stop, state()}.
+call(Function, Args, #state{calls_queue = CallsQueue} = State) ->
+    Call = {erl_mesos_scheduler, Function, Args},
+    case erl_mesos_calls_queue:exec_or_push_call(Call, CallsQueue) of
+        {ok, CallsQueue1} ->
+            State1 = State#state{calls_queue = CallsQueue1},
+            {ok, State1};
+        {exec_error, Reason, CallsQueue1} ->
+            lager:warning("Scheduler api call error. "
+                          "Put call to the queue. "
+                          "Function: ~p, "
+                          "Args: ~p, "
+                          "Call error reason: ~p.",
+                          [Function, Args, Reason]),
+            State1 = State#state{calls_queue = CallsQueue1},
+            {ok, State1};
+        {error, Reason} ->
+            lager:warning("Scheduler api call error. "
+                          "Put call to the queue error. "
+                          "Function: ~p, "
+                          "Args: ~p, "
+                          "Queue error reason: ~p.",
+                          [Function, Args, Reason]),
+            {stop, State}
+    end.
+
+-spec exec_calls(state()) -> {ok, state()} | {stop, state()}.
+exec_calls(#state{calls_queue = CallsQueue} = State) ->
+    case erl_mesos_calls_queue:exec_calls(CallsQueue) of
+        {exec_error, Reason, CallsQueue1} ->
+            lager:warning("Scheduler api call from queue error. "
+                          "Call error reason: ~p.",
+                          [Reason]),
+            {ok, State#state{calls_queue = CallsQueue1}};
+        {error, Reason} ->
+            lager:warning("Scheduler queue error."
+                          "Queue error reason: ~p.",
+                          [Reason]),
+            {stop, State};
+        calls_queue_empty ->
+            State1 = State#state{calls_queue = erl_mesos_calls_queue:new()},
+            {ok, State1}
+    end.
 
 -spec apply_offers([erl_mesos:'Offer'()], rms_node_manager:node_data()) ->
     {[erl_mesos:'OfferID'()], [erl_mesos:'Offer.Operation'()]}.

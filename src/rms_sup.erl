@@ -113,4 +113,4 @@ init([]) ->
                       permanent, 5000, worker, [mochiweb_socket_server]},
     Specs = [MetadataManagerSpec, MetadataSpec, ClusterManagerSpec,
              NodeManagerSpec, SchedulerSpec, WebmachineSpec],
-    {ok, {{one_for_one, 10, 10}, Specs}}.
+    {ok, {{one_for_one, 1, 1}, Specs}}.
