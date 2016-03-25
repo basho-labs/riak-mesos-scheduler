@@ -29,11 +29,15 @@
          get_node/1,
          get_node_cluster_key/1,
          get_node_hostname/1,
+         get_node_http_port/1,
+         get_node_http_url/1,
+         get_node_name/1,
          get_node_agent_id_value/1,
          get_node_persistence_id/1,
          node_needs_to_be_reconciled/1,
          node_can_be_scheduled/1,
          node_has_reservation/1,
+         node_can_be_shutdown/1,
          add_node/2,
          delete_node/1]).
 
@@ -41,7 +45,7 @@
 
 -export([apply_unreserved_offer/3, apply_reserved_offer/3]).
 
--export([update_node_state/2]).
+-export([handle_status_update/2]).
 
 -export([init/1]).
 
@@ -96,6 +100,20 @@ get_node_cluster_key(Key) ->
 get_node_hostname(Key) ->
     rms_node:get_field_value(hostname, Key).
 
+-spec get_node_http_port(rms_node:key()) -> {ok, string()} | {error, term()}.
+get_node_http_port(Key) ->
+    rms_node:get_field_value(http_port, Key).
+
+-spec get_node_name(rms_node:key()) -> {ok, string()} | {error, term()}.
+get_node_name(Key) ->
+    rms_node:get_field_value(node_name, Key).
+
+get_node_http_url(Key) ->
+  Host = get_node_hostname(Key),
+  Port = integer_to_list(get_node_http_port(Key)),
+  Host ++ ":" ++ Port.
+
+
 -spec get_node_agent_id_value(rms_node:key()) ->
     {ok, string()} | {error, term()}.
 get_node_agent_id_value(Key) ->
@@ -132,6 +150,15 @@ node_has_reservation(NodeKey) ->
         {error, _Reason} ->
             false
     end.
+
+-spec node_can_be_shutdown(rms_node:key()) -> boolean().
+node_can_be_shutdown(NodeKey) ->
+  case rms_node:can_be_shutdown(NodeKey) of
+    {ok, CanBeShutDown} ->
+      CanBeShutDown;
+    {error, _Reason} ->
+      false
+  end.
 
 -spec add_node(rms_node:key(), rms_cluster:key()) -> ok | {error, term()}.
 add_node(Key, ClusterKey) ->
@@ -343,20 +370,9 @@ apply_reserved_offer(NodeKey, OfferHelper,
             {error, Reason}
     end.
 
-update_node_state(NodeKey, TaskState) ->
-    %%TODO: Stub. **MC LOOK HERE**
-    %% State Transitions:
-    %%     TASK_STAGING
-    %%     TASK_STARTING
-    %%     TASK_RUNNING
-    %%     TASK_FINISHED
-    %%     TASK_KILLED
-    %%     TASK_FAILED
-    %%     TASK_LOST
-    %%     TASK_ERROR
-	{ok, N} = get_node_pid(NodeKey),
-    rms_node:state_change(N, TaskState),
-    ok.
+handle_status_update(NodeKey, TaskStatus) ->
+  {ok, N} = get_node_pid(NodeKey),
+  rms_node:handle_status_update(N, TaskStatus).
 
 %% supervisor callback function.
 

@@ -37,6 +37,10 @@
 
 -export([apply_offer/2]).
 
+-export([executors_to_shutdown/0]).
+
+-export([maybe_join/2, leave/2]).
+
 -export([handle_status_update/3]).
 
 -export([init/1]).
@@ -129,6 +133,24 @@ add_node(Key) ->
             {error, Reason}
     end.
 
+
+executors_to_shutdown() ->
+  NodeKeys = rms_node_manager:get_node_keys(),
+  executors_to_shutdown(NodeKeys, []).
+  
+executors_to_shutdown([], Accum) ->
+  Accum;
+executors_to_shutdown([NodeKey|Rest], Accum) ->
+  case rms_node_manager:node_can_be_shutdown(NodeKey) of
+    true ->
+      {ok, AgentIdValue} = rms_node_manager:get_node_agent_id_value(NodeKey),
+      AgentId = erl_mesos_utils:agent_id(AgentIdValue),
+      ExecutorId = erl_mesos_utils:executor_id(NodeKey),
+      executors_to_shutdown(Rest, [{ExecutorId, AgentId}|Accum]);
+    false ->
+      executors_to_shutdown(Rest, Accum)
+  end.
+
 -spec apply_offer(rms_offer_helper:offer_helper(),
                   rms_node_manager:node_data()) ->
     rms_offer_helper:offer_helper().
@@ -146,11 +168,26 @@ apply_offer(OfferHelper, NodeData) ->
             end
     end.
 
-handle_status_update(ClusterNodeName, NodeName, NodeState) ->
-    io:format("** ClusterNodeName: ~p~n", [ClusterNodeName]),
-	{ok, C} = get_cluster_pid(ClusterNodeName),
-	ok = gen_fsm:sync_send_all_state_event(C, {update_node_state, NodeName, NodeState}),
-    rms_node_manager:update_node_state(NodeName, NodeState).
+-spec maybe_join(rms_cluster:key(), rms_node:key()) -> ok | {error, term()}.
+maybe_join(Key, NodeKey) ->
+    case get_cluster_pid(Key) of
+        {ok, Pid} ->
+            rms_cluster:maybe_join(Pid, NodeKey);
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+-spec leave(rms_cluster:key(), rms_node:key()) -> ok | {error, term()}.
+leave(Key, NodeKey) ->
+    case get_cluster_pid(Key) of
+        {ok, Pid} ->
+            rms_cluster:leave(Pid, NodeKey);
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+handle_status_update(_Key, NodeKey, TaskStatus) ->
+    rms_node_manager:handle_status_update(NodeKey, TaskStatus).
 
 %% supervisor callback function.
 

@@ -24,15 +24,18 @@
 
 % API
 -export([start_link/2]).
--export([get/1,
+-export([state_for_task_status/1,
+         get/1,
          get_field_value/2,
          needs_to_be_reconciled/1,
          can_be_scheduled/1,
          has_reservation/1,
+         can_be_shutdown/1,
          set_reserve/4,
          set_unreserve/1,
          delete/1,
-         state_change/2]). %% **MC LOOK HERE
+         state_change/2,
+         handle_status_update/2]).
 
 % gen_fsm callbacks
 -export([init/1,
@@ -145,6 +148,7 @@ can_be_scheduled(Key) ->
             CanBeScheduled = case Status of
                                  requested -> true;
                                  reserved -> true;
+                                 failed -> true;
                                  _ -> false
                              end,
             lager:info("Node Status: ~p, CanBeScheduled: ~p", [Status, CanBeScheduled]),
@@ -152,6 +156,17 @@ can_be_scheduled(Key) ->
         {error, Reason} ->
             {error, Reason}
     end.
+
+-spec can_be_shutdown(key()) -> {ok, boolean()} | {error, term()}.
+can_be_shutdown(Key) -> 
+  case get_node(Key) of
+    {ok, {shutting_down, _}} -> 
+      {ok, true};
+    {ok, {_, _}} -> 
+      {ok, false};
+    {error, Reason} ->
+      {error, Reason}
+  end.
 
 -spec has_reservation(key()) -> {ok, boolean()} | {error, term()}.
 has_reservation(Key) ->
@@ -163,16 +178,30 @@ has_reservation(Key) ->
             {error, Reason}
     end.
 
+-spec handle_status_update(pid(), atom()) -> ok | {error, term()}.
+handle_status_update(Pid, TaskStatus) ->
+  case gen_fsm:sync_send_event(Pid, {status_update, TaskStatus}) of
+    ok ->
+      ok;
+    {error, unhandled_event} ->
+      %% We encountered an unexpected status update, 
+      %% change to a state that can respond to the TaskStatus
+      NewState = state_for_task_status(TaskStatus),
+      state_change(Pid, NewState),
+      handle_status_update(Pid, TaskStatus);
+    {error, Reason} ->
+      {error, Reason}
+  end.
+
 -spec set_reserve(pid(), string(), string(), string()) ->
     ok | {error, term()}.
 set_reserve(Pid, Hostname, AgentIdValue, PersistenceId) ->
     gen_fsm:sync_send_all_state_event(
-	  Pid, {set_reserve, Hostname, AgentIdValue, PersistenceId}).
+      Pid, {set_reserve, Hostname, AgentIdValue, PersistenceId}).
 
 -spec set_unreserve(pid()) -> ok | {error, term()}.
-set_unreserve(_Pid) ->
-    %% TODO: implement unreserve here via sync call to the node process.
-    ok.
+set_unreserve(Pid) ->
+    gen_fsm:sync_send_all_state_event(Pid, set_unreserve).
 
 -spec delete(pid()) -> ok | {error, term()}.
 delete(Pid) ->
@@ -189,8 +218,9 @@ state_change(Pid, State) ->
 	| {stop, reason()}.
 init({Key, ClusterKey}) ->
 	case get_node(Key) of
-		{ok, Node} ->
-			{ok, requested, Node};
+		{ok, {State, Node}} ->
+      lager:info("Found existing node ~p with state ~p.", [Node, State]),
+			{ok, State, Node};
 		{error, not_found} ->
 			Node = #node{key = Key,
 						 cluster_key = ClusterKey},
@@ -204,7 +234,7 @@ init({Key, ClusterKey}) ->
 
 % Async per-state event handling
 % Note that, as of now, there is none.
--type timeout() :: non_neg_integer() | infinity.
+-type state_timeout() :: non_neg_integer() | infinity.
 -type state() :: atom().
 -type from() :: {pid(), Tag :: term()}.
 -type event() :: term().
@@ -213,7 +243,7 @@ init({Key, ClusterKey}) ->
 -type state_cb_return() ::
 	{stop, reason(), New::node_state()}
 	| {next_state, Next::state(), New::node_state()}
-	| {next_state, Next::state(), New::node_state(), timeout()}.
+	| {next_state, Next::state(), New::node_state(), state_timeout()}.
 
 -spec undefined(event(), node_state()) -> state_cb_return().
 undefined(_Event, Node) ->
@@ -245,11 +275,15 @@ shutdown(_Event, Node) ->
 
 -spec failed(event(), node_state()) -> state_cb_return().
 failed(_Event, Node) ->
-	{stop, {unhandled_event, _Event}, Node}.
+  {stop, {unhandled_event, _Event}, Node}.
 
 -spec restarting(event(), node_state()) -> state_cb_return().
 restarting(_Event, Node) ->
 	{stop, {unhandled_event, _Event}, Node}.
+
+-spec handle_event(event(), StateName :: atom(), node_state()) -> state_cb_return().
+handle_event(_Event, StateName, State) ->
+	{next_state, StateName, State}.
 
 % Sync per-state event handling
 % Note that, as of now, there is none.
@@ -257,80 +291,96 @@ restarting(_Event, Node) ->
 	state_cb_return()
 	| {stop, reason(), reply(), New::node_state()}
 	| {reply, reply(), Next::state(), New::node_state()}
-	| {reply, reply(), Next::state(), New::node_state(), timeout()}.
+	| {reply, reply(), Next::state(), New::node_state(), state_timeout()}.
 
 -spec requested(event(), from(), node_state()) -> state_cb_reply().
 requested(_Event, _From, Node) ->
 	{reply, {error, unhandled_event}, requested, Node}.
 
--spec undefined(event(), from(), node_state()) -> state_cb_return().
+-spec undefined(event(), from(), node_state()) -> state_cb_reply().
+undefined({status_update, UndefinedStatusUpdate}, _From, Node) ->
+  %% If we end up here, it means mesos gave us a status update that
+  %% we don't know how to respond to, kill it.
+  {stop, {undefined_status_update, UndefinedStatusUpdate}, Node};
 undefined(_Event, _From, Node) ->
 	{reply, {error, unhandled_event}, undefined, Node}.
 
--spec reserved(event(), from(), node_state()) -> state_cb_return().
+-spec reserved(event(), from(), node_state()) -> state_cb_reply().
+reserved({status_update, 'TASK_STAGING'}, _From, Node) ->
+  sync_update_node(reserved, starting, Node);
 reserved(_Event, _From, Node) ->
 	{reply, {error, unhandled_event}, reserved, Node}.
 
--spec starting(event(), from(), node_state()) -> state_cb_return().
+-spec starting(event(), from(), node_state()) -> state_cb_reply().
+starting({status_update, 'TASK_STARTING'}, _From, Node) ->
+  sync_update_node(starting, starting, Node);
+starting({status_update, 'TASK_RUNNING'}, _From, 
+         #node{cluster_key = Cluster, key = Key} = Node) ->
+  case rms_cluster_manager:maybe_join(Cluster, Key) of
+    ok ->
+      sync_update_node(starting, started, Node);
+    {error, no_suitable_nodes} ->
+      sync_update_node(starting, started, Node);
+    {error, Reason} ->
+      %% Maybe we should try to kill the node and restart task here?
+      {reply, {error, Reason}, starting, Node}
+  end;
 starting(_Event, _From, Node) ->
 	{reply, {error, unhandled_event}, starting, Node}.
 
--spec started(event(), from(), node_state()) -> state_cb_return().
+-spec started(event(), from(), node_state()) -> state_cb_reply().
+started({status_update, 'TASK_KILLED'}, _From, Node) ->
+  leave(started, Node);
+started({status_update, 'TASK_FAILED'}, _From, Node) ->
+  leave(started, Node);
+started({status_update, 'TASK_LOST'}, _From, Node) ->
+  leave(started, Node);
+started({status_update, 'TASK_ERROR'}, _From, Node) ->
+  leave(started, Node);
 started(_Event, _From, Node) ->
 	{reply, {error, unhandled_event}, started, Node}.
 
--spec shutting_down(event(), from(), node_state()) -> state_cb_return().
+-spec shutting_down(event(), from(), node_state()) -> state_cb_reply().
+shutting_down({status_update, 'TASK_FINISHED'}, _From, Node) ->
+  leave(shutting_down, Node);
 shutting_down(_Event, _From, Node) ->
 	{reply, {error, unhandled_event}, shutting_down, Node}.
 
--spec shutdown(event(), from(), node_state()) -> state_cb_return().
+-spec shutdown(event(), from(), node_state()) -> state_cb_reply().
 shutdown(_Event, _From, Node) ->
 	{reply, {error, unhandled_event}, shutdown, Node}.
 
--spec failed(event(), from(), node_state()) -> state_cb_return().
+-spec failed(event(), from(), node_state()) -> state_cb_reply().
 failed(_Event, _From, Node) ->
 	{reply, {error, unhandled_event}, failed, Node}.
 
--spec restarting(event(), from(), node_state()) -> state_cb_return().
+%% TODO handle restart logic and status updates here
+-spec restarting(event(), from(), node_state()) -> state_cb_reply().
+restarting({status_update, 'TASK_FINISHED'}, _From, Node) ->
+  sync_update_node(restarting, reserved, Node);
 restarting(_Event, _From, Node) ->
 	{reply, {error, unhandled_event}, restarting, Node}.
 
--spec handle_event(event(), StateName :: atom(), node_state()) -> state_cb_return().
-handle_event(_Event, StateName, State) ->
-	{next_state, StateName, State}.
-
 -spec handle_sync_event(event(), from(), state(), node_state()) ->
 	state_cb_reply().
-handle_sync_event({update_node_state, 'TASK_RUNNING'},
-				  _From, Status, #node{key = Key} = Node) ->
-	NewStatus = started,
-	case update_node(Key, {NewStatus, Node}) of
-		ok -> {reply, ok, NewStatus, Node};
-		{error, Reason} ->
-			{reply, {error, Reason}, Status, Node}
-	end;
-handle_sync_event({update_node_state, _UnexpectedTaskState},
-				  _From, Status, #node{} = Node) ->
-	{reply, {error, unexpected_task_state}, Status, Node};
-	
+handle_sync_event({update_node_state, NewState},
+                  _From, State, Node) ->
+  sync_update_node(State, NewState, Node);
 handle_sync_event({set_reserve, Hostname, AgentIdValue, PersistenceId},
-				  _From, Status, #node{key = Key} = Node) ->
-	Node1 = Node#node{hostname = Hostname,
-					  agent_id_value = AgentIdValue,
-					  persistence_id = PersistenceId},
-	case update_node(Key, {reserved, Node1}) of
-		ok ->
-			{reply, ok, reserved, Node1};
-		{error, Reason} ->
-			{reply, {error, Reason}, Status, Node}
-	end;
-handle_sync_event(delete, _From, Status, #node{key = Key} = Node) ->
-	case update_node(Key, {shutting_down, Node}) of
-		ok ->
-			{reply, ok, shutting_down, Node};
-		{error, Reason} ->
-			{reply, {error, Reason}, Status, Node}
-	end;
+                  _From, State, Node) ->
+  lager:info("Setting reservation for node: ~p", [Node]),
+  Node1 = Node#node{hostname = Hostname,
+                    agent_id_value = AgentIdValue,
+                    persistence_id = PersistenceId},
+  sync_update_node(State, reserved, Node, Node1);
+handle_sync_event(set_unreserve, _From, State, Node) ->
+  lager:info("Removing reservation for node: ~p", [Node]),
+  Node1 = Node#node{hostname = "",
+                    agent_id_value = "",
+                    persistence_id = ""},
+  sync_update_node(State, requested, Node, Node1);
+handle_sync_event(delete, _From, State, Node) ->
+  sync_update_node(State, shutting_down, Node);
 handle_sync_event(_Event, _From, StateName, State) ->
 	{reply, {error, {unhandled_sync_event, _Event}}, StateName, State}.
 
@@ -394,9 +444,41 @@ get_node(Key) ->
 add_node({State, Node}) ->
     rms_metadata:add_node(to_list({State, Node})).
 
--spec update_node(key(), {state(), node_state()}) -> ok | {error, term()}.
-update_node(Key, {State, Node}) ->
-    rms_metadata:update_node(Key, to_list({State, Node})).
+-spec sync_update_node(state(), state(), node_state()) -> state_cb_reply().
+sync_update_node(State, NewState, Node) ->
+  sync_update_node(State, NewState, Node, Node).
+
+-spec sync_update_node(state(), state(), node_state(), node_state()) -> state_cb_reply().
+sync_update_node(State, NewState, #node{key = Key} = Node, Node1) ->
+  case rms_metadata:update_node(Key, to_list({NewState, Node1})) of
+    ok ->
+      {reply, ok, NewState, Node1};
+    {error, Reason} ->
+      lager:error("Error updating state for node: ~p, new state: ~p, reason: ~p.", [Node, NewState, Reason]),
+      {reply, {error, Reason}, State, Node}
+  end.
+
+-spec state_for_task_status(term()) -> state() | {state(), state()}.
+state_for_task_status(TaskStatus) ->
+  case TaskStatus of
+    'TASK_STAGING' -> starting;
+    'TASK_STARTING' -> starting;
+    'TASK_RUNNING' -> starting;
+    'TASK_FINISHED' -> shutting_down;
+    'TASK_KILLED' -> started;
+    'TASK_FAILED' -> started;
+    'TASK_LOST' -> started;
+    'TASK_ERROR' -> started;
+    _ -> undefined
+  end.
+
+leave(State, #node{cluster_key = Cluster, key = Key} = Node) ->
+  case rms_cluster_manager:leave(Cluster, Key) of
+    ok ->
+      sync_update_node(State, shutdown, Node);
+    {error, Reason} ->
+      {reply, {error, Reason}, State, Node}
+  end.
 
 -spec from_list(rms_metadata:node_state()) -> {state(), node_state()}.
 from_list(NodeList) ->

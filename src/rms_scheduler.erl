@@ -103,6 +103,11 @@ disconnected(_SchedulerInfo, State) ->
 
 resource_offers(SchedulerInfo, #'Event.Offers'{offers = Offers},
                 #state{node_data = NodeData} = State) ->
+
+    %% There is probably a better place to check for this...
+    ExecsToShutdown = rms_cluster_manager:executors_to_shutdown(),
+    shutdown_executors(ExecsToShutdown, State),
+
     {OfferIds, Operations} = apply_offers(Offers, NodeData),
     case length(Operations) of
         0 -> ok;
@@ -120,9 +125,14 @@ offer_rescinded(_SchedulerInfo, #'Event.Rescind'{} = EventRescind, State) ->
 status_update(_SchedulerInfo, #'Event.Update'{status=#'TaskStatus'{task_id=TaskID, state=NodeState}} = EventUpdate, State)->
     lager:info("Scheduler received status update event. "
                "Update: ~p~n", [EventUpdate]),
-	{ok, NodeName} = nodename_from_task_id(TaskID),
-	{ok, ClusterName} = rms_node_manager:get_node_cluster_key(NodeName),
-    ok = rms_cluster_manager:handle_status_update(ClusterName, NodeName, NodeState),
+    {ok, NodeName} = nodename_from_task_id(TaskID),
+    {ok, ClusterName} = rms_node_manager:get_node_cluster_key(NodeName),
+    case rms_cluster_manager:handle_status_update(ClusterName, NodeName, NodeState) of
+      ok -> 
+        ok;
+      {error, Reason} ->
+        lager:warning("Error while attempting to process status update: ~p.", [Reason])
+    end,
     {ok, State}.
 
 %% TODO Move this function elsewhere in the module
@@ -148,6 +158,11 @@ executor_lost(_SchedulerInfo, EventFailure, State) ->
 
 error(_SchedulerInfo, EventError, State) ->
     lager:info("Scheduler received error event. Error: ~p.", [EventError]),
+    case EventError of
+      {'Event.Error',"Framework has been removed"} -> 
+        %% TODO: Unset the frameworkID in this case, failover wasn't set high enough.
+        ok
+    end,
     {stop, State}.
 
 handle_info(_SchedulerInfo, Info, State) ->
@@ -321,3 +336,8 @@ reconcile_tasks(TaskIdValues) ->
          #'Call.Reconcile.Task'{task_id = TaskId}
      end || TaskIdValue <- TaskIdValues].
 
+shutdown_executors([], _) ->
+  ok;
+shutdown_executors([{ExecutorId, AgentId}|Rest], State) ->
+  call(shutdown, [ExecutorId, AgentId], State),
+  shutdown_executors(Rest, State).

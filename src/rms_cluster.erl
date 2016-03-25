@@ -28,6 +28,8 @@
          get_field_value/2,
          set_riak_config/2,
          set_advanced_config/2,
+         maybe_join/2,
+         leave/2,
          delete/1]).
 -export([add_node/1]).
 
@@ -96,6 +98,14 @@ set_riak_config(Pid, RiakConfig) ->
 set_advanced_config(Pid, AdvancedConfig) ->
     gen_fsm:sync_send_all_state_event(Pid, {set_advanced_config, AdvancedConfig}).
 
+-spec maybe_join(pid(), rms_node:key()) -> ok | {error, term()}.
+maybe_join(Pid, NodeKey) ->
+    gen_fsm:sync_send_all_state_event(Pid, {maybe_join, NodeKey}).
+
+-spec leave(pid(), rms_node:key()) -> ok | {error, term()}.
+leave(Pid, NodeKey) ->
+    gen_fsm:sync_send_all_state_event(Pid, {leave, NodeKey}).
+
 -spec delete(pid()) -> ok | {error, term()}.
 delete(Pid) ->
     gen_fsm:sync_send_all_state_event(Pid, delete).
@@ -105,7 +115,7 @@ add_node(Pid) ->
     gen_fsm:sync_send_all_state_event(Pid, add_node).
 
 %%% gen_fsm callbacks
--type timeout() :: non_neg_integer() | infinity.
+-type state_timeout() :: non_neg_integer() | infinity.
 -type state() :: atom().
 -type from() :: {pid(), Tag :: term()}.
 -type event() :: term().
@@ -114,12 +124,12 @@ add_node(Pid) ->
 -type state_cb_return() ::
 	{stop, reason(), New::cluster_state()}
 	| {next_state, Next::state(), New::cluster_state()}
-	| {next_state, Next::state(), New::cluster_state(), timeout()}.
+	| {next_state, Next::state(), New::cluster_state(), state_timeout()}.
 -type state_cb_reply() ::
 	state_cb_return()
 	| {stop, reason(), reply(), New::cluster_state()}
 	| {reply, reply(), Next::state(), New::cluster_state()}
-	| {reply, reply(), Next::state(), New::cluster_state(), timeout()}.
+	| {reply, reply(), Next::state(), New::cluster_state(), state_timeout()}.
 
 -spec init(key()) ->
 	{ok, state(), cluster_state()}
@@ -198,21 +208,37 @@ handle_sync_event(add_node, _From, StateName, Cluster) ->
 			 generation = Generation} = Cluster,
     FrameworkName = rms_config:framework_name(),
     NodeKey = FrameworkName ++ "-" ++ Key ++ "-" ++ integer_to_list(Generation),
-	case rms_node_manager:add_node(NodeKey, Key) of
-		ok ->
-			Cluster1 = Cluster#cluster{node_keys = [NodeKey | NodeKeys],
-									   generation = (Generation + 1)},
-			case update_cluster(Cluster#cluster.key, {StateName, Cluster1}) of
-				ok ->
-					{reply, ok, StateName, Cluster1};
-				{error,_}=Err ->
-					{reply, Err, StateName, Cluster}
-			end;
-		{error,_}=Err ->
-			{reply, Err, StateName, Cluster}
-	end;
+    case rms_node_manager:add_node(NodeKey, Key) of
+        ok ->
+            Cluster1 = Cluster#cluster{node_keys = [NodeKey | NodeKeys],
+                                       generation = (Generation + 1)},
+            case update_cluster(Cluster#cluster.key, {StateName, Cluster1}) of
+                ok ->
+                    {reply, ok, StateName, Cluster1};
+                {error,_}=Err ->
+                    {reply, Err, StateName, Cluster}
+            end;
+        {error,_}=Err ->
+            {reply, Err, StateName, Cluster}
+    end;
+handle_sync_event({maybe_join, NodeKey}, _From, StateName,
+                  #cluster{node_keys = NodeKeys} = Cluster) ->
+    case maybe_do_join(NodeKey, NodeKeys) of
+        ok ->
+            {reply, ok, StateName, Cluster};
+        {error, Reason} ->
+            {reply, {error, Reason}, StateName, Cluster}
+        end;
+handle_sync_event({leave, NodeKey}, _From, StateName,
+                  #cluster{node_keys = NodeKeys} = Cluster) ->
+    case do_leave(NodeKey, NodeKeys) of
+        ok ->
+            {reply, ok, StateName, Cluster};
+        {error, Reason} ->
+            {reply, {error, Reason}, StateName, Cluster}
+        end;
 handle_sync_event(_Event, _From, StateName, State) ->
-	{reply, {error, {unhandled_event, _Event}}, StateName, State}.
+    {reply, {error, {unhandled_event, _Event}}, StateName, State}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -273,6 +299,48 @@ add_cluster({State, Cluster}) ->
 -spec update_cluster(key(), cluster_state()) -> ok | {error, term()}.
 update_cluster(Key, {State, Cluster}) ->
     rms_metadata:update_cluster(Key, to_list({State, Cluster})).
+
+-spec maybe_do_join(rms_node:key(), [rms_node:key()]) -> 
+                           ok | {error, term()}.
+maybe_do_join(_, []) ->
+    {error, no_suitable_nodes};
+maybe_do_join(NodeKey, [NodeKey|Rest]) ->
+    maybe_do_join(NodeKey, Rest);
+maybe_do_join(NodeKey, [ExistingNodeKey|Rest]) ->
+  URL = rms_node_manager:get_node_http_url(ExistingNodeKey),
+  NodeName = rms_node_manager:get_node_name(NodeKey),
+  ExistingNodeName = rms_node_manager:get_node_name(ExistingNodeKey),
+  case riak_explorer_client:join(
+         list_to_binary(URL),
+         list_to_binary(NodeName), 
+         list_to_binary(ExistingNodeName)) of
+        {ok, _} ->
+      ok;
+    {error, Reason} ->
+      lager:warning("Failed node join attempt from node ~s to node ~s. Reason: ~p", [NodeName, ExistingNodeName, Reason]),
+      maybe_do_join(NodeKey, Rest)
+  end.
+
+-spec do_leave(rms_node:key(), [rms_node:key()]) -> 
+                           ok | {error, term()}.
+do_leave(_, []) ->
+    {error, no_suitable_nodes};
+do_leave(NodeKey, [NodeKey|Rest]) ->
+    do_leave(NodeKey, Rest);
+do_leave(NodeKey, [ExistingNodeKey|Rest]) ->
+  URL = rms_node_manager:get_node_http_url(ExistingNodeKey),
+  NodeName = rms_node_manager:get_node_name(NodeKey),
+  ExistingNodeName = rms_node_manager:get_node_name(ExistingNodeKey),
+  case riak_explorer_client:leave(
+         list_to_binary(URL),
+         list_to_binary(ExistingNodeName), 
+         list_to_binary(NodeName)) of
+    {ok, _} ->
+      ok;
+    {error, Reason} ->
+      lager:warning("Failed node join attempt from node ~s to node ~s. Reason: ~p", [NodeName, ExistingNodeName, Reason]),
+      do_leave(NodeKey, Rest)
+  end.
 
 -spec from_list(rms_metadata:cluster_state()) -> cluster_state().
 from_list(ClusterList) ->
