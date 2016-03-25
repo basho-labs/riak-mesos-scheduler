@@ -287,6 +287,13 @@ handle_event(_Event, StateName, State) ->
       | {reply, reply(), Next::state(), New::node_state(), state_timeout()}.
 
 -spec requested(event(), from(), node_state()) -> state_cb_reply().
+requested({status_update, StatusUpdate}, _From, Node) ->
+    case StatusUpdate of
+        'TASK_FAILED' -> {reply, ok, requested, Node};
+        'TASK_LOST' -> {reply, ok, requested, Node};
+        'TASK_ERROR' -> {reply, ok, requested, Node};
+        _ -> {reply, {error, unhandled_event}, requested, Node}
+    end;
 requested(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, requested, Node}.
 
@@ -301,7 +308,7 @@ undefined(_Event, _From, Node) ->
 -spec reserved(event(), from(), node_state()) -> state_cb_reply().
 reserved({status_update, StatusUpdate}, _From, Node) ->
     case StatusUpdate of
-        'TASK_FAILED' -> unreserve(reserved, requested, Node);
+        'TASK_FAILED' -> {reply, ok, reserved, Node};
         'TASK_LOST' -> unreserve(reserved, requested, Node);
         'TASK_ERROR' -> unreserve(reserved, requested, Node);
         'TASK_STAGING' -> sync_update_node(reserved, starting, Node);
