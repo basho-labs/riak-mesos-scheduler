@@ -43,7 +43,6 @@
                     removed_cluster_keys = [] :: [rms_cluster:key()]}).
 
 -record(state, {scheduler :: scheduler_state(),
-                node_data :: rms_node_manager:node_data(),
                 calls_queue :: erl_mesos_calls_queue:calls_queue()}).
 
 -type scheduler_state() :: #scheduler{}.
@@ -113,9 +112,8 @@ disconnected(_SchedulerInfo, State) ->
     lager:warning("Scheduler disconnected.", []),
     {ok, State}.
 
-resource_offers(SchedulerInfo, #'Event.Offers'{offers = Offers},
-                #state{node_data = NodeData} = State) ->
-    {OfferIds, Operations} = apply_offers(Offers, NodeData),
+resource_offers(SchedulerInfo, #'Event.Offers'{offers = Offers}, State) ->
+    {OfferIds, Operations} = apply_offers(Offers),
     case length(Operations) of
         0 ->
             ok;
@@ -175,10 +173,8 @@ init_scheduler(#scheduler{options = Options} = Scheduler) ->
             FrameworkInfo = framework_info(Options),
             lager:info("Start scheduler. Framework info: ~p.",
                        [framework_info_to_list(FrameworkInfo)]),
-            NodeData = rms_node_manager:node_data(Options),
             CallsQueue = erl_mesos_calls_queue:new(),
             {ok, FrameworkInfo, true, #state{scheduler = Scheduler,
-                                             node_data = NodeData,
                                              calls_queue = CallsQueue}};
         {error, Reason} ->
             lager:error("Error during saving scheduler state. Reason: ~p.",
@@ -306,31 +302,31 @@ exec_calls(#state{calls_queue = CallsQueue} = State) ->
             {ok, State1}
     end.
 
--spec apply_offers([erl_mesos:'Offer'()], rms_node_manager:node_data()) ->
+-spec apply_offers([erl_mesos:'Offer'()]) ->
     {[erl_mesos:'OfferID'()], [erl_mesos:'Offer.Operation'()]}.
-apply_offers(Offers, NodeData) ->
-    apply_offers(Offers, NodeData, [], []).
+apply_offers(Offers) ->
+    apply_offers(Offers, [], []).
 
--spec apply_offers([erl_mesos:'Offer'()], rms_node_manager:node_data(),
+-spec apply_offers([erl_mesos:'Offer'()],
                    [erl_mesos:'OfferID'()], [erl_mesos:'Offer.Operation'()]) ->
     {[erl_mesos:'OfferID'()], [erl_mesos:'Offer.Operation'()]}.
-apply_offers([Offer | Offers], NodeData, OfferIds, Operations) ->
-    {OfferId, Operations1} = apply_offer(Offer, NodeData),
-    apply_offers(Offers, NodeData, [OfferId | OfferIds],
+apply_offers([Offer | Offers], OfferIds, Operations) ->
+    {OfferId, Operations1} = apply_offer(Offer),
+    apply_offers(Offers, [OfferId | OfferIds],
                  Operations ++ Operations1);
-apply_offers([], _NodeData, OfferIds, Operations) ->
+apply_offers([], OfferIds, Operations) ->
     {OfferIds, Operations}.
 
--spec apply_offer(erl_mesos:'Offer'(), rms_node_manager:node_data()) ->
+-spec apply_offer(erl_mesos:'Offer'()) ->
     {erl_mesos:'OfferID'(), [erl_mesos:'Offer.Operation'()]}.
-apply_offer(Offer, NodeData) ->
+apply_offer(Offer) ->
     OfferHelper = rms_offer_helper:new(Offer),
     lager:info("Scheduler recevied offer. "
                "Offer id: ~s. "
                "Resources: ~p.",
                [rms_offer_helper:get_offer_id_value(OfferHelper),
                 rms_offer_helper:resources_to_list(OfferHelper)]),
-    OfferHelper1 = rms_cluster_manager:apply_offer(OfferHelper, NodeData),
+    OfferHelper1 = rms_cluster_manager:apply_offer(OfferHelper),
     OfferId = rms_offer_helper:get_offer_id(OfferHelper1),
     Operations = rms_offer_helper:operations(OfferHelper1),
     {OfferId, Operations}.
@@ -341,4 +337,3 @@ reconcile_tasks(TaskIdValues) ->
          TaskId = erl_mesos_utils:task_id(TaskIdValue),
          #'Call.Reconcile.Task'{task_id = TaskId}
      end || TaskIdValue <- TaskIdValues].
-
