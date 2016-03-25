@@ -24,7 +24,7 @@
 
 -export([start_link/0]).
 
--export([get_scheduler/0, set_scheduler/1]).
+-export([get_scheduler/0, set_scheduler/1, get_option/1]).
 
 -export([get_clusters/0,
          get_cluster/1,
@@ -61,6 +61,8 @@
 
 -type state() :: #state{}.
 
+-define(SCHEDULER_TAB, rms_metadata_scheduler).
+
 -define(CLUSTER_TAB, rms_metadata_clusters).
 
 -define(NODE_TAB, rms_metadata_nodes).
@@ -77,13 +79,33 @@
 start_link() ->
     gen_server:start_link({local,?MODULE}, ?MODULE, {}, []).
 
--spec get_scheduler() -> {ok, scheduler_state()} | {error, term()}.
+-spec get_scheduler() -> {ok, scheduler_state()} | {error, not_found}.
 get_scheduler() ->
-    gen_server:call(?MODULE, get_scheduler).
+    case ets:tab2list(?SCHEDULER_TAB) of
+        [] ->
+            {error, not_found};
+        Scheduler ->
+            {ok, Scheduler}
+    end.
 
 -spec set_scheduler(scheduler_state()) -> ok | {error, term()}.
 set_scheduler(Scheduler) ->
     gen_server:call(?MODULE, {set_scheduler, Scheduler}).
+
+-spec get_option(atom()) -> {ok, term()} | {error, not_found}.
+get_option(Key) ->
+    case get_scheduler() of
+        {ok, Scheduler} ->
+            Options = proplists:get_value(options, Scheduler, []),
+            case proplists:get_value(Key, Options, not_found) of
+                not_found ->
+                    {error, not_found};
+                Value ->
+                    {ok, Value}
+            end;
+        {error, not_found} ->
+            {error, not_found}
+    end.
 
 -spec get_clusters() -> [{rms_cluster:key(), cluster_state()}].
 get_clusters() ->
@@ -144,18 +166,18 @@ reset() ->
 
 -spec init({}) -> {ok, state()}.
 init({}) ->
+    ets:new(?SCHEDULER_TAB, [set, protected, named_table]),
     ets:new(?CLUSTER_TAB, [set, protected, named_table]),
     ets:new(?NODE_TAB, [set, protected, named_table]),
     {ok, RootNode, _Data} = mesos_metadata_manager:get_root_node(),
     State = #state{root_node = RootNode},
     init_clusters(State),
     init_nodes(State),
+    restore_scheduler(State),
     restore_clusters(State),
     restore_nodes(State),
     {ok, State}.
 
-handle_call(get_scheduler, _From, State) ->
-    {reply, get_scheduler(State), State};
 handle_call({set_scheduler, Scheduler}, _From, State) ->
     {reply, set_scheduler(Scheduler, State), State};
 handle_call({add_cluster, Cluster}, _From, State) ->
@@ -179,6 +201,7 @@ handle_call(reset, _From, #state{root_node = RootNode} = State) ->
     ok = mesos_metadata_manager:recursive_delete(SchedulerBasePath),
     ok = mesos_metadata_manager:recursive_delete(ClusterBasePath),
     ok = mesos_metadata_manager:recursive_delete(NodeBasePath),
+    true = ets:delete_all_objects(?SCHEDULER_TAB),
     true = ets:delete_all_objects(?CLUSTER_TAB),
     true = ets:delete_all_objects(?NODE_TAB),
     {reply, ok, State};
@@ -200,25 +223,13 @@ code_change(_OldVersion, State, _Extra) ->
 
 %% Internal functions.
 
--spec get_scheduler(state()) -> {ok, scheduler_state()} | {error, term()}.
-get_scheduler(#state{root_node = RootNode}) ->
-    Path = [RootNode, "/", ?ZK_SCHEDULER_NODE],
-    case mesos_metadata_manager:get_node(Path) of
-        {ok, _Path, BinaryData} ->
-            Data = binary_to_term(BinaryData),
-            {ok, Data};
-        {error, no_node} ->
-            {error, not_found};
-        {error, Reason} ->
-            {error, Reason}
-    end.
-
 -spec set_scheduler(scheduler_state(), state()) -> ok | {error, term()}.
 set_scheduler(Scheduler, #state{root_node = RootNode}) ->
     BinaryData = term_to_binary(Scheduler),
     case mesos_metadata_manager:create_or_set(RootNode, ?ZK_SCHEDULER_NODE,
                                               BinaryData) of
         {ok, _Path, _Data} ->
+            ets:insert(?SCHEDULER_TAB, Scheduler),
             ok;
         {error, Reason} ->
             {error, Reason}
@@ -233,6 +244,18 @@ init_clusters(#state{root_node = RootNode}) ->
 init_nodes(#state{root_node = RootNode}) ->
     mesos_metadata_manager:make_child(RootNode, ?ZK_NODE_NODE),
     ok.
+
+-spec restore_scheduler(state()) -> ok.
+restore_scheduler(#state{root_node = RootNode}) ->
+    Path = [RootNode, "/", ?ZK_SCHEDULER_NODE],
+    case mesos_metadata_manager:get_node(Path) of
+        {error, no_node} ->
+            ok;
+        {ok, _Path, BinaryData} ->
+            Scheduler = binary_to_term(BinaryData),
+            ets:insert(?SCHEDULER_TAB, Scheduler),
+            ok
+    end.
 
 -spec restore_clusters(state()) -> ok.
 restore_clusters(#state{root_node = RootNode} = State) ->
