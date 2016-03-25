@@ -229,7 +229,6 @@ apply_reserved_offer(NodeKey, OfferHelper) ->
             {ok, Id} = rms_metadata:get_option(framework_id),
             {ok, Name} = rms_metadata:get_option(framework_name),
             {ok, Role} = rms_metadata:get_option(framework_role),
-            {ok, Hostname} = rms_metadata:get_option(framework_hostname),
             {ok, Principal} = rms_metadata:get_option(framework_principal),
             {ok, WebuiUrl} = rms_metadata:get_option(framework_webui_url),
             {ok, NodeCpus} = rms_metadata:get_option(node_cpus),
@@ -250,7 +249,7 @@ apply_reserved_offer(NodeKey, OfferHelper) ->
                 true ->
                     {ok, ClusterKey} = get_node_cluster_key(NodeKey),
                     {ok, PersistenceId} = get_node_persistence_id(NodeKey),
-                    {ok, Hostname} = get_node_hostname(NodeKey),
+                    {ok, NodeHostname} = get_node_hostname(NodeKey),
                     {ok, AgentIdValue} = get_node_agent_id_value(NodeKey),
 
                     %% Apply reserved resources for task.
@@ -305,9 +304,9 @@ apply_reserved_offer(NodeKey, OfferHelper) ->
 
                     [HTTPPort, PBPort, DisterlPort | _Ports] = TaskDataPorts,
 
-                    NodeName = iolist_to_binary([NodeKey, "@", Hostname]),
+                    NodeName = iolist_to_binary([NodeKey, "@", NodeHostname]),
                     TaskData = [{<<"FullyQualifiedNodeName">>, NodeName},
-                                {<<"Host">>,                   list_to_binary(Hostname)},
+                                {<<"Host">>,                   list_to_binary(NodeHostname)},
                                 %% TODO: read list of zookeepers with rms_metadata:get_option/1
                                 {<<"Zookeepers">>,             [list_to_binary(rms_config:zk())]},
                                 {<<"FrameworkName">>,          list_to_binary(Name)},
