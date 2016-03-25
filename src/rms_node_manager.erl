@@ -37,27 +37,11 @@
          add_node/2,
          delete_node/1]).
 
--export([node_data/1]).
-
--export([apply_unreserved_offer/3, apply_reserved_offer/3]).
+-export([apply_unreserved_offer/2, apply_reserved_offer/2]).
 
 -export([update_node_state/2]).
 
 -export([init/1]).
-
--record(node_data, {cpus :: float(),
-                    mem :: float(),
-                    disk :: float(),
-                    num_ports :: pos_integer(),
-                    name :: string(),
-                    role :: string(),
-                    principal :: string(),
-                    container_path :: string(),
-                    artifact_urls :: [string()],
-                    webui_url :: string()}).
-
--type node_data() :: #node_data{}.
--export_type([node_data/0]).
 
 -define(NODE_NUM_PORTS, 10).
 
@@ -159,33 +143,19 @@ delete_node(Key) ->
             {error, Reason}
     end.
 
--spec node_data(rms:options()) -> node_data().
-node_data(Options) ->
-    #node_data{cpus = proplists:get_value(node_cpus, Options),
-               mem = proplists:get_value(node_mem, Options),
-               disk = proplists:get_value(node_disk, Options),
-               num_ports = ?NODE_NUM_PORTS,
-               name = proplists:get_value(framework_name, Options),
-               role = proplists:get_value(framework_role, Options),
-               principal = proplists:get_value(framework_principal, Options),
-               container_path = ?NODE_CONTAINER_PATH,
-               artifact_urls = proplists:get_value(artifact_urls, Options),
-               webui_url = proplists:get_value(framework_webui_url, Options)}.
-
--spec apply_unreserved_offer(rms_node:key(), rms_offer_helper:offer_helper(),
-                             node_data()) ->
+-spec apply_unreserved_offer(rms_node:key(), rms_offer_helper:offer_helper()) ->
     {ok, rms_offer_helper:offer_helper()} |
     {error, not_enough_resources | term()}.
-apply_unreserved_offer(NodeKey, OfferHelper,
-                       #node_data{cpus = NodeCpus,
-                                  mem = NodeMem,
-                                  disk = NodeDisk,
-                                  num_ports = NodeNumPorts,
-                                  role = Role,
-                                  principal = Principal,
-                                  container_path = ContainerPath}) ->
+apply_unreserved_offer(NodeKey, OfferHelper) ->
     case get_node_pid(NodeKey) of
         {ok, Pid} ->
+            {ok, Role} = rms_metadata:get_option(framework_role),
+            {ok, Principal} = rms_metadata:get_option(framework_principal),
+            {ok, NodeCpus} = rms_metadata:get_option(node_cpus),
+            {ok, NodeMem} = rms_metadata:get_option(node_mem),
+            {ok, NodeDisk} = rms_metadata:get_option(node_disk),
+            NodeNumPorts = ?NODE_NUM_PORTS,
+            ContainerPath = ?NODE_CONTAINER_PATH,
             Hostname = rms_offer_helper:get_hostname(OfferHelper),
             AgentIdValue = rms_offer_helper:get_agent_id_value(OfferHelper),
             PersistenceId = node_persistence_id(),
@@ -223,23 +193,24 @@ apply_unreserved_offer(NodeKey, OfferHelper,
             {error, Reason}
     end.
 
--spec apply_reserved_offer(rms_node:key(), rms_offer_helper:offer_helper(),
-                           node_data()) ->
+-spec apply_reserved_offer(rms_node:key(), rms_offer_helper:offer_helper()) ->
     {ok, rms_offer_helper:offer_helper()} |
     {error, not_enough_resources | term()}.
-apply_reserved_offer(NodeKey, OfferHelper,
-                     #node_data{cpus = NodeCpus,
-                                mem = NodeMem,
-                                disk = NodeDisk,
-                                num_ports = NodeNumPorts,
-                                name = Name,
-                                role = Role,
-                                principal = Principal,
-                                container_path = ContainerPath,
-                                artifact_urls = ArtifactUrls,
-                                webui_url = WebuiUrl}) ->
+apply_reserved_offer(NodeKey, OfferHelper) ->
     case get_node_pid(NodeKey) of
         {ok, _Pid} ->
+            {ok, Id} = rms_metadata:get_option(framework_id),
+            {ok, Name} = rms_metadata:get_option(framework_name),
+            {ok, Role} = rms_metadata:get_option(framework_role),
+            {ok, Hostname} = rms_metadata:get_option(framework_hostname),
+            {ok, Principal} = rms_metadata:get_option(framework_principal),
+            {ok, WebuiUrl} = rms_metadata:get_option(framework_webui_url),
+            {ok, NodeCpus} = rms_metadata:get_option(node_cpus),
+            {ok, NodeMem} = rms_metadata:get_option(node_mem),
+            {ok, NodeDisk} = rms_metadata:get_option(node_disk),
+            {ok, ArtifactUrls} = rms_metadata:get_option(artifact_urls),
+            NodeNumPorts = ?NODE_NUM_PORTS,
+            ContainerPath = ?NODE_CONTAINER_PATH,
             CanFitReserved =
                 rms_offer_helper:can_fit_reserved(NodeCpus, NodeMem, NodeDisk,
                                                   0, OfferHelper),
@@ -310,6 +281,7 @@ apply_reserved_offer(NodeKey, OfferHelper,
                     NodeName = iolist_to_binary([NodeKey, "@", Hostname]),
                     TaskData = [{<<"FullyQualifiedNodeName">>, NodeName},
                                 {<<"Host">>,                   list_to_binary(Hostname)},
+                                %% TODO: read list of zookeepers with rms_metadata:get_option/1
                                 {<<"Zookeepers">>,             [list_to_binary(rms_config:zk())]},
                                 {<<"FrameworkName">>,          list_to_binary(Name)},
                                 {<<"URI">>,                    list_to_binary(WebuiUrl)},
@@ -325,7 +297,7 @@ apply_reserved_offer(NodeKey, OfferHelper,
                     Source = Name,
                     ExecutorInfo =
                         erl_mesos_utils:executor_info(ExecutorId, CommandInfo,
-                                                      ExecutorInfoResources, undefined, %% FrameworkID
+                                                      ExecutorInfoResources, Id,
                                                       Source),
 
                     TaskName = Name ++ "-" ++ ClusterKey,

@@ -38,10 +38,9 @@
          handle_info/3,
          terminate/3]).
 
--record(scheduler, {framework_id :: undefined | erl_mesos:'FrameworkID'()}).
+-record(scheduler, {options :: rms:options()}).
 
 -record(state, {scheduler :: scheduler_state(),
-                node_data :: rms_node_manager:node_data(),
                 calls_queue :: erl_mesos_calls_queue:calls_queue()}).
 
 -type scheduler_state() :: #scheduler{}.
@@ -58,40 +57,50 @@
 init(Options) ->
     lager:info("Scheduler options: ~p.", [Options]),
     case get_scheduler() of
-        {ok, #scheduler{framework_id = FrameworkId} = Scheduler} ->
-            Options1 = [{framework_id, FrameworkId} | Options],
-            init(Options1, Scheduler);
+        {ok, #scheduler{options = Options1} = Scheduler} ->
+            FrameworkId = proplists:get_value(framework_id, Options1,
+                                              undefined),
+            Options2 = [{framework_id, FrameworkId} | Options],
+            Scheduler1 = Scheduler#scheduler{options = Options2},
+            init_scheduler(Scheduler1);
         {error, not_found} ->
-            init(Options, #scheduler{});
-        {error, Reason} ->
-            lager:error("Error during retrving sheduler state. Reason: ~p.",
-                        [Reason]),
-            {stop, {error, Reason}}
+            Scheduler = #scheduler{options = Options},
+            init_scheduler(Scheduler)
     end.
 
-registered(_SchedulerInfo, #'Event.Subscribed'{framework_id = FrameworkId},
-           #state{scheduler = #scheduler{framework_id = undefined} =
-                  Scheduler} = State) ->
-    Scheduler1 = Scheduler#scheduler{framework_id = FrameworkId},
-    case set_scheduler(Scheduler1) of
-        ok ->
-            lager:info("New scheduler registered. Framework id: ~p.",
-                       [framework_id_value(FrameworkId)]),
-            {ok, State#state{scheduler = Scheduler1}};
-        {error, Reason} ->
-            lager:error("Error during saving sheduler state. Reason: ~p.",
-                        [Reason]),
-            {ok, State}
-    end;
-registered(SchedulerInfo, _EventSubscribed,
-           #state{scheduler = #scheduler{framework_id = FrameworkId}} =
+registered(SchedulerInfo, #'Event.Subscribed'{framework_id = FrameworkId},
+           #state{scheduler = #scheduler{options = Options} = Scheduler} =
            State) ->
-    lager:info("Scheduler registered. Framework id: ~p.",
-               [framework_id_value(FrameworkId)]),
-    TaskIdValues = rms_node_manager:get_node_keys(),
-    lager:info("Scheduler task ids to reconcile: ~p.", [TaskIdValues]),
-    ReconcileTasks = reconcile_tasks(TaskIdValues),
-    call(reconcile, [SchedulerInfo, ReconcileTasks], State).
+    case proplists:get_value(framework_id, Options, undefined) of
+        undefined ->
+            Options1 = [{framework_id, FrameworkId} |
+                        proplists:delete(framework_id, Options)],
+            Scheduler1 = Scheduler#scheduler{options = Options1},
+            State1 = State#state{scheduler = Scheduler1},
+            case set_scheduler(Scheduler1) of
+                ok ->
+                    lager:info("New scheduler registered. Framework id: ~p.",
+                               [framework_id_value(FrameworkId)]),
+                    {ok, State1};
+            {error, Reason} ->
+                lager:error("Error during saving scheduler state. Reason: ~p.",
+                            [Reason]),
+                {stop, State1}
+            end;
+        _FrameworkId ->
+            lager:info("Scheduler registered. Framework id: ~p.",
+                       [framework_id_value(FrameworkId)]),
+            TaskIdValues = rms_node_manager:get_node_keys(),
+            case length(TaskIdValues) of
+                0 ->
+                    ok;
+                _Len ->
+                    lager:info("Scheduler task ids to reconcile: ~p.",
+                               [TaskIdValues])
+            end,
+            ReconcileTasks = reconcile_tasks(TaskIdValues),
+            call(reconcile, [SchedulerInfo, ReconcileTasks], State)
+    end.
 
 reregistered(_SchedulerInfo, State) ->
     lager:warning("Scheduler reregistered.", []),
@@ -101,12 +110,13 @@ disconnected(_SchedulerInfo, State) ->
     lager:warning("Scheduler disconnected.", []),
     {ok, State}.
 
-resource_offers(SchedulerInfo, #'Event.Offers'{offers = Offers},
-                #state{node_data = NodeData} = State) ->
-    {OfferIds, Operations} = apply_offers(Offers, NodeData),
+resource_offers(SchedulerInfo, #'Event.Offers'{offers = Offers}, State) ->
+    {OfferIds, Operations} = apply_offers(Offers),
     case length(Operations) of
-        0 -> ok;
-        _ -> lager:info("Created Operations: ~p", [Operations])
+        0 ->
+            ok;
+        _Len ->
+            lager:info("Scheduler accept operations: ~p.", [Operations])
     end,
     Filters = #'Filters'{refuse_seconds = ?OFFER_INTERVAL},
     call(accept, [SchedulerInfo, OfferIds, Operations, Filters], State).
@@ -160,17 +170,22 @@ terminate(_SchedulerInfo, Reason, _State) ->
 
 %% Internal functions.
 
--spec init(rms:options(), scheduler_state()) ->
-    {ok, erl_mesos:'FrameworkInfo'(), true, state()}.
-init(Options, Scheduler) ->
-    FrameworkInfo = framework_info(Options),
-    lager:info("Start scheduler. Framework info: ~p.",
-               [framework_info_to_list(FrameworkInfo)]),
-    NodeData = rms_node_manager:node_data(Options),
-    CallsQueue = erl_mesos_calls_queue:new(),
-    {ok, FrameworkInfo, true, #state{scheduler = Scheduler,
-                                     node_data = NodeData,
-                                     calls_queue = CallsQueue}}.
+-spec init_scheduler(scheduler_state()) ->
+    {ok, erl_mesos:'FrameworkInfo'(), true, state()} | {stop, term()}.
+init_scheduler(#scheduler{options = Options} = Scheduler) ->
+    case set_scheduler(Scheduler) of
+        ok ->
+            FrameworkInfo = framework_info(Options),
+            lager:info("Start scheduler. Framework info: ~p.",
+                       [framework_info_to_list(FrameworkInfo)]),
+            CallsQueue = erl_mesos_calls_queue:new(),
+            {ok, FrameworkInfo, true, #state{scheduler = Scheduler,
+                                             calls_queue = CallsQueue}};
+        {error, Reason} ->
+            lager:error("Error during saving scheduler state. Reason: ~p.",
+                        [Reason]),
+            {stop, {error, Reason}}
+    end.
 
 -spec framework_id_value(undefined | erl_mesos:'FrameworkID'()) ->
     undefined | string().
@@ -233,12 +248,12 @@ set_scheduler(Scheduler) ->
     rms_metadata:set_scheduler(to_list(Scheduler)).
 
 -spec to_list(scheduler_state()) -> rms_metadata:scheduler_state().
-to_list(#scheduler{framework_id = FrameworkId}) ->
-    [{framework_id, FrameworkId}].
+to_list(#scheduler{options = Options}) ->
+    [{options, Options}].
 
 -spec from_list(rms_metadata:scheduler_state()) -> scheduler_state().
 from_list(SchedulerList) ->
-    #scheduler{framework_id = proplists:get_value(framework_id, SchedulerList)}.
+    #scheduler{options = proplists:get_value(options, SchedulerList)}.
 
 -spec call(atom(), [term()], state()) ->
     {ok, state()} | {stop, state()}.
@@ -285,31 +300,31 @@ exec_calls(#state{calls_queue = CallsQueue} = State) ->
             {ok, State1}
     end.
 
--spec apply_offers([erl_mesos:'Offer'()], rms_node_manager:node_data()) ->
+-spec apply_offers([erl_mesos:'Offer'()]) ->
     {[erl_mesos:'OfferID'()], [erl_mesos:'Offer.Operation'()]}.
-apply_offers(Offers, NodeData) ->
-    apply_offers(Offers, NodeData, [], []).
+apply_offers(Offers) ->
+    apply_offers(Offers, [], []).
 
--spec apply_offers([erl_mesos:'Offer'()], rms_node_manager:node_data(),
+-spec apply_offers([erl_mesos:'Offer'()],
                    [erl_mesos:'OfferID'()], [erl_mesos:'Offer.Operation'()]) ->
     {[erl_mesos:'OfferID'()], [erl_mesos:'Offer.Operation'()]}.
-apply_offers([Offer | Offers], NodeData, OfferIds, Operations) ->
-    {OfferId, Operations1} = apply_offer(Offer, NodeData),
-    apply_offers(Offers, NodeData, [OfferId | OfferIds],
+apply_offers([Offer | Offers], OfferIds, Operations) ->
+    {OfferId, Operations1} = apply_offer(Offer),
+    apply_offers(Offers, [OfferId | OfferIds],
                  Operations ++ Operations1);
-apply_offers([], _NodeData, OfferIds, Operations) ->
+apply_offers([], OfferIds, Operations) ->
     {OfferIds, Operations}.
 
--spec apply_offer(erl_mesos:'Offer'(), rms_node_manager:node_data()) ->
+-spec apply_offer(erl_mesos:'Offer'()) ->
     {erl_mesos:'OfferID'(), [erl_mesos:'Offer.Operation'()]}.
-apply_offer(Offer, NodeData) ->
+apply_offer(Offer) ->
     OfferHelper = rms_offer_helper:new(Offer),
     lager:info("Scheduler recevied offer. "
                "Offer id: ~s. "
                "Resources: ~p.",
                [rms_offer_helper:get_offer_id_value(OfferHelper),
                 rms_offer_helper:resources_to_list(OfferHelper)]),
-    OfferHelper1 = rms_cluster_manager:apply_offer(OfferHelper, NodeData),
+    OfferHelper1 = rms_cluster_manager:apply_offer(OfferHelper),
     OfferId = rms_offer_helper:get_offer_id(OfferHelper1),
     Operations = rms_offer_helper:operations(OfferHelper1),
     {OfferId, Operations}.
@@ -320,4 +335,3 @@ reconcile_tasks(TaskIdValues) ->
          TaskId = erl_mesos_utils:task_id(TaskIdValue),
          #'Call.Reconcile.Task'{task_id = TaskId}
      end || TaskIdValue <- TaskIdValues].
-
