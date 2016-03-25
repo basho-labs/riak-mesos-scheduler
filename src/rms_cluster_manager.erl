@@ -145,9 +145,7 @@ executors_to_shutdown([NodeKey|Rest], Accum) ->
   case rms_node_manager:node_can_be_shutdown(NodeKey) of
     true ->
       {ok, AgentIdValue} = rms_node_manager:get_node_agent_id_value(NodeKey),
-      AgentId = erl_mesos_utils:agent_id(AgentIdValue),
-      ExecutorId = erl_mesos_utils:executor_id(NodeKey),
-      executors_to_shutdown(Rest, [{ExecutorId, AgentId}|Accum]);
+      executors_to_shutdown(Rest, [{NodeKey, AgentIdValue}|Accum]);
     false ->
       executors_to_shutdown(Rest, Accum)
   end.
@@ -334,6 +332,7 @@ apply_reserved_offer(NodeKey, NodeKeys, NeedsReconciliation, OfferHelper) ->
                                        "Node key: ~s. "
                                        "Agent id: ~s. "
                                        "Hostname: ~s. "
+                                       "Persistence id: ~s. "
                                        "Offer id: ~s. "
                                        "Offer resources: ~p.",
                                        [NodeKey, AgentIdValue, Hostname,
@@ -342,7 +341,6 @@ apply_reserved_offer(NodeKey, NodeKeys, NeedsReconciliation, OfferHelper) ->
                             apply_offer(NodeKeys, NeedsReconciliation,
                                         OfferHelper1);
                         {error, Reason} ->
-                            %% TODO: unreserve node here,
                             lager:warning("Adding node for scheduling error. "
                                           "Agent id and hostname matches. "
                                           "Node key: ~s. "
