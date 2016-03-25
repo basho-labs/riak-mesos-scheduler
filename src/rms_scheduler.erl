@@ -130,14 +130,24 @@ offer_rescinded(_SchedulerInfo, #'Event.Rescind'{} = EventRescind, State) ->
                [EventRescind]),
     {ok, State}.
 
-status_update(_SchedulerInfo, #'Event.Update'{status=#'TaskStatus'{task_id=TaskID, state=NodeState}} = EventUpdate, State)->
+status_update(SchedulerInfo, #'Event.Update'{
+                                 status=#'TaskStatus'{
+                                           task_id=TaskId, 
+                                           agent_id=AgentId, 
+                                           state=NodeState, 
+                                           uuid=Uuid}} = EventUpdate, State)->
     lager:info("Scheduler received status update event. "
                "Update: ~p~n", [EventUpdate]),
-    {ok, NodeName} = nodename_from_task_id(TaskID),
+    {ok, NodeName} = nodename_from_task_id(TaskId),
     {ok, ClusterName} = rms_node_manager:get_node_cluster_key(NodeName),
     case rms_cluster_manager:handle_status_update(ClusterName, NodeName, NodeState) of
         ok -> 
-            ok;
+            case Uuid of 
+                undefined -> 
+                    ok;
+                _ ->
+                    call(acknowledge, [SchedulerInfo, AgentId, TaskId, Uuid], State)
+            end;
         {error, Reason} ->
             lager:warning("Error while attempting to process status update: ~p.", [Reason])
     end,

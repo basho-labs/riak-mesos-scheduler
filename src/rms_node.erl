@@ -365,7 +365,7 @@ restarting({status_update, StatusUpdate}, _From, Node) ->
         'TASK_FINISHED' -> sync_update_node(restarting, reserved, Node);
         'TASK_KILLED' -> sync_update_node(restarting, reserved, Node);
         'TASK_FAILED' -> {reply, ok, restarting, Node};
-        'TASK_LOST' -> {reply, ok, restarting, Node};
+        'TASK_LOST' -> sync_update_node(restarting, reserved, Node);
         'TASK_ERROR' -> {reply, ok, restarting, Node};
         _ -> {reply, {error, unhandled_event}, restarting, Node}
     end;
