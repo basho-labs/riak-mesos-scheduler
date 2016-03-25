@@ -26,6 +26,8 @@
 
 -export([get_node_keys/0,
          get_node_keys/1,
+         get_active_node_keys/1,
+         get_running_node_keys/1,
          get_node/1,
          get_node_cluster_key/1,
          get_node_hostname/1,
@@ -70,6 +72,18 @@ get_node_keys(ClusterKey) ->
     [Key || {Key, Node} <- rms_metadata:get_nodes(),
      ClusterKey =:= proplists:get_value(cluster_key, Node)].
 
+-spec get_active_node_keys(rms_cluster:key()) -> [rms_node:key()].
+get_active_node_keys(ClusterKey) ->
+    [Key || {Key, Node} <- rms_metadata:get_nodes(),
+     ClusterKey =:= proplists:get_value(cluster_key, Node), 
+            shutdown =/= proplists:get_value(status, Node)].
+
+-spec get_running_node_keys(rms_cluster:key()) -> [rms_node:key()].
+get_running_node_keys(ClusterKey) ->
+    [Key || {Key, Node} <- rms_metadata:get_nodes(),
+     ClusterKey =:= proplists:get_value(cluster_key, Node), 
+            started =:= proplists:get_value(status, Node)].
+
 -spec get_node(rms_node:key()) ->
     {ok, rms_metadata:node_state()} | {error, term()}.
 get_node(Key) ->
@@ -84,7 +98,7 @@ get_node_cluster_key(Key) ->
 get_node_hostname(Key) ->
     rms_node:get_field_value(hostname, Key).
 
--spec get_node_http_port(rms_node:key()) -> {ok, string()} | {error, term()}.
+-spec get_node_http_port(rms_node:key()) -> {ok, pos_integer()} | {error, term()}.
 get_node_http_port(Key) ->
     rms_node:get_field_value(http_port, Key).
 
@@ -92,11 +106,20 @@ get_node_http_port(Key) ->
 get_node_name(Key) ->
     rms_node:get_field_value(node_name, Key).
 
+-spec get_node_http_url(rms_node:key()) -> {ok, string()} | {error, term()}.
 get_node_http_url(Key) ->
-  Host = get_node_hostname(Key),
-  Port = integer_to_list(get_node_http_port(Key)),
-  Host ++ ":" ++ Port.
-
+  case get_node_hostname(Key) of
+      {ok, undefined} -> 
+          {error, not_found};
+      {ok, Host} -> 
+          Port = case get_node_http_port(Key) of
+                     {ok, undefined} ->
+                         {error, not_found};
+                     {ok, P} ->
+                         integer_to_list(P)
+                 end,
+          {ok, Host ++ ":" ++ Port}
+  end.
 
 -spec get_node_agent_id_value(rms_node:key()) ->
     {ok, string()} | {error, term()}.

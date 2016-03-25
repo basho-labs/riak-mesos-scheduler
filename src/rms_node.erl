@@ -219,11 +219,13 @@ state_change(Pid, State) ->
 init({Key, ClusterKey}) ->
     case get_node(Key) of
         {ok, {State, Node}} ->
-            lager:info("Found existing node ~p with state ~p.", [Node, State]),
-            {ok, State, Node};
+            Node1 = Node#node{reconciled = false},
+            lager:info("Found existing node ~p with state ~p.", [Node1, State]),
+            {ok, State, Node1};
         {error, not_found} ->
             Node = #node{key = Key,
-                         cluster_key = ClusterKey},
+                         cluster_key = ClusterKey,
+                         reconciled = true},
             case add_node({requested, Node}) of
                 ok ->
                     {ok, requested, Node};
@@ -544,7 +546,8 @@ from_list(NodeList) ->
            disterl_port = proplists:get_value(disterl_port, NodeList),
            agent_id_value = proplists:get_value(agent_id_value, NodeList),
            container_path = proplists:get_value(container_path, NodeList),
-           persistence_id = proplists:get_value(persistence_id, NodeList)}}.
+           persistence_id = proplists:get_value(persistence_id, NodeList),
+           reconciled = proplists:get_value(reconciled, NodeList)}}.
 
 -spec to_list({state(), node_state()}) -> rms_metadata:node_state().
 to_list(
@@ -558,7 +561,8 @@ to_list(
          disterl_port = DisterlPort,
          agent_id_value = AgentIdValue,
          container_path = ContainerPath,
-         persistence_id = PersistenceId}}) ->
+         persistence_id = PersistenceId,
+         reconciled = Reconciled}}) ->
     [{key, Key},
      {status, Status},
      {cluster_key, ClusterKey},
@@ -569,4 +573,5 @@ to_list(
      {disterl_port, DisterlPort},
      {agent_id_value, AgentIdValue},
      {container_path, ContainerPath},
-     {persistence_id, PersistenceId}].
+     {persistence_id, PersistenceId},
+     {reconciled, Reconciled}].

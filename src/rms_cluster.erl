@@ -42,13 +42,13 @@
          code_change/4]).
 
 -export([
-		 undefined/2,
-		 undefined/3,
-		 requested/2,
-		 requested/3,
-		 shutting_down/2,
-		 shutting_down/3
-		]).
+         undefined/2,
+         undefined/3,
+         requested/2,
+         requested/3,
+         shutting_down/2,
+         shutting_down/3
+        ]).
 
 -record(cluster, {key :: rms_cluster:key(),
                   riak_config = "" :: string(),
@@ -68,9 +68,9 @@
 %%% API
 
 -spec start_link(key()) ->
-    {ok, pid()} | {error, term()}.
+                        {ok, pid()} | {error, term()}.
 start_link(Key) ->
-	gen_fsm:start_link(?MODULE, Key, []).
+    gen_fsm:start_link(?MODULE, Key, []).
 
 -spec get(key()) -> {ok, rms_metadata:cluster_state()} | {error, term()}.
 get(Key) ->
@@ -92,7 +92,7 @@ get_field_value(Field, Key) ->
 
 -spec set_riak_config(pid(), string()) -> ok | {error, term()}.
 set_riak_config(Pid, RiakConfig) ->
-	gen_fsm:sync_send_all_state_event(Pid, {set_riak_config, RiakConfig}).
+    gen_fsm:sync_send_all_state_event(Pid, {set_riak_config, RiakConfig}).
 
 -spec set_advanced_config(pid(), string()) -> ok | {error, term()}.
 set_advanced_config(Pid, AdvancedConfig) ->
@@ -122,18 +122,18 @@ add_node(Pid) ->
 -type reply() :: term().
 -type reason() :: term().
 -type state_cb_return() ::
-	{stop, reason(), New::cluster_state()}
-	| {next_state, Next::state(), New::cluster_state()}
-	| {next_state, Next::state(), New::cluster_state(), state_timeout()}.
+        {stop, reason(), New::cluster_state()}
+      | {next_state, Next::state(), New::cluster_state()}
+      | {next_state, Next::state(), New::cluster_state(), state_timeout()}.
 -type state_cb_reply() ::
-	state_cb_return()
-	| {stop, reason(), reply(), New::cluster_state()}
-	| {reply, reply(), Next::state(), New::cluster_state()}
-	| {reply, reply(), Next::state(), New::cluster_state(), state_timeout()}.
+        state_cb_return()
+      | {stop, reason(), reply(), New::cluster_state()}
+      | {reply, reply(), Next::state(), New::cluster_state()}
+      | {reply, reply(), Next::state(), New::cluster_state(), state_timeout()}.
 
 -spec init(key()) ->
-	{ok, state(), cluster_state()}
-	| {stop, reason()}.
+                  {ok, state(), cluster_state()}
+                      | {stop, reason()}.
 init(Key) ->
     case get_cluster(Key) of
         {ok, {State, Cluster}} ->
@@ -148,64 +148,64 @@ init(Key) ->
             end
     end.
 
-% Async per-state handling
-% Note that there is none.
+                                                % Async per-state handling
+                                                % Note that there is none.
 -spec undefined(event(), cluster_state()) -> state_cb_return().
 undefined(_Event, Cluster) ->
-	{stop, {unhandled_event, _Event}, Cluster}.
+    {stop, {unhandled_event, _Event}, Cluster}.
 
 -spec requested(event(), cluster_state()) -> state_cb_return().
 requested(_Event, Cluster) ->
-	{stop, {unhandled_event, _Event}, Cluster}.
+    {stop, {unhandled_event, _Event}, Cluster}.
 
 -spec shutting_down(event(), cluster_state()) -> state_cb_return().
 shutting_down(_Event, Cluster) ->
-	{stop, {unhandled_event, _Event}, Cluster}.
+    {stop, {unhandled_event, _Event}, Cluster}.
 
-% Sync per-state handling
-% Note that there is none.
+                                                % Sync per-state handling
+                                                % Note that there is none.
 -spec requested(event(), from(), cluster_state()) -> state_cb_reply().
 requested(_Event, _From, Cluster) ->
-	{reply, {error, unhandled_event}, requested, Cluster}.
+    {reply, {error, unhandled_event}, requested, Cluster}.
 
 -spec undefined(event(), from(), cluster_state()) -> state_cb_return().
 undefined(_Event, _From, Cluster) ->
-	{reply, {error, unhandled_event}, undefined, Cluster}.
+    {reply, {error, unhandled_event}, undefined, Cluster}.
 
 -spec shutting_down(event(), from(), cluster_state()) -> state_cb_return().
 shutting_down(_Event, _From, Cluster) ->
-	{reply, {error, unhandled_event}, shutting_down, Cluster}.
+    {reply, {error, unhandled_event}, shutting_down, Cluster}.
 
-% gen_fsm callbacks
+                                                % gen_fsm callbacks
 -spec handle_event(event(), StateName :: atom(), cluster_state()) ->
-	state_cb_return().
+                          state_cb_return().
 handle_event(_Event, StateName, State) ->
-	{next_state, StateName, State}.
+    {next_state, StateName, State}.
 
 -spec handle_sync_event(event(), from(), state(), cluster_state()) ->
-	state_cb_reply().
+                               state_cb_reply().
 handle_sync_event({set_riak_config, RiakConfig}, _From, StateName, Cluster) ->
-	Cluster1 = Cluster#cluster{riak_config = RiakConfig},
-	case update_cluster(Cluster#cluster.key, {StateName, Cluster1}) of
-		ok ->
-			{reply, ok, StateName, Cluster1};
-		{error, _}=Err ->
-			{reply, Err, StateName, Cluster}
-	end;
+    Cluster1 = Cluster#cluster{riak_config = RiakConfig},
+    case update_cluster(Cluster#cluster.key, {StateName, Cluster1}) of
+        ok ->
+            {reply, ok, StateName, Cluster1};
+        {error, _}=Err ->
+            {reply, Err, StateName, Cluster}
+    end;
 handle_sync_event({set_advanced_config, AdvConfig}, _From, StateName, Cluster) ->
-	Cluster1 = Cluster#cluster{advanced_config = AdvConfig},
-	case update_cluster(Cluster#cluster.key, {StateName, Cluster1}) of
-		ok ->
-			{reply, ok, StateName, Cluster1};
-		{error,_}=Err ->
-			{reply, Err, StateName, Cluster}
-	end;
+    Cluster1 = Cluster#cluster{advanced_config = AdvConfig},
+    case update_cluster(Cluster#cluster.key, {StateName, Cluster1}) of
+        ok ->
+            {reply, ok, StateName, Cluster1};
+        {error,_}=Err ->
+            {reply, Err, StateName, Cluster}
+    end;
 handle_sync_event(delete, _From, _StateName, Cluster) ->
-	{reply, ok, shutting_down, Cluster};
+    {reply, ok, shutting_down, Cluster};
 handle_sync_event(add_node, _From, StateName, Cluster) ->
-	#cluster{key = Key,
-			 node_keys = NodeKeys,
-			 generation = Generation} = Cluster,
+    #cluster{key = Key,
+             node_keys = NodeKeys,
+             generation = Generation} = Cluster,
     FrameworkName = rms_config:framework_name(),
     NodeKey = FrameworkName ++ "-" ++ Key ++ "-" ++ integer_to_list(Generation),
     case rms_node_manager:add_node(NodeKey, Key) of
@@ -221,22 +221,24 @@ handle_sync_event(add_node, _From, StateName, Cluster) ->
         {error,_}=Err ->
             {reply, Err, StateName, Cluster}
     end;
-handle_sync_event({maybe_join, NodeKey}, _From, StateName,
-                  #cluster{node_keys = NodeKeys} = Cluster) ->
+handle_sync_event({maybe_join, NodeKey}, _From, StateName, 
+                  #cluster{key=Key} = Cluster) ->
+    NodeKeys = rms_node_manager:get_running_node_keys(Key),
     case maybe_do_join(NodeKey, NodeKeys) of
         ok ->
             {reply, ok, StateName, Cluster};
         {error, Reason} ->
             {reply, {error, Reason}, StateName, Cluster}
-        end;
+    end;
 handle_sync_event({leave, NodeKey}, _From, StateName,
-                  #cluster{node_keys = NodeKeys} = Cluster) ->
+                  #cluster{key=Key} = Cluster) ->
+    NodeKeys = rms_node_manager:get_running_node_keys(Key),
     case do_leave(NodeKey, NodeKeys) of
         ok ->
             {reply, ok, StateName, Cluster};
         {error, Reason} ->
             {reply, {error, Reason}, StateName, Cluster}
-        end;
+    end;
 handle_sync_event(_Event, _From, StateName, State) ->
     {reply, {error, {unhandled_event, _Event}}, StateName, State}.
 
@@ -254,7 +256,7 @@ handle_sync_event(_Event, _From, StateName, State) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_info(_Info, StateName, State) ->
-        {next_state, StateName, State}.
+    {next_state, StateName, State}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -268,7 +270,7 @@ handle_info(_Info, StateName, State) ->
 %% @end
 %%--------------------------------------------------------------------
 terminate(_Reason, _StateName, _State) ->
-        ok.
+    ok.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -280,7 +282,7 @@ terminate(_Reason, _StateName, _State) ->
 %% @end
 %%--------------------------------------------------------------------
 code_change(_OldVsn, StateName, State, _Extra) ->
-        {ok, StateName, State}.
+    {ok, StateName, State}.
 
 %%% Internal functions
 -spec get_cluster(key()) -> {ok, cluster_state()} | {error, term()}.
@@ -307,54 +309,54 @@ maybe_do_join(_, []) ->
 maybe_do_join(NodeKey, [NodeKey|Rest]) ->
     maybe_do_join(NodeKey, Rest);
 maybe_do_join(NodeKey, [ExistingNodeKey|Rest]) ->
-  URL = rms_node_manager:get_node_http_url(ExistingNodeKey),
-  NodeName = rms_node_manager:get_node_name(NodeKey),
-  ExistingNodeName = rms_node_manager:get_node_name(ExistingNodeKey),
-  case riak_explorer_client:join(
-         list_to_binary(URL),
-         list_to_binary(NodeName), 
-         list_to_binary(ExistingNodeName)) of
+    {ok, URL} = rms_node_manager:get_node_http_url(ExistingNodeKey),
+    {ok, NodeName} = rms_node_manager:get_node_name(NodeKey),
+    {ok, ExistingNodeName} = rms_node_manager:get_node_name(ExistingNodeKey),
+    case riak_explorer_client:join(
+           list_to_binary(URL),
+           list_to_binary(NodeName), 
+           list_to_binary(ExistingNodeName)) of
         {ok, _} ->
-      ok;
-    {error, Reason} ->
-      lager:warning("Failed node join attempt from node ~s to node ~s. Reason: ~p", [NodeName, ExistingNodeName, Reason]),
-      maybe_do_join(NodeKey, Rest)
-  end.
+            ok;
+        {error, Reason} ->
+            lager:warning("Failed node join attempt from node ~s to node ~s. Reason: ~p", [NodeName, ExistingNodeName, Reason]),
+            maybe_do_join(NodeKey, Rest)
+    end.
 
 -spec do_leave(rms_node:key(), [rms_node:key()]) -> 
-                           ok | {error, term()}.
+                      ok | {error, term()}.
 do_leave(_, []) ->
     {error, no_suitable_nodes};
 do_leave(NodeKey, [NodeKey|Rest]) ->
     do_leave(NodeKey, Rest);
 do_leave(NodeKey, [ExistingNodeKey|Rest]) ->
-  URL = rms_node_manager:get_node_http_url(ExistingNodeKey),
-  NodeName = rms_node_manager:get_node_name(NodeKey),
-  ExistingNodeName = rms_node_manager:get_node_name(ExistingNodeKey),
-  case riak_explorer_client:leave(
-         list_to_binary(URL),
-         list_to_binary(ExistingNodeName), 
-         list_to_binary(NodeName)) of
-    {ok, _} ->
-      ok;
-    {error, Reason} ->
-      lager:warning("Failed node join attempt from node ~s to node ~s. Reason: ~p", [NodeName, ExistingNodeName, Reason]),
-      do_leave(NodeKey, Rest)
-  end.
+    {ok, URL} = rms_node_manager:get_node_http_url(ExistingNodeKey),
+    {ok, NodeName} = rms_node_manager:get_node_name(NodeKey),
+    {ok, ExistingNodeName} = rms_node_manager:get_node_name(ExistingNodeKey),
+    case riak_explorer_client:leave(
+           list_to_binary(URL),
+           list_to_binary(ExistingNodeName), 
+           list_to_binary(NodeName)) of
+        {ok, _} ->
+            ok;
+        {error, Reason} ->
+            lager:warning("Failed node join attempt from node ~s to node ~s. Reason: ~p", [NodeName, ExistingNodeName, Reason]),
+            do_leave(NodeKey, Rest)
+    end.
 
 -spec from_list(rms_metadata:cluster_state()) -> cluster_state().
 from_list(ClusterList) ->
-	{proplists:get_value(status, ClusterList),
-    #cluster{key = proplists:get_value(key, ClusterList),
-             riak_config = proplists:get_value(riak_config, ClusterList),
-             advanced_config = proplists:get_value(advanced_config,
-                                                   ClusterList),
-             node_keys = proplists:get_value(node_keys, ClusterList),
-             generation = proplists:get_value(generation, ClusterList)}}.
+    {proplists:get_value(status, ClusterList),
+     #cluster{key = proplists:get_value(key, ClusterList),
+              riak_config = proplists:get_value(riak_config, ClusterList),
+              advanced_config = proplists:get_value(advanced_config,
+                                                    ClusterList),
+              node_keys = proplists:get_value(node_keys, ClusterList),
+              generation = proplists:get_value(generation, ClusterList)}}.
 
 -spec to_list(cluster_state()) -> rms_metadata:cluster_state().
 to_list({State,
-		 #cluster{key = Key,
+         #cluster{key = Key,
                   riak_config = RiakConf,
                   advanced_config = AdvancedConfig,
                   node_keys = NodeKeys,

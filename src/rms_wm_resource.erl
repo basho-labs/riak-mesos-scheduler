@@ -250,7 +250,7 @@ set_cluster_advanced_config(ReqData) ->
 nodes(ReqData) ->
     Key = wrq:path_info(key, ReqData),
     NodeKeyList = [list_to_binary(NodeKey) ||
-                   NodeKey <- rms_node_manager:get_node_keys(Key)],
+                   NodeKey <- rms_node_manager:get_active_node_keys(Key)],
     {[{nodes, NodeKeyList}], ReqData}.
 
 node_exists(ReqData) ->
