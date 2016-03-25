@@ -349,6 +349,17 @@ apply_reserved_offer(NodeKey, OfferHelper) ->
                                                   TaskInfoResources,
                                                   ExecutorInfo, undefined,
                                                   TaskDataBin),
+
+                    {ok, N} = get_node_pid(NodeKey),
+                    rms_node:set_agent_info(N, 
+                                            NodeName,
+                                            NodeHostname,
+                                            HTTPPort,
+                                            PBPort,
+                                            DisterlPort,
+                                            AgentIdValue,
+                                            ContainerPath),
+
                     {ok, rms_offer_helper:add_task_to_launch(TaskInfo,
                                                              OfferHelper3)};
                 false ->

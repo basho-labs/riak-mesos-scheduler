@@ -42,6 +42,7 @@
          can_be_shutdown/1,
          set_reserve/4,
          set_unreserve/1,
+         set_agent_info/8,
          delete/1,
          state_change/2,
          handle_status_update/3]).
@@ -203,6 +204,24 @@ set_reserve(Pid, Hostname, AgentIdValue, PersistenceId) ->
 -spec set_unreserve(pid()) -> ok | {error, term()}.
 set_unreserve(Pid) ->
     gen_fsm:sync_send_all_state_event(Pid, set_unreserve).
+
+set_agent_info(Pid, 
+               NodeName,
+               Hostname,
+               HttpPort,
+               PbPort,
+               DisterlPort,
+               AgentIdValue,
+               ContainerPath) ->
+    gen_fsm:sync_send_all_state_event(
+      Pid, {set_agent_info,
+            NodeName,
+            Hostname,
+            HttpPort,
+            PbPort,
+            DisterlPort,
+            AgentIdValue,
+            ContainerPath}).
 
 -spec delete(pid()) -> ok | {error, term()}.
 delete(Pid) ->
@@ -415,6 +434,24 @@ handle_sync_event({set_reserve, Hostname, AgentIdValue, PersistenceId},
                       agent_id_value = AgentIdValue,
                       persistence_id = PersistenceId},
     sync_update_node(State, reserved, Node, Node1);
+handle_sync_event({set_agent_info,
+                   NodeName,
+                   Hostname,
+                   HttpPort,
+                   PbPort,
+                   DisterlPort,
+                   AgentIdValue,
+                   ContainerPath},
+                  _From, State, Node) ->
+    Node1 = Node#node{hostname = Hostname,
+                      node_name = NodeName,
+                      http_port = HttpPort,
+                      pb_port = PbPort,
+                      disterl_port = DisterlPort,
+                      agent_id_value = AgentIdValue,
+                      container_path = ContainerPath},
+    lager:info("Setting agent info for node to ~p", [Node1]),
+    sync_update_node(State, State, Node, Node1);
 handle_sync_event(set_reconciled, _From, State, Node) ->
     lager:info("Setting reconciliation for node: ~p", [Node]),
     Node1 = Node#node{reconciled = true},
