@@ -316,8 +316,8 @@ maybe_do_join(NodeKey, [ExistingNodeKey|Rest]) ->
               is_list(U) and is_list(N) and is_list(E) ->
             case riak_explorer_client:join(
                    list_to_binary(U),
-                   list_to_binary(N), 
-                   list_to_binary(E)) of
+                   list_to_binary(E), 
+                   list_to_binary(N)) of
                 {ok, _} ->
                     ok;
                 {error, Reason} ->

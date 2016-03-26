@@ -352,7 +352,7 @@ apply_reserved_offer(NodeKey, OfferHelper) ->
 
                     {ok, N} = get_node_pid(NodeKey),
                     rms_node:set_agent_info(N, 
-                                            NodeName,
+                                            binary_to_list(NodeName),
                                             NodeHostname,
                                             HTTPPort,
                                             PBPort,
