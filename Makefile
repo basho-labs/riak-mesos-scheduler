@@ -1,4 +1,6 @@
 REPO            ?= riak_mesos_scheduler
+GIT_REF         ?= $(shell git describe --all)
+GIT_TAG_VERSION ?= $(shell git describe --tags)
 PKG_VERSION	    ?= $(shell git describe --tags --abbrev=0 | tr - .)
 MAJOR           ?= $(shell echo $(PKG_VERSION) | cut -d'.' -f1)
 MINOR           ?= $(shell echo $(PKG_VERSION) | cut -d'.' -f2)
@@ -52,7 +54,10 @@ stage: rel
 tarball: rel
 	echo "Creating packages/"$(PKGNAME)
 	mkdir -p packages
-	tar -C rel -czf $(PKGNAME) $(REPO)/
+	echo "$(GIT_REF)" > rel/version
+	echo "$(GIT_TAG_VERSION)" >> rel/version
+	tar -C rel -czf $(PKGNAME) version $(REPO)/
+	rm rel/version
 	mv $(PKGNAME) packages/
 	cd packages && $(SHASUM) $(PKGNAME) > $(PKGNAME).sha
 	cd packages && echo "$(S3_PREFIX)$(DEPLOY_BASE)$(PKGNAME)" > remote.txt

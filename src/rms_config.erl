@@ -65,7 +65,7 @@ webui_url() ->
 artifact_urls() ->
     Base = "http://" ++ webui_url() ++ "/static/",
     [
-     Base ++ get_value(executor_pkg, "riak.tar.gz", string),
+     Base ++ get_value(riak_pkg, "riak.tar.gz", string),
      Base ++ get_value(explorer_pkg, "riak_explorer.tar.gz", string),
      Base ++ get_value(executor_pkg, "riak_mesos_executor.tar.gz", string)
     ].
