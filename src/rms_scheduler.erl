@@ -38,9 +38,7 @@
          handle_info/3,
          terminate/3]).
 
--record(scheduler, {options :: rms:options(),
-                    cluster_keys = [] :: [rms_cluster:key()],
-                    removed_cluster_keys = [] :: [rms_cluster:key()]}).
+-record(scheduler, {options :: rms:options()}).
 
 -record(state, {scheduler :: scheduler_state(),
                 calls_queue :: erl_mesos_calls_queue:calls_queue()}).
@@ -72,7 +70,7 @@ init(Options) ->
 
 registered(SchedulerInfo, #'Event.Subscribed'{framework_id = FrameworkId},
            #state{scheduler = #scheduler{options = Options} = Scheduler} =
-           State) ->
+               State) ->
     case proplists:get_value(framework_id, Options, undefined) of
         undefined ->
             Options1 = [{framework_id, FrameworkId} |
@@ -84,10 +82,10 @@ registered(SchedulerInfo, #'Event.Subscribed'{framework_id = FrameworkId},
                     lager:info("New scheduler registered. Framework id: ~p.",
                                [framework_id_value(FrameworkId)]),
                     {ok, State1};
-            {error, Reason} ->
-                lager:error("Error during saving scheduler state. Reason: ~p.",
-                            [Reason]),
-                {stop, State1}
+                {error, Reason} ->
+                    lager:error("Error during saving scheduler state. Reason: ~p.",
+                                [Reason]),
+                    {stop, State1}
             end;
         _FrameworkId ->
             lager:info("Scheduler registered. Framework id: ~p.",
@@ -121,7 +119,12 @@ resource_offers(SchedulerInfo, #'Event.Offers'{offers = Offers}, State) ->
             lager:info("Scheduler accept operations: ~p.", [Operations])
     end,
     Filters = #'Filters'{refuse_seconds = ?OFFER_INTERVAL},
-    call(accept, [SchedulerInfo, OfferIds, Operations, Filters], State).
+    case call(accept, [SchedulerInfo, OfferIds, Operations, Filters], State) of
+        {ok, S1} ->
+            ExecsToShutdown = rms_cluster_manager:executors_to_shutdown(),
+            shutdown_executors(SchedulerInfo, ExecsToShutdown, S1);
+        R -> R
+    end.
 
 offer_rescinded(_SchedulerInfo, #'Event.Rescind'{} = EventRescind, State) ->
     lager:info("Scheduler received offer rescinded event. "
@@ -129,11 +132,34 @@ offer_rescinded(_SchedulerInfo, #'Event.Rescind'{} = EventRescind, State) ->
                [EventRescind]),
     {ok, State}.
 
-status_update(_SchedulerInfo, EventUpdate, State) ->
-    %% TODO: handle update event and update node state via cluster manager.
+status_update(SchedulerInfo, #'Event.Update'{
+                                 status=#'TaskStatus'{
+                                           reason=Reason,
+                                           task_id=TaskId, 
+                                           agent_id=AgentId, 
+                                           state=NodeState, 
+                                           uuid=Uuid}} = EventUpdate, State)->
     lager:info("Scheduler received status update event. "
                "Update: ~p~n", [EventUpdate]),
-    {ok, State}.
+    {ok, NodeName} = nodename_from_task_id(TaskId),
+    {ok, ClusterName} = rms_node_manager:get_node_cluster_key(NodeName),
+    case rms_cluster_manager:handle_status_update(ClusterName, NodeName, NodeState, Reason) of
+        ok ->
+            case Uuid of 
+                undefined -> 
+                    {ok, State};
+                _ ->
+                    call(acknowledge, [SchedulerInfo, AgentId, TaskId, Uuid], State)
+            end;
+        {error, Reason} ->
+            lager:warning("Error while attempting to process status update: ~p.", [Reason]),
+            {ok, State}
+    end.
+
+%% TODO Move this function elsewhere in the module
+%% TODO This cannot possibly be this easy, can it?
+nodename_from_task_id(#'TaskID'{value = NodeName}) ->
+    {ok, NodeName}.
 
 framework_message(_SchedulerInfo, EventMessage, State) ->
     lager:info("Scheduler received framework message. "
@@ -153,6 +179,11 @@ executor_lost(_SchedulerInfo, EventFailure, State) ->
 
 error(_SchedulerInfo, EventError, State) ->
     lager:info("Scheduler received error event. Error: ~p.", [EventError]),
+    case EventError of
+        {'Event.Error',"Framework has been removed"} -> 
+            %% TODO: Unset the frameworkID in this case, failover wasn't set high enough.
+            ok
+    end,
     {stop, State}.
 
 handle_info(_SchedulerInfo, Info, State) ->
@@ -166,7 +197,7 @@ terminate(_SchedulerInfo, Reason, _State) ->
 %% Internal functions.
 
 -spec init_scheduler(scheduler_state()) ->
-    {ok, erl_mesos:'FrameworkInfo'(), true, state()} | {stop, term()}.
+                            {ok, erl_mesos:'FrameworkInfo'(), true, state()} | {stop, term()}.
 init_scheduler(#scheduler{options = Options} = Scheduler) ->
     case set_scheduler(Scheduler) of
         ok ->
@@ -183,7 +214,7 @@ init_scheduler(#scheduler{options = Options} = Scheduler) ->
     end.
 
 -spec framework_id_value(undefined | erl_mesos:'FrameworkID'()) ->
-    undefined | string().
+                                undefined | string().
 framework_id_value(undefined) ->
     undefined;
 framework_id_value(#'FrameworkID'{value = Value}) ->
@@ -243,22 +274,15 @@ set_scheduler(Scheduler) ->
     rms_metadata:set_scheduler(to_list(Scheduler)).
 
 -spec to_list(scheduler_state()) -> rms_metadata:scheduler_state().
-to_list(#scheduler{options = Options,
-                   cluster_keys = ClusterKeys,
-                   removed_cluster_keys = RemovedClusterKeys}) ->
-    [{options, Options},
-     {cluster_keys, ClusterKeys},
-     {removed_cluster_keys, RemovedClusterKeys}].
+to_list(#scheduler{options = Options}) ->
+    [{options, Options}].
 
 -spec from_list(rms_metadata:scheduler_state()) -> scheduler_state().
 from_list(SchedulerList) ->
-    #scheduler{options = proplists:get_value(options, SchedulerList),
-               cluster_keys = proplists:get_value(cluster_keys, SchedulerList),
-               removed_cluster_keys =
-                   proplists:get_value(removed_cluster_keys, SchedulerList)}.
+    #scheduler{options = proplists:get_value(options, SchedulerList)}.
 
 -spec call(atom(), [term()], state()) ->
-    {ok, state()} | {stop, state()}.
+                  {ok, state()} | {stop, state()}.
 call(Function, Args, #state{calls_queue = CallsQueue} = State) ->
     Call = {erl_mesos_scheduler, Function, Args},
     case erl_mesos_calls_queue:exec_or_push_call(Call, CallsQueue) of
@@ -303,13 +327,13 @@ exec_calls(#state{calls_queue = CallsQueue} = State) ->
     end.
 
 -spec apply_offers([erl_mesos:'Offer'()]) ->
-    {[erl_mesos:'OfferID'()], [erl_mesos:'Offer.Operation'()]}.
+                          {[erl_mesos:'OfferID'()], [erl_mesos:'Offer.Operation'()]}.
 apply_offers(Offers) ->
     apply_offers(Offers, [], []).
 
 -spec apply_offers([erl_mesos:'Offer'()],
                    [erl_mesos:'OfferID'()], [erl_mesos:'Offer.Operation'()]) ->
-    {[erl_mesos:'OfferID'()], [erl_mesos:'Offer.Operation'()]}.
+                          {[erl_mesos:'OfferID'()], [erl_mesos:'Offer.Operation'()]}.
 apply_offers([Offer | Offers], OfferIds, Operations) ->
     {OfferId, Operations1} = apply_offer(Offer),
     apply_offers(Offers, [OfferId | OfferIds],
@@ -318,7 +342,7 @@ apply_offers([], OfferIds, Operations) ->
     {OfferIds, Operations}.
 
 -spec apply_offer(erl_mesos:'Offer'()) ->
-    {erl_mesos:'OfferID'(), [erl_mesos:'Offer.Operation'()]}.
+                         {erl_mesos:'OfferID'(), [erl_mesos:'Offer.Operation'()]}.
 apply_offer(Offer) ->
     OfferHelper = rms_offer_helper:new(Offer),
     lager:info("Scheduler recevied offer. "
@@ -337,3 +361,32 @@ reconcile_tasks(TaskIdValues) ->
          TaskId = erl_mesos_utils:task_id(TaskIdValue),
          #'Call.Reconcile.Task'{task_id = TaskId}
      end || TaskIdValue <- TaskIdValues].
+
+shutdown_executors(_, [], State) ->
+    {ok, State};
+shutdown_executors(SchedulerInfo, [{NodeKey, AgentIdValue}|Rest], State) ->
+    AgentId = erl_mesos_utils:agent_id(AgentIdValue),
+    ExecutorId = erl_mesos_utils:executor_id(NodeKey),
+    _TaskId = erl_mesos_utils:task_id(NodeKey),
+    lager:info("Shutting down ~p.", [NodeKey]),
+    case call(message, 
+              [SchedulerInfo, AgentId, 
+               ExecutorId, <<"finish">>], State) of
+        {ok, S1} ->
+            lager:info("Finished shutting down ~p.", [NodeKey]),
+            shutdown_executors(SchedulerInfo, Rest, S1);
+        R -> 
+            lager:info("Error shutting node down: ~p.", [R]),
+            R
+    end.
+    %% case call(shutdown, [SchedulerInfo, ExecutorId, AgentId], State) of
+    %%     {ok, S1} ->
+    %%         case call(kill, [SchedulerInfo, TaskId, AgentId], S1) of
+    %%             {ok, S2} ->
+    %%                 shutdown_executors(SchedulerInfo, Rest, S2);
+    %%             R -> 
+    %%                 R
+    %%         end;
+    %%     R ->
+    %%         R
+    %% end.

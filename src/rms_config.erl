@@ -21,13 +21,15 @@
 -module(rms_config).
 
 -export([
-         zk/0, 
+         zk/0,
+         framework_name/0,
          webui_url/0, 
          artifact_urls/0, 
          framework_hostname/0]).
 
 -export([get_value/2, get_value/3]).
 
+-define(DEFAULT_NAME, "riak").
 -define(DEFAULT_HOSTNAME, "riak.mesos").
 -define(DEFAULT_ZK, "master.mesos:2181").
 
@@ -35,6 +37,9 @@
 
 zk() ->
     get_value(zk, ?DEFAULT_ZK, string).
+
+framework_name() ->
+    get_value(name, ?DEFAULT_NAME, string).
 
 framework_hostname() ->
     case get_value(hostname, undefined, string) of
@@ -60,7 +65,7 @@ webui_url() ->
 artifact_urls() ->
     Base = "http://" ++ webui_url() ++ "/static/",
     [
-     Base ++ get_value(executor_pkg, "riak.tar.gz", string),
+     Base ++ get_value(riak_pkg, "riak.tar.gz", string),
      Base ++ get_value(explorer_pkg, "riak_explorer.tar.gz", string),
      Base ++ get_value(executor_pkg, "riak_mesos_executor.tar.gz", string)
     ].

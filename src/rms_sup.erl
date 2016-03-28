@@ -47,7 +47,7 @@ init([]) ->
 
     %% TODO: move all possible options init to rms:start/2.
     FrameworkUser = rms_config:get_value(user, "root"),
-    FrameworkName = rms_config:get_value(name, "riak", string),
+    FrameworkName = rms_config:framework_name(),
     FrameworkRole = rms_config:get_value(role, "riak", string),
     FrameworkHostname = rms_config:framework_hostname(),
     FrameworkPrincipal = rms_config:get_value(principal, "riak", string),

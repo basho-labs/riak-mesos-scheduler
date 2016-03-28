@@ -25,19 +25,28 @@
 -export([start_link/0]).
 
 -export([get_node_keys/0,
+         get_unreconciled_node_keys/0,
          get_node_keys/1,
+         get_active_node_keys/1,
+         get_running_node_keys/1,
          get_node/1,
          get_node_cluster_key/1,
          get_node_hostname/1,
+         get_node_http_port/1,
+         get_node_http_url/1,
+         get_node_name/1,
          get_node_agent_id_value/1,
          get_node_persistence_id/1,
          node_needs_to_be_reconciled/1,
          node_can_be_scheduled/1,
          node_has_reservation/1,
+         node_can_be_shutdown/1,
          add_node/2,
          delete_node/1]).
 
 -export([apply_unreserved_offer/2, apply_reserved_offer/2]).
+
+-export([handle_status_update/3]).
 
 -export([init/1]).
 
@@ -59,18 +68,35 @@ start_link() ->
 get_node_keys() ->
     [Key || {Key, _} <- rms_metadata:get_nodes()].
 
+-spec get_unreconciled_node_keys() -> [rms_node:key()].
+get_unreconciled_node_keys() ->
+    [Key || Key <- get_node_keys(),
+            true =:= node_needs_to_be_reconciled(Key)].
+
 -spec get_node_keys(rms_cluster:key()) -> [rms_node:key()].
 get_node_keys(ClusterKey) ->
     [Key || {Key, Node} <- rms_metadata:get_nodes(),
-     ClusterKey =:= proplists:get_value(cluster_key, Node)].
+            ClusterKey =:= proplists:get_value(cluster_key, Node)].
+
+-spec get_active_node_keys(rms_cluster:key()) -> [rms_node:key()].
+get_active_node_keys(ClusterKey) ->
+    [Key || {Key, Node} <- rms_metadata:get_nodes(),
+            ClusterKey =:= proplists:get_value(cluster_key, Node), 
+            shutdown =/= proplists:get_value(status, Node)].
+
+-spec get_running_node_keys(rms_cluster:key()) -> [rms_node:key()].
+get_running_node_keys(ClusterKey) ->
+    [Key || {Key, Node} <- rms_metadata:get_nodes(),
+            ClusterKey =:= proplists:get_value(cluster_key, Node), 
+            started =:= proplists:get_value(status, Node)].
 
 -spec get_node(rms_node:key()) ->
-    {ok, rms_metadata:node_state()} | {error, term()}.
+                      {ok, rms_metadata:node_state()} | {error, term()}.
 get_node(Key) ->
     rms_node:get(Key).
 
 -spec get_node_cluster_key(rms_node:key()) ->
-    {ok, rms_cluster:key()} | {error, term()}.
+                                  {ok, rms_cluster:key()} | {error, term()}.
 get_node_cluster_key(Key) ->
     rms_node:get_field_value(cluster_key, Key).
 
@@ -78,13 +104,30 @@ get_node_cluster_key(Key) ->
 get_node_hostname(Key) ->
     rms_node:get_field_value(hostname, Key).
 
+-spec get_node_http_port(rms_node:key()) -> {ok, pos_integer()} | {error, term()}.
+get_node_http_port(Key) ->
+    rms_node:get_field_value(http_port, Key).
+
+-spec get_node_name(rms_node:key()) -> {ok, string()} | {error, term()}.
+get_node_name(Key) ->
+    rms_node:get_field_value(node_name, Key).
+
+-spec get_node_http_url(rms_node:key()) -> {ok, string()} | {error, term()}.
+get_node_http_url(Key) ->
+    case {get_node_hostname(Key),
+          get_node_http_port(Key)} of
+        {{ok, H},{ok, P}} when is_list(H) and is_integer(P) ->
+            {ok, H ++ ":" ++ integer_to_list(P)};
+        _ -> {error, not_found}
+    end.
+
 -spec get_node_agent_id_value(rms_node:key()) ->
-    {ok, string()} | {error, term()}.
+                                     {ok, string()} | {error, term()}.
 get_node_agent_id_value(Key) ->
     rms_node:get_field_value(agent_id_value, Key).
 
 -spec get_node_persistence_id(rms_node:key()) ->
-    {ok, string()} | {error, term()}.
+                                     {ok, string()} | {error, term()}.
 get_node_persistence_id(Key) ->
     rms_node:get_field_value(persistence_id, Key).
 
@@ -111,6 +154,15 @@ node_has_reservation(NodeKey) ->
     case rms_node:has_reservation(NodeKey) of
         {ok, HasReservation} ->
             HasReservation;
+        {error, _Reason} ->
+            false
+    end.
+
+-spec node_can_be_shutdown(rms_node:key()) -> boolean().
+node_can_be_shutdown(NodeKey) ->
+    case rms_node:can_be_shutdown(NodeKey) of
+        {ok, CanBeShutDown} ->
+            CanBeShutDown;
         {error, _Reason} ->
             false
     end.
@@ -142,8 +194,8 @@ delete_node(Key) ->
     end.
 
 -spec apply_unreserved_offer(rms_node:key(), rms_offer_helper:offer_helper()) ->
-    {ok, rms_offer_helper:offer_helper()} |
-    {error, not_enough_resources | term()}.
+                                    {ok, rms_offer_helper:offer_helper()} |
+                                    {error, not_enough_resources | term()}.
 apply_unreserved_offer(NodeKey, OfferHelper) ->
     case get_node_pid(NodeKey) of
         {ok, Pid} ->
@@ -157,20 +209,18 @@ apply_unreserved_offer(NodeKey, OfferHelper) ->
             Hostname = rms_offer_helper:get_hostname(OfferHelper),
             AgentIdValue = rms_offer_helper:get_agent_id_value(OfferHelper),
             PersistenceId = node_persistence_id(),
-            ok = rms_node:set_reserve(Pid, Hostname, AgentIdValue,
-                                      PersistenceId),
             case rms_offer_helper:can_fit_unreserved(NodeCpus +
-                                                     ?CPUS_PER_EXECUTOR,
+                                                         ?CPUS_PER_EXECUTOR,
                                                      NodeMem +
-                                                     ?MEM_PER_EXECUTOR,
+                                                         ?MEM_PER_EXECUTOR,
                                                      NodeDisk, NodeNumPorts,
                                                      OfferHelper) of
                 true ->
                     %% Remove requirements from offer helper.
                     OfferHelper1 =
                         rms_offer_helper:apply_unreserved_resources(
-                            ?CPUS_PER_EXECUTOR, ?MEM_PER_EXECUTOR, undefined,
-                            NodeNumPorts, OfferHelper),
+                          ?CPUS_PER_EXECUTOR, ?MEM_PER_EXECUTOR, undefined,
+                          NodeNumPorts, OfferHelper),
                     %% Reserve resources.
                     OfferHelper2 =
                         rms_offer_helper:make_reservation(NodeCpus, NodeMem,
@@ -183,6 +233,8 @@ apply_unreserved_offer(NodeKey, OfferHelper) ->
                                                      PersistenceId,
                                                      ContainerPath,
                                                      OfferHelper2),
+                    ok = rms_node:set_reserve(Pid, Hostname, AgentIdValue,
+                                      PersistenceId),
                     {ok, OfferHelper3};
                 false ->
                     {error, not_enough_resources}
@@ -192,15 +244,14 @@ apply_unreserved_offer(NodeKey, OfferHelper) ->
     end.
 
 -spec apply_reserved_offer(rms_node:key(), rms_offer_helper:offer_helper()) ->
-    {ok, rms_offer_helper:offer_helper()} |
-    {error, not_enough_resources | term()}.
+                                  {ok, rms_offer_helper:offer_helper()} |
+                                  {error, not_enough_resources | term()}.
 apply_reserved_offer(NodeKey, OfferHelper) ->
     case get_node_pid(NodeKey) of
         {ok, _Pid} ->
             {ok, Id} = rms_metadata:get_option(framework_id),
             {ok, Name} = rms_metadata:get_option(framework_name),
             {ok, Role} = rms_metadata:get_option(framework_role),
-            {ok, Hostname} = rms_metadata:get_option(framework_hostname),
             {ok, Principal} = rms_metadata:get_option(framework_principal),
             {ok, WebuiUrl} = rms_metadata:get_option(framework_webui_url),
             {ok, NodeCpus} = rms_metadata:get_option(node_cpus),
@@ -221,20 +272,22 @@ apply_reserved_offer(NodeKey, OfferHelper) ->
                 true ->
                     {ok, ClusterKey} = get_node_cluster_key(NodeKey),
                     {ok, PersistenceId} = get_node_persistence_id(NodeKey),
-                    {ok, Hostname} = get_node_hostname(NodeKey),
+                    {ok, NodeHostname} = get_node_hostname(NodeKey),
                     {ok, AgentIdValue} = get_node_agent_id_value(NodeKey),
 
                     %% Apply reserved resources for task.
+                    OfferHelper0 = 
+                        rms_offer_helper:clean_applied_resources(OfferHelper),
                     OfferHelper1 =
                         rms_offer_helper:apply_reserved_resources(
-                            NodeCpus, NodeMem, NodeDisk, undefined, Role,
-                            Principal, PersistenceId, ContainerPath,
-                            OfferHelper),
+                          NodeCpus, NodeMem, NodeDisk, undefined, Role,
+                          Principal, PersistenceId, ContainerPath,
+                          OfferHelper0),
                     %% Apply unreserved resources for task.
                     OfferHelper2 =
                         rms_offer_helper:apply_unreserved_resources(
-                            undefined, undefined, undefined, NodeNumPorts,
-                            OfferHelper1),
+                          undefined, undefined, undefined, NodeNumPorts,
+                          OfferHelper1),
                     %% Grab Task resources from offer helper in current state.
                     TaskInfoReservedResources = 
                         rms_offer_helper:get_reserved_applied_resources(OfferHelper2),
@@ -276,9 +329,9 @@ apply_reserved_offer(NodeKey, OfferHelper) ->
 
                     [HTTPPort, PBPort, DisterlPort | _Ports] = TaskDataPorts,
 
-                    NodeName = iolist_to_binary([NodeKey, "@", Hostname]),
+                    NodeName = iolist_to_binary([NodeKey, "@", NodeHostname]),
                     TaskData = [{<<"FullyQualifiedNodeName">>, NodeName},
-                                {<<"Host">>,                   list_to_binary(Hostname)},
+                                {<<"Host">>,                   list_to_binary(NodeHostname)},
                                 %% TODO: read list of zookeepers with rms_metadata:get_option/1
                                 {<<"Zookeepers">>,             [list_to_binary(rms_config:zk())]},
                                 {<<"FrameworkName">>,          list_to_binary(Name)},
@@ -292,18 +345,29 @@ apply_reserved_offer(NodeKey, OfferHelper) ->
 
                     ExecutorId = erl_mesos_utils:executor_id(NodeKey),
 
-                    Source = "riak", %% FIXME
+                    Source = Name,
                     ExecutorInfo =
                         erl_mesos_utils:executor_info(ExecutorId, CommandInfo,
                                                       ExecutorInfoResources, Id,
                                                       Source),
 
-                    TaskName = "riak",
+                    TaskName = Name ++ "-" ++ ClusterKey,
                     TaskInfo =
                         erl_mesos_utils:task_info(TaskName, TaskId, AgentId,
                                                   TaskInfoResources,
                                                   ExecutorInfo, undefined,
                                                   TaskDataBin),
+
+                    {ok, N} = get_node_pid(NodeKey),
+                    rms_node:set_agent_info(N, 
+                                            binary_to_list(NodeName),
+                                            NodeHostname,
+                                            HTTPPort,
+                                            PBPort,
+                                            DisterlPort,
+                                            AgentIdValue,
+                                            ContainerPath),
+
                     {ok, rms_offer_helper:add_task_to_launch(TaskInfo,
                                                              OfferHelper3)};
                 false ->
@@ -313,13 +377,20 @@ apply_reserved_offer(NodeKey, OfferHelper) ->
             {error, Reason}
     end.
 
+handle_status_update(NodeKey, TaskStatus, Reason) ->
+    {ok, N} = get_node_pid(NodeKey),
+    lager:info("Handling status update ~p for node ~p", [TaskStatus, NodeKey]),
+    Response = rms_node:handle_status_update(N, TaskStatus, Reason),
+    lager:info("Status update response: ~p", [Response]),
+    Response.
+
 %% supervisor callback function.
 
 -spec init({}) ->
-    {ok, {{supervisor:strategy(), 1, 1}, [supervisor:child_spec()]}}.
+                  {ok, {{supervisor:strategy(), 1, 1}, [supervisor:child_spec()]}}.
 init({}) ->
     Specs = [node_spec(Key, proplists:get_value(cluster_key, Node)) ||
-             {Key, Node} <- rms_metadata:get_nodes()],
+                {Key, Node} <- rms_metadata:get_nodes()],
     {ok, {{one_for_one, 1, 1}, Specs}}.
 
 %% Internal functions.
@@ -327,8 +398,8 @@ init({}) ->
 -spec node_spec(rms_node:key(), rms_cluster:key()) -> supervisor:child_spec().
 node_spec(Key, ClusterKey) ->
     {Key,
-        {rms_node, start_link, [Key, ClusterKey]},
-        transient, 5000, worker, [rms_node]}.
+     {rms_node, start_link, [Key, ClusterKey]},
+     transient, 5000, worker, [rms_node]}.
 
 -spec get_node_pid(rms_node:key()) -> {ok, pid()} | {error, not_found}.
 get_node_pid(Key) ->

@@ -105,14 +105,17 @@ do_get(Host, Uri) ->
     ReqHeaders = request_headers(<<"application/json">>),
     ReqBody = <<>>,
     ReqOptions = request_options(),
-    case request(get, ReqUrl, ReqHeaders, ReqBody, ReqOptions) of
+    lager:info("Riak Explorer GET: ~p", [ReqUrl]),
+    Response = case request(get, ReqUrl, ReqHeaders, ReqBody, ReqOptions) of
         {ok, Ref} ->
             body(Ref);
         {ok, _Code, _Headers, Ref} ->
             body(Ref);
         {error, _}=Error ->
             Error
-    end.
+    end,
+    lager:info("Riak Explorer GET Response: ~p", [Response]),
+    Response.
 
 %% @doc Perform get and return body.
 %% @private
@@ -122,14 +125,17 @@ do_put(Host, Uri, Data) ->
     ReqUrl = request_url(Host, Uri),
     ReqHeaders = request_headers(<<"application/json">>),
     ReqOptions = request_options(),
-    case request(put, ReqUrl, ReqHeaders, Data, ReqOptions) of
+    lager:info("Riak Explorer PUT: ~p, Data: ~p", [ReqUrl, Data]),
+    Response = case request(put, ReqUrl, ReqHeaders, Data, ReqOptions) of
         {ok, Ref} ->
             body(Ref);
         {ok, _Code, _Headers, Ref} ->
             body(Ref);
         {error, _}=Error ->
             Error
-    end.
+    end,
+    lager:info("Riak Explorer PUT Response: ~p", [Response]),
+    Response.
 
 %% @doc Receives http request body.
 %% @private
