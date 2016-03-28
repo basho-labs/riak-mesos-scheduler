@@ -144,7 +144,6 @@ can_be_scheduled(Key) ->
                                  reserved -> true;
                                  _ -> false
                              end,
-            lager:info("Node Status: ~p, CanBeScheduled: ~p", [Status, CanBeScheduled]),
             {ok, CanBeScheduled};
         {error, Reason} ->
             {error, Reason}
@@ -184,9 +183,6 @@ handle_status_update(Pid, TaskStatus, Reason) ->
     case gen_fsm:sync_send_event(Pid, {status_update, TaskStatus, Reason}) of
         ok ->
             ok;
-        {error, unhandled_event} ->
-            gen_fsm:sync_send_all_state_event(
-              Pid, {status_update, TaskStatus, Reason});
         {error, E} ->
             {error, E}
     end.
@@ -239,8 +235,13 @@ init({Key, ClusterKey}) ->
     case get_node(Key) of
         {ok, {State, Node}} ->
             Node1 = Node#node{reconciled = false},
-            lager:info("Found existing node ~p with state ~p.", [Node1, State]),
-            {ok, State, Node1};
+            case rms_metadata:update_node(Key, to_list({State, Node1})) of
+                ok ->
+                    lager:info("Found existing node ~p with state ~p.", [Node1, State]),
+                    {ok, State, Node1};
+                {error, Reason} ->
+                    {stop, Reason}
+            end;
         {error, not_found} ->
             Node = #node{key = Key,
                          cluster_key = ClusterKey,
@@ -320,7 +321,7 @@ requested({status_update, StatusUpdate, _}, _From, Node) ->
         'TASK_FAILED' -> {reply, ok, requested, Node};
         'TASK_LOST' -> {reply, ok, requested, Node};
         'TASK_ERROR' -> {reply, ok, requested, Node};
-        _ -> {reply, {error, unhandled_event}, requested, Node}
+        _ -> {reply, ok, requested, Node}
     end;
 requested(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, requested, Node}.
@@ -336,7 +337,9 @@ reserved({status_update, StatusUpdate, _}, _From, Node) ->
         'TASK_LOST' -> unreserve(reserved, requested, Node);
         'TASK_ERROR' -> unreserve(reserved, requested, Node);
         'TASK_STAGING' -> sync_update_node(reserved, starting, Node);
-        _ -> {reply, {error, unhandled_event}, reserved, Node}
+        'TASK_STARTING' -> sync_update_node(reserved, starting, Node);
+        'TASK_RUNNING' -> join(starting, started, Node);
+        _ -> {reply, ok, reserved, Node}
     end;
 reserved(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, reserved, Node}.
@@ -350,7 +353,7 @@ starting({status_update, StatusUpdate, _}, _From, Node) ->
         'TASK_ERROR' -> sync_update_node(starting, reserved, Node);
         'TASK_STARTING' -> {reply, ok, starting, Node};
         'TASK_RUNNING' -> join(starting, started, Node);
-        _ -> {reply, {error, unhandled_event}, starting, Node}
+        _ -> {reply, ok, starting, Node}
     end;
 starting(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, starting, Node}.
@@ -362,7 +365,7 @@ started({status_update, StatusUpdate, _}, _From, Node) ->
         'TASK_LOST' -> sync_update_node(started, restarting, Node);
         'TASK_ERROR' -> sync_update_node(started, restarting, Node);
         'TASK_KILLED' -> sync_update_node(started, restarting, Node);
-        _ -> {reply, {error, unhandled_event}, started, Node}
+        _ -> {reply, ok, started, Node}
     end;
 started(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, started, Node}.
@@ -375,7 +378,7 @@ shutting_down({status_update, StatusUpdate, _}, _From, Node) ->
         'TASK_FAILED' -> leave(shutting_down, Node);
         'TASK_LOST' -> leave(shutting_down, Node);
         'TASK_ERROR' -> leave(shutting_down, Node);
-        _ -> {reply, {error, unhandled_event}, shutting_down, Node}
+        _ -> {reply, ok, shutting_down, Node}
     end;
 shutting_down(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, shutting_down, Node}.
@@ -398,32 +401,13 @@ restarting({status_update, StatusUpdate, _}, _From, Node) ->
         'TASK_FAILED' -> {reply, ok, restarting, Node};
         'TASK_LOST' -> sync_update_node(restarting, reserved, Node);
         'TASK_ERROR' -> {reply, ok, restarting, Node};
-        _ -> {reply, {error, unhandled_event}, restarting, Node}
+        _ -> {reply, ok, restarting, Node}
     end;
 restarting(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, restarting, Node}.
 
 -spec handle_sync_event(event(), from(), state(), node_state()) ->
                                state_cb_reply().
-handle_sync_event({status_update, StatusUpdate, _},
-                  _From, State, Node) ->
-    NewState = case StatusUpdate of
-                   'TASK_STAGING' -> starting;
-                   'TASK_STARTING' -> starting;
-                   'TASK_RUNNING' -> started;
-                   'TASK_FINISHED' -> restarting;
-                   'TASK_KILLED' -> restarting;
-                   'TASK_FAILED' -> restarting;
-                   'TASK_LOST' -> restarting;
-                   'TASK_ERROR' -> restarting
-               end,
-
-    case NewState of
-        started ->
-            join(State, NewState, Node);
-        _ ->
-            sync_update_node(State, NewState, Node)
-    end;    
 handle_sync_event({update_node_state, NewState},
                   _From, State, Node) ->
     sync_update_node(State, NewState, Node);
@@ -544,10 +528,13 @@ leave(State, NewState, #node{cluster_key = Cluster, key = Key} = Node) ->
                       persistence_id = ""},
     case rms_cluster_manager:leave(Cluster, Key) of
         ok ->
+            lager:info("~p left cluster ~p successfully.", [Key, Cluster]),
             sync_update_node(State, NewState, Node, Node1);
         {error, no_suitable_nodes} ->
+            lager:info("~p was unable to leave cluster ~p because no nodes were available to leave from.", [Key, Cluster]),
             sync_update_node(State, NewState, Node, Node1);
         {error, Reason} ->
+            lager:warning("~p was unable to leave cluster ~p because ~p.", [Key, Cluster, Reason]),
             {reply, {error, Reason}, State, Node}
     end.
 

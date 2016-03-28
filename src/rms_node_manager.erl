@@ -25,6 +25,7 @@
 -export([start_link/0]).
 
 -export([get_node_keys/0,
+         get_unreconciled_node_keys/0,
          get_node_keys/1,
          get_active_node_keys/1,
          get_running_node_keys/1,
@@ -66,6 +67,11 @@ start_link() ->
 -spec get_node_keys() -> [rms_node:key()].
 get_node_keys() ->
     [Key || {Key, _} <- rms_metadata:get_nodes()].
+
+-spec get_unreconciled_node_keys() -> [rms_node:key()].
+get_unreconciled_node_keys() ->
+    [Key || Key <- get_node_keys(),
+            true =:= node_needs_to_be_reconciled(Key)].
 
 -spec get_node_keys(rms_cluster:key()) -> [rms_node:key()].
 get_node_keys(ClusterKey) ->
@@ -203,8 +209,6 @@ apply_unreserved_offer(NodeKey, OfferHelper) ->
             Hostname = rms_offer_helper:get_hostname(OfferHelper),
             AgentIdValue = rms_offer_helper:get_agent_id_value(OfferHelper),
             PersistenceId = node_persistence_id(),
-            ok = rms_node:set_reserve(Pid, Hostname, AgentIdValue,
-                                      PersistenceId),
             case rms_offer_helper:can_fit_unreserved(NodeCpus +
                                                          ?CPUS_PER_EXECUTOR,
                                                      NodeMem +
@@ -229,6 +233,8 @@ apply_unreserved_offer(NodeKey, OfferHelper) ->
                                                      PersistenceId,
                                                      ContainerPath,
                                                      OfferHelper2),
+                    ok = rms_node:set_reserve(Pid, Hostname, AgentIdValue,
+                                      PersistenceId),
                     {ok, OfferHelper3};
                 false ->
                     {error, not_enough_resources}
@@ -270,11 +276,13 @@ apply_reserved_offer(NodeKey, OfferHelper) ->
                     {ok, AgentIdValue} = get_node_agent_id_value(NodeKey),
 
                     %% Apply reserved resources for task.
+                    OfferHelper0 = 
+                        rms_offer_helper:clean_applied_resources(OfferHelper),
                     OfferHelper1 =
                         rms_offer_helper:apply_reserved_resources(
                           NodeCpus, NodeMem, NodeDisk, undefined, Role,
                           Principal, PersistenceId, ContainerPath,
-                          OfferHelper),
+                          OfferHelper0),
                     %% Apply unreserved resources for task.
                     OfferHelper2 =
                         rms_offer_helper:apply_unreserved_resources(
@@ -371,7 +379,10 @@ apply_reserved_offer(NodeKey, OfferHelper) ->
 
 handle_status_update(NodeKey, TaskStatus, Reason) ->
     {ok, N} = get_node_pid(NodeKey),
-    rms_node:handle_status_update(N, TaskStatus, Reason).
+    lager:info("Handling status update ~p for node ~p", [TaskStatus, NodeKey]),
+    Response = rms_node:handle_status_update(N, TaskStatus, Reason),
+    lager:info("Status update response: ~p", [Response]),
+    Response.
 
 %% supervisor callback function.
 

@@ -47,7 +47,9 @@
          requested/2,
          requested/3,
          shutting_down/2,
-         shutting_down/3
+         shutting_down/3,
+         shutdown/2,
+         shutdown/3
         ]).
 
 -record(cluster, {key :: rms_cluster:key(),
@@ -148,8 +150,8 @@ init(Key) ->
             end
     end.
 
-                                                % Async per-state handling
-                                                % Note that there is none.
+%%% Async per-state handling
+%%% Note that there is none.
 -spec undefined(event(), cluster_state()) -> state_cb_return().
 undefined(_Event, Cluster) ->
     {stop, {unhandled_event, _Event}, Cluster}.
@@ -162,8 +164,12 @@ requested(_Event, Cluster) ->
 shutting_down(_Event, Cluster) ->
     {stop, {unhandled_event, _Event}, Cluster}.
 
-                                                % Sync per-state handling
-                                                % Note that there is none.
+-spec shutdown(event(), cluster_state()) -> state_cb_return().
+shutdown(_Event, Cluster) ->
+    {stop, {unhandled_event, _Event}, Cluster}.
+
+%%% Sync per-state handling
+%%% Note that there is none.
 -spec requested(event(), from(), cluster_state()) -> state_cb_reply().
 requested(_Event, _From, Cluster) ->
     {reply, {error, unhandled_event}, requested, Cluster}.
@@ -176,7 +182,11 @@ undefined(_Event, _From, Cluster) ->
 shutting_down(_Event, _From, Cluster) ->
     {reply, {error, unhandled_event}, shutting_down, Cluster}.
 
-                                                % gen_fsm callbacks
+-spec shutdown(event(), from(), cluster_state()) -> state_cb_return().
+shutdown(_Event, _From, Cluster) ->
+    {reply, {error, unhandled_event}, shutdown, Cluster}.
+
+%%% gen_fsm callbacks
 -spec handle_event(event(), StateName :: atom(), cluster_state()) ->
                           state_cb_return().
 handle_event(_Event, StateName, State) ->
@@ -200,8 +210,15 @@ handle_sync_event({set_advanced_config, AdvConfig}, _From, StateName, Cluster) -
         {error,_}=Err ->
             {reply, Err, StateName, Cluster}
     end;
-handle_sync_event(delete, _From, _StateName, Cluster) ->
-    {reply, ok, shutting_down, Cluster};
+handle_sync_event(delete, _From, _StateName,
+                  #cluster{key = Key} = Cluster) ->
+    NodeKeys = rms_node_manager:get_active_node_keys(Key),
+    case do_delete(NodeKeys) of
+        ok ->
+            {reply, ok, shutdown, Cluster};
+        {error, _}=Err ->
+            {reply, Err, shutting_down, Cluster}
+    end;
 handle_sync_event(add_node, _From, StateName, Cluster) ->
     #cluster{key = Key,
              node_keys = NodeKeys,
@@ -316,8 +333,8 @@ maybe_do_join(NodeKey, [ExistingNodeKey|Rest]) ->
               is_list(U) and is_list(N) and is_list(E) ->
             case riak_explorer_client:join(
                    list_to_binary(U),
-                   list_to_binary(E), 
-                   list_to_binary(N)) of
+                   list_to_binary(N), 
+                   list_to_binary(E)) of
                 {ok, _} ->
                     ok;
                 {error, Reason} ->
@@ -351,7 +368,19 @@ do_leave(NodeKey, [ExistingNodeKey|Rest]) ->
                     do_leave(NodeKey, Rest)
             end;
         _ ->
-            maybe_do_join(NodeKey, Rest)
+            do_leave(NodeKey, Rest)
+    end.
+
+-spec do_delete([rms_node:key()]) -> 
+                       ok | {error, term()}.
+do_delete([]) ->
+    ok;
+do_delete([ExistingNodeKey|Rest]) ->
+    case rms_node_manager:delete_node(ExistingNodeKey) of
+        ok ->
+            do_delete(Rest);
+        {error, Reason} ->
+            {error, Reason}
     end.
 
 -spec from_list(rms_metadata:cluster_state()) -> cluster_state().

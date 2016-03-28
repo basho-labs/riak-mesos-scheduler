@@ -111,9 +111,6 @@ disconnected(_SchedulerInfo, State) ->
     {ok, State}.
 
 resource_offers(SchedulerInfo, #'Event.Offers'{offers = Offers}, State) ->
-    %% There is probably a better place to check for this...
-    ExecsToShutdown = rms_cluster_manager:executors_to_shutdown(),
-    shutdown_executors(SchedulerInfo, ExecsToShutdown, State),
     {OfferIds, Operations} = apply_offers(Offers),
     case length(Operations) of
         0 ->
@@ -122,7 +119,12 @@ resource_offers(SchedulerInfo, #'Event.Offers'{offers = Offers}, State) ->
             lager:info("Scheduler accept operations: ~p.", [Operations])
     end,
     Filters = #'Filters'{refuse_seconds = ?OFFER_INTERVAL},
-    call(accept, [SchedulerInfo, OfferIds, Operations, Filters], State).
+    case call(accept, [SchedulerInfo, OfferIds, Operations, Filters], State) of
+        {ok, S1} ->
+            ExecsToShutdown = rms_cluster_manager:executors_to_shutdown(),
+            shutdown_executors(SchedulerInfo, ExecsToShutdown, S1);
+        R -> R
+    end.
 
 offer_rescinded(_SchedulerInfo, #'Event.Rescind'{} = EventRescind, State) ->
     lager:info("Scheduler received offer rescinded event. "
@@ -142,17 +144,17 @@ status_update(SchedulerInfo, #'Event.Update'{
     {ok, NodeName} = nodename_from_task_id(TaskId),
     {ok, ClusterName} = rms_node_manager:get_node_cluster_key(NodeName),
     case rms_cluster_manager:handle_status_update(ClusterName, NodeName, NodeState, Reason) of
-        ok -> 
+        ok ->
             case Uuid of 
                 undefined -> 
-                    ok;
+                    {ok, State};
                 _ ->
                     call(acknowledge, [SchedulerInfo, AgentId, TaskId, Uuid], State)
             end;
         {error, Reason} ->
-            lager:warning("Error while attempting to process status update: ~p.", [Reason])
-    end,
-    {ok, State}.
+            lager:warning("Error while attempting to process status update: ~p.", [Reason]),
+            {ok, State}
+    end.
 
 %% TODO Move this function elsewhere in the module
 %% TODO This cannot possibly be this easy, can it?
@@ -360,12 +362,31 @@ reconcile_tasks(TaskIdValues) ->
          #'Call.Reconcile.Task'{task_id = TaskId}
      end || TaskIdValue <- TaskIdValues].
 
-shutdown_executors(_, [], _) ->
-    ok;
+shutdown_executors(_, [], State) ->
+    {ok, State};
 shutdown_executors(SchedulerInfo, [{NodeKey, AgentIdValue}|Rest], State) ->
     AgentId = erl_mesos_utils:agent_id(AgentIdValue),
     ExecutorId = erl_mesos_utils:executor_id(NodeKey),
-    TaskId = erl_mesos_utils:task_id(NodeKey),
-    call(shutdown, [SchedulerInfo, ExecutorId, AgentId], State),
-    call(kill, [SchedulerInfo, TaskId, AgentId], State),
-    shutdown_executors(SchedulerInfo, Rest, State).
+    _TaskId = erl_mesos_utils:task_id(NodeKey),
+    lager:info("Shutting down ~p.", [NodeKey]),
+    case call(message, 
+              [SchedulerInfo, AgentId, 
+               ExecutorId, <<"finish">>], State) of
+        {ok, S1} ->
+            lager:info("Finished shutting down ~p.", [NodeKey]),
+            shutdown_executors(SchedulerInfo, Rest, S1);
+        R -> 
+            lager:info("Error shutting node down: ~p.", [R]),
+            R
+    end.
+    %% case call(shutdown, [SchedulerInfo, ExecutorId, AgentId], State) of
+    %%     {ok, S1} ->
+    %%         case call(kill, [SchedulerInfo, TaskId, AgentId], S1) of
+    %%             {ok, S2} ->
+    %%                 shutdown_executors(SchedulerInfo, Rest, S2);
+    %%             R -> 
+    %%                 R
+    %%         end;
+    %%     R ->
+    %%         R
+    %% end.

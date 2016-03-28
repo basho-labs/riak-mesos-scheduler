@@ -37,6 +37,7 @@
          apply_unreserved_resources/5,
          get_reserved_applied_resources/1,
          get_unreserved_applied_resources/1,
+         clean_applied_resources/1,
          can_fit_reserved/5,
          can_fit_unreserved/5,
          has_persistence_id/2,
@@ -157,6 +158,13 @@ get_unreserved_applied_resources_ports(OfferHelper) ->
     UnreservedResources = resources(0, 0,
                                     0, UnreservedPorts),
     erl_mesos_utils:resources_ports(UnreservedResources).
+
+-spec clean_applied_resources(offer_helper()) -> offer_helper().
+clean_applied_resources(OfferHelper) ->
+  OfferHelper#offer_helper{
+     applied_reserved_resources=[],
+     applied_unreserved_resources=[]
+    }.
 
 -spec get_resources_to_reserve(offer_helper()) -> [erl_mesos:'Resource'()].
 get_resources_to_reserve(#offer_helper{resources_to_reserve =
