@@ -7,6 +7,7 @@
          ringready/2,
          transfers/2,
          bucket_types/2,
+         bucket_type/3,
          create_bucket_type/4,
          join/3,
          leave/3
@@ -47,6 +48,13 @@ bucket_types(Host, Node) ->
     ReqUri = <<"explore/nodes/", Node/binary, "/bucket_types">>,
     do_get(Host, ReqUri).
 
+%% @doc Get a bucket type from Explorer.
+-spec bucket_type(binary(), binary(), binary()) ->
+    {ok, binary()} | {error, term()}.
+bucket_type(Host, Node, Type) ->
+    ReqUri = <<"explore/nodes/", Node/binary, "/bucket_type/", Type/binary>>,
+    do_get(Host, ReqUri).
+
 %% @doc Gets status for a node from Explorer.
 -spec create_bucket_type(binary(), binary(), binary(), binary()) ->
     {ok, binary()} | {error, term()}.
@@ -72,7 +80,7 @@ leave(Host, StayingNode, LeavingNode) ->
 %% @private
 -spec request_options() -> [{atom(), term()}].
 request_options() ->
-    [].
+    [{connect_timeout,30000},{recv_timeout,30000}].
 
 %% @doc Returns request url.
 %% @private
@@ -142,4 +150,3 @@ do_put(Host, Uri, Data) ->
 -spec body(hackney:client_ref()) -> {ok, binary()} | {error, term()}.
 body(Ref) ->
     hackney:body(Ref).
-
