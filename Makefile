@@ -49,8 +49,7 @@ cleantest:
 test: cleantest
 	$(REBAR) skip_deps=true eunit
 	$(REBAR) skip_deps=true ct
-rel: relclean deps compile
-	$(REBAR) compile
+rel: relclean compile
 	$(REBAR) skip_deps=true generate $(OVERLAY_VARS)
 relclean:
 	-rm -rf rel/riak_mesos_scheduler
