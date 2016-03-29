@@ -339,30 +339,6 @@ restart_node(RD) ->
     Body = [{success, true}],
     {true, wrq:append_to_response_body(mochijson2:encode(Body), RD)}.
 
-riak_explorer_command(ReqData, Command, Args) ->
-    NodeKey = wrq:path_info(node_key, ReqData),
-    case {rms_node_manager:get_node_http_url(NodeKey),
-          rms_node_manager:get_node_name(NodeKey)} of
-        {{ok,U},{ok,N}} when
-              is_list(U) and is_list(N) ->
-            riak_explorer_command(ReqData, Command, U, N, Args);
-        _ ->
-            {mochijson2:encode(
-               [{error, <<"Unable to retrieve node key or node name">>}]
-              ), ReqData}
-    end.
-
-riak_explorer_command(ReqData, Command, Url, Node, Args) ->
-    Args1 = [list_to_binary(Url)|[list_to_binary(Node)|Args]],
-    case erlang:apply(riak_explorer_client, Command, Args1) of
-        {ok, Body} ->
-            {Body, ReqData};
-        {error, Reason} ->
-            {mochijson2:encode(
-               [{error, list_to_binary(io_lib:format("~p", [Reason]))}]
-              ), ReqData}
-    end.
-
 get_node_aae(ReqData) ->
     riak_explorer_command(ReqData, aae_status, []).
      
@@ -509,3 +485,27 @@ static_filename(ReqData) ->
     filename:join([?STATIC_ROOT, Resource]).
 
 hash_body(Body) -> mochihex:to_hex(binary_to_list(crypto:hash(sha,Body))).
+
+riak_explorer_command(ReqData, Command, Args) ->
+    NodeKey = wrq:path_info(node_key, ReqData),
+    case {rms_node_manager:get_node_http_url(NodeKey),
+          rms_node_manager:get_node_name(NodeKey)} of
+        {{ok,U},{ok,N}} when
+              is_list(U) and is_list(N) ->
+            riak_explorer_command(ReqData, Command, U, N, Args);
+        _ ->
+            {mochijson2:encode(
+               [{error, <<"Unable to retrieve node key or node name">>}]
+              ), ReqData}
+    end.
+
+riak_explorer_command(ReqData, Command, Url, Node, Args) ->
+    Args1 = [list_to_binary(Url)|[list_to_binary(Node)|Args]],
+    case erlang:apply(riak_explorer_client, Command, Args1) of
+        {ok, Body} ->
+            {Body, ReqData};
+        {error, Reason} ->
+            {mochijson2:encode(
+               [{error, list_to_binary(io_lib:format("~p", [Reason]))}]
+              ), ReqData}
+    end.
