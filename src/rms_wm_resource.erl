@@ -144,27 +144,22 @@ routes() ->
             accepts = ?ACCEPT_TEXT,
             accept = {?MODULE, restart_node}},
      #route{path = ["clusters", key, "nodes", node_key, "aae"],
-            methods = ['GET'],
             provides = [{?JSON_TYPE, provide_static_content}],
             exists = {?MODULE, node_exists},
             content = {?MODULE, get_node_aae}},
      #route{path = ["clusters", key, "nodes", node_key, "status"],
-            methods = ['GET'],
             provides = [{?JSON_TYPE, provide_static_content}],
             exists = {?MODULE, node_exists},
             content = {?MODULE, get_node_status}},
      #route{path = ["clusters", key, "nodes", node_key, "ringready"],
-            methods = ['GET'],
             provides = [{?JSON_TYPE, provide_static_content}],
             exists = {?MODULE, node_exists},
             content = {?MODULE, get_node_ringready}},
      #route{path = ["clusters", key, "nodes", node_key, "transfers"],
-            methods = ['GET'],
             provides = [{?JSON_TYPE, provide_static_content}],
             exists = {?MODULE, node_exists},
             content = {?MODULE, get_node_transfers}},
      #route{path = ["clusters", key, "nodes", node_key, "types"],
-            methods = ['GET'],
             provides = [{?JSON_TYPE, provide_static_content}],
             exists = {?MODULE, node_exists},
             content = {?MODULE, get_node_bucket_types}},
@@ -340,19 +335,19 @@ restart_node(RD) ->
     {true, wrq:append_to_response_body(mochijson2:encode(Body), RD)}.
 
 get_node_aae(ReqData) ->
-    riak_explorer_command(ReqData, aae_status, []).
+    riak_explorer_command(ReqData, aae_status).
      
 get_node_status(ReqData) ->
-    riak_explorer_command(ReqData, status, []).
+    riak_explorer_command(ReqData, status).
      
 get_node_ringready(ReqData) ->
-    riak_explorer_command(ReqData, ringready, []).
+    riak_explorer_command(ReqData, ringready).
 
 get_node_transfers(ReqData) ->
-    riak_explorer_command(ReqData, transfers, []).
+    riak_explorer_command(ReqData, transfers).
 
 get_node_bucket_types(ReqData) ->
-    riak_explorer_command(ReqData, bucket_types, []).
+    riak_explorer_command(ReqData, bucket_types).
 
 get_node_bucket_type(ReqData) ->
     Type = wrq:path_info(bucket_type, ReqData),
@@ -485,6 +480,9 @@ static_filename(ReqData) ->
     filename:join([?STATIC_ROOT, Resource]).
 
 hash_body(Body) -> mochihex:to_hex(binary_to_list(crypto:hash(sha,Body))).
+
+riak_explorer_command(ReqData, Command) ->
+    riak_explorer_command(ReqData, Command, []).
 
 riak_explorer_command(ReqData, Command, Args) ->
     NodeKey = wrq:path_info(node_key, ReqData),
