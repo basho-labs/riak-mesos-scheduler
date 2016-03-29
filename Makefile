@@ -30,10 +30,20 @@ compile: deps
 	$(REBAR) compile
 recompile:
 	$(REBAR) compile skip_deps=true
-deps:
-	$(REBAR) get-deps
+clean: cleantest relclean
+	$(REBAR) clean
+	-rm -rf packages
+clean-deps:
+	$(REBAR) -r clean
+deps/rebar_lock_deps_plugin/ebin/rebar_lock_deps_plugin.beam:
+	$(REBAR) get-deps compile
+rebar.config.lock: deps/rebar_lock_deps_plugin/ebin/rebar_lock_deps_plugin.beam
+	$(REBAR) lock-deps
+deps: rebar.config.lock
+	$(REBAR) -C rebar.config.lock get-deps
 cleantest:
 	rm -rf .eunit/*
+	rm -rf ct_log/*
 test: cleantest
 	$(REBAR) skip_deps=true eunit
 	$(REBAR) skip_deps=true ct
@@ -42,8 +52,8 @@ rel: relclean deps compile
 	$(REBAR) skip_deps=true generate $(OVERLAY_VARS)
 relclean:
 	-rm -rf rel/riak_mesos_scheduler
-clean: cleantest relclean
-	-rm -rf packages
+distclean: clean
+	$(REBAR) delete-deps
 stage: rel
 	$(foreach dep,$(wildcard deps/*), rm -rf rel/riak_mesos_scheduler/lib/$(shell basename $(dep))-* && ln -sf $(abspath $(dep)) rel/riak_mesos_scheduler/lib;)
 	$(foreach app,$(wildcard apps/*), rm -rf rel/riak_mesos_scheduler/lib/$(shell basename $(app))-* && ln -sf $(abspath $(app)) rel/riak_mesos_scheduler/lib;)

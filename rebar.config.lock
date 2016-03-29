@@ -1,0 +1,83 @@
+%% THIS FILE IS GENERATED. DO NOT EDIT IT MANUALLY %%
+
+{sub_dirs,["rel"]}.
+{cover_enabled,true}.
+{lib_dirs,["deps","apps"]}.
+{erl_opts,[debug_info,warnings_as_errors,{parse_transform,lager_transform}]}.
+{xref_checks,[undefined_function_calls]}.
+{xref_queries,[{"(XC - UC) || (XU - X - B)",[]}]}.
+{reset_after_eunit,true}.
+{eunit_opts,[verbose]}.
+{ct_log_dir,"ct_log"}.
+{edoc_opts,[preprocess,{dir,"edoc"}]}.
+{deps,[{goldrush,".*",
+                 {git,"git://github.com/DeadZen/goldrush.git",
+                      "71e63212f12c25827e0c1b4198d37d5d018a7fec"}},
+       {lager,".*",
+              {git,"git://github.com/basho/lager",
+                   "b6b6cebcb27ccff8acc59ae775acebc2f52e4926"}},
+       {syslog,".*",
+               {git,"git://github.com/Vagabond/erlang-syslog.git",
+                    "918c9b453e0811b24f2c99b35b712b0ef9f29c7e"}},
+       {lager_syslog,".*",
+                     {git,"git://github.com/basho/lager_syslog",
+                          "fa2e7e3daee0d0a59dadb820fd3381eac4a65770"}},
+       {rebar_lock_deps_plugin,".*",
+                               {git,"git://github.com/seth/rebar_lock_deps_plugin.git",
+                                    "7a5835029c42b8138325405237ea7e8516a84800"}},
+       {node_package,".*",
+                     {git,"git://github.com/basho/node_package",
+                          "39e3e50be49d091e3b0a698ad3c3743ac315a099"}},
+       {getopt,".*",
+               {git,"git://github.com/jcomellas/getopt.git",
+                    "659a28f4145bc9843598972854299dc4ea77e4cb"}},
+       {neotoma,".*",
+                {git,"git://github.com/seancribbs/neotoma.git",
+                     "760928ec8870da02eb11bccb501e2700925d06c6"}},
+       {cuttlefish,".*",
+                   {git,"git://github.com/basho/cuttlefish",
+                        "c92c8325aeaea6b6ba7516bbd434f8e408f87d60"}},
+       {mochiweb,".*",
+                 {git,"git://github.com/basho/mochiweb.git",
+                      "ade2a9b29a11034eb550c1d79b4f991bf5ca05ba"}},
+       {webmachine,".*",
+                   {git,"git://github.com/basho/webmachine",
+                        "7677c240f4a7ed020f4bab48278224966bb42311"}},
+       {idna,".*",
+             {git,"https://github.com/benoitc/erlang-idna",
+                  "40c682fef283b7c3871c4b59aa0469304c6613ef"}},
+       {mimerl,".*",
+               {git,"https://github.com/benoitc/mimerl",
+                    "678aba028a690da6822c87410d475841c048b6bf"}},
+       {certifi,".*",
+                {git,"https://github.com/certifi/erlang-certifi",
+                     "3e86db680c8b7194c84832fbd6d438158f171996"}},
+       {metrics,".*",
+                {git,"https://github.com/benoitc/erlang-metrics",
+                     "c6eb4dcf29f9e907539915e2ab996f40c2ec7e8e"}},
+       {ssl_verify_fun,".*",
+                       {git,"https://github.com/deadtrickster/ssl_verify_fun.erl",
+                            "e76d93737dea126a030f4ed153f158b2139961e3"}},
+       {hackney,".*",
+                {git,"git://github.com/benoitc/hackney",
+                     "66a53291d3fef4f46f7baa99016725c7659aa022"}},
+       {gpb,".*",
+            {git,"git://github.com/tomas-abrahamsson/gpb.git",
+                 "8495d7b3c2562988b80b326dc93343a946e715d6"}},
+       {erl_mesos,".*",
+                  {git,"git@github.com:basho-labs/mesos-scheduler-bindings",
+                       "3fff5c2d84a26cc01663052f038c6a070731c399"}},
+       {erlzk,".*",
+              {git,"git://github.com/huaban/erlzk.git",
+                   "1fa486c7b65e96f5421d977b22df526dd47e87bc"}},
+       {meck,".*",
+             {git,"git://github.com/basho/meck.git",
+                  "dde759050eff19a1a80fd854d7375174b191665d"}},
+       {riak_mesos_md_mgr,".*",
+                          {git,"git@github.com:/basho-labs/riak-mesos-metadata-manager.git",
+                               "918846336dcef0d7b484dac48597be598fb57878"}},
+       {uuid,".*",
+             {git,"https://github.com/avtobiff/erlang-uuid.git",
+                  "585c2474afb4a597ae8c8bf6d21e5a9c73f18e0b"}}]}.
+{plugins,[rebar_lock_deps_plugin]}.
+
