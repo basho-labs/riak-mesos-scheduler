@@ -23,7 +23,14 @@
          get_node/1,
          add_node/1,
          delete_node/1,
-         restart_node/1]).
+         restart_node/1,
+         get_node_aae/1,
+         get_node_status/1,
+         get_node_ringready/1,
+         get_node_transfers/1,
+         get_node_bucket_types/1,
+         get_node_bucket_type/1,
+         set_node_bucket_type/1]).
 
 -export([healthcheck/1]).
 
@@ -56,7 +63,8 @@
 -define(PROVIDE_TEXT, [{?TEXT_TYPE, provide_text_content}]).
 -define(ACCEPT_TEXT, [?ACCEPT(?FORM_TYPE),
                       ?ACCEPT(?OCTET_TYPE),
-                      ?ACCEPT(?TEXT_TYPE)]).
+                      ?ACCEPT(?TEXT_TYPE),
+                      ?ACCEPT(?JSON_TYPE)]).
 
 -record(route, {base = ?API_ROUTE :: [string()],
                 path :: [string() | atom()],
@@ -135,6 +143,33 @@ routes() ->
             exists = {?MODULE, node_exists},
             accepts = ?ACCEPT_TEXT,
             accept = {?MODULE, restart_node}},
+     #route{path = ["clusters", key, "nodes", node_key, "aae"],
+            provides = [{?JSON_TYPE, provide_static_content}],
+            exists = {?MODULE, node_exists},
+            content = {?MODULE, get_node_aae}},
+     #route{path = ["clusters", key, "nodes", node_key, "status"],
+            provides = [{?JSON_TYPE, provide_static_content}],
+            exists = {?MODULE, node_exists},
+            content = {?MODULE, get_node_status}},
+     #route{path = ["clusters", key, "nodes", node_key, "ringready"],
+            provides = [{?JSON_TYPE, provide_static_content}],
+            exists = {?MODULE, node_exists},
+            content = {?MODULE, get_node_ringready}},
+     #route{path = ["clusters", key, "nodes", node_key, "transfers"],
+            provides = [{?JSON_TYPE, provide_static_content}],
+            exists = {?MODULE, node_exists},
+            content = {?MODULE, get_node_transfers}},
+     #route{path = ["clusters", key, "nodes", node_key, "types"],
+            provides = [{?JSON_TYPE, provide_static_content}],
+            exists = {?MODULE, node_exists},
+            content = {?MODULE, get_node_bucket_types}},
+     #route{path = ["clusters", key, "nodes", node_key, "types", bucket_type],
+            methods = ['GET', 'POST'],
+            provides = [{?JSON_TYPE, provide_static_content}],
+            exists = {?MODULE, node_exists},
+            content = {?MODULE, get_node_bucket_type},
+            accepts = ?ACCEPT_TEXT,
+            accept = {?MODULE, set_node_bucket_type}},
      %% Healthcheck.
      #route{base = [],
             path = ["healthcheck"],
@@ -299,6 +334,31 @@ restart_node(RD) ->
     Body = [{success, true}],
     {true, wrq:append_to_response_body(mochijson2:encode(Body), RD)}.
 
+get_node_aae(ReqData) ->
+    riak_explorer_command(ReqData, aae_status).
+     
+get_node_status(ReqData) ->
+    riak_explorer_command(ReqData, status).
+     
+get_node_ringready(ReqData) ->
+    riak_explorer_command(ReqData, ringready).
+
+get_node_transfers(ReqData) ->
+    riak_explorer_command(ReqData, transfers).
+
+get_node_bucket_types(ReqData) ->
+    riak_explorer_command(ReqData, bucket_types).
+
+get_node_bucket_type(ReqData) ->
+    Type = wrq:path_info(bucket_type, ReqData),
+    riak_explorer_command(ReqData, bucket_type, [Type]).
+
+set_node_bucket_type(ReqData) ->
+    Props = wrq:req_body(ReqData),
+    Type = wrq:path_info(bucket_type, ReqData),
+    {Response, ReqData1} = riak_explorer_command(ReqData, create_bucket_type, [list_to_binary(Type), Props]),
+    {true, wrq:append_to_response_body(Response, ReqData1)}.
+
 healthcheck(ReqData) ->
     {[{success, true}], ReqData}.
 
@@ -420,3 +480,30 @@ static_filename(ReqData) ->
     filename:join([?STATIC_ROOT, Resource]).
 
 hash_body(Body) -> mochihex:to_hex(binary_to_list(crypto:hash(sha,Body))).
+
+riak_explorer_command(ReqData, Command) ->
+    riak_explorer_command(ReqData, Command, []).
+
+riak_explorer_command(ReqData, Command, Args) ->
+    NodeKey = wrq:path_info(node_key, ReqData),
+    case {rms_node_manager:get_node_http_url(NodeKey),
+          rms_node_manager:get_node_name(NodeKey)} of
+        {{ok,U},{ok,N}} when
+              is_list(U) and is_list(N) ->
+            riak_explorer_command(ReqData, Command, U, N, Args);
+        _ ->
+            {mochijson2:encode(
+               [{error, <<"Unable to retrieve node key or node name">>}]
+              ), ReqData}
+    end.
+
+riak_explorer_command(ReqData, Command, Url, Node, Args) ->
+    Args1 = [list_to_binary(Url)|[list_to_binary(Node)|Args]],
+    case erlang:apply(riak_explorer_client, Command, Args1) of
+        {ok, Body} ->
+            {Body, ReqData};
+        {error, Reason} ->
+            {mochijson2:encode(
+               [{error, list_to_binary(io_lib:format("~p", [Reason]))}]
+              ), ReqData}
+    end.
