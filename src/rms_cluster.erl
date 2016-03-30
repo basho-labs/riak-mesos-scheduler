@@ -174,15 +174,15 @@ shutdown(_Event, Cluster) ->
 requested(_Event, _From, Cluster) ->
     {reply, {error, unhandled_event}, requested, Cluster}.
 
--spec undefined(event(), from(), cluster_state()) -> state_cb_return().
+-spec undefined(event(), from(), cluster_state()) -> state_cb_reply().
 undefined(_Event, _From, Cluster) ->
     {reply, {error, unhandled_event}, undefined, Cluster}.
 
--spec shutting_down(event(), from(), cluster_state()) -> state_cb_return().
+-spec shutting_down(event(), from(), cluster_state()) -> state_cb_reply().
 shutting_down(_Event, _From, Cluster) ->
     {reply, {error, unhandled_event}, shutting_down, Cluster}.
 
--spec shutdown(event(), from(), cluster_state()) -> state_cb_return().
+-spec shutdown(event(), from(), cluster_state()) -> state_cb_reply().
 shutdown(_Event, _From, Cluster) ->
     {reply, {error, unhandled_event}, shutdown, Cluster}.
 
@@ -311,11 +311,11 @@ get_cluster(Key) ->
             {error, Reason}
     end.
 
--spec add_cluster(cluster_state()) -> ok | {error, term()}.
+-spec add_cluster({atom(), cluster_state()}) -> ok | {error, term()}.
 add_cluster({State, Cluster}) ->
     rms_metadata:add_cluster(to_list({State, Cluster})).
 
--spec update_cluster(key(), cluster_state()) -> ok | {error, term()}.
+-spec update_cluster(key(), {atom(), cluster_state()}) -> ok | {error, term()}.
 update_cluster(Key, {State, Cluster}) ->
     rms_metadata:update_cluster(Key, to_list({State, Cluster})).
 
@@ -383,7 +383,7 @@ do_delete([ExistingNodeKey|Rest]) ->
             {error, Reason}
     end.
 
--spec from_list(rms_metadata:cluster_state()) -> cluster_state().
+-spec from_list(rms_metadata:cluster_state()) -> {atom(), cluster_state()}.
 from_list(ClusterList) ->
     {proplists:get_value(status, ClusterList),
      #cluster{key = proplists:get_value(key, ClusterList),
@@ -393,7 +393,7 @@ from_list(ClusterList) ->
               node_keys = proplists:get_value(node_keys, ClusterList),
               generation = proplists:get_value(generation, ClusterList)}}.
 
--spec to_list(cluster_state()) -> rms_metadata:cluster_state().
+-spec to_list({atom(), cluster_state()}) -> rms_metadata:cluster_state().
 to_list({State,
          #cluster{key = Key,
                   riak_config = RiakConf,
