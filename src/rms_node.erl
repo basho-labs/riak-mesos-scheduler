@@ -88,7 +88,7 @@
                container_path = "" :: string(),
                persistence_id = "" :: string(),
                reconciled = false :: boolean(),
-               attributes = [] :: rms_constraint_helper:attributes()}).
+               attributes = [] :: rms_offer_helper:attributes()}).
 
 -type key() :: string().
 -export_type([key/0]).
@@ -192,7 +192,7 @@ handle_status_update(Pid, TaskStatus, Reason) ->
 set_reconciled(Pid) ->
     gen_fsm:sync_send_all_state_event(Pid, set_reconciled).
 
--spec set_reserve(pid(), string(), string(), string(), rms_constraint_helper:attributes()) ->
+-spec set_reserve(pid(), string(), string(), string(), rms_offer_helper:attributes()) ->
                          ok | {error, term()}.
 set_reserve(Pid, Hostname, AgentIdValue, PersistenceId, Attributes) ->
     gen_fsm:sync_send_all_state_event(

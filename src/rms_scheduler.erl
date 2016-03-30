@@ -110,8 +110,10 @@ disconnected(_SchedulerInfo, State) ->
     lager:warning("Scheduler disconnected.", []),
     {ok, State}.
 
-resource_offers(SchedulerInfo, #'Event.Offers'{offers = Offers}, State) ->
-    {OfferIds, Operations} = apply_offers(Offers),
+resource_offers(SchedulerInfo, #'Event.Offers'{offers = Offers}, #state{scheduler = #scheduler{options = Options}} =
+               State) ->
+    Constraints = proplists:get_value(constraints, Options),
+    {OfferIds, Operations} = apply_offers(Offers, Constraints),
     case length(Operations) of
         0 ->
             ok;
@@ -326,33 +328,35 @@ exec_calls(#state{calls_queue = CallsQueue} = State) ->
             {ok, State1}
     end.
 
--spec apply_offers([erl_mesos:'Offer'()]) ->
+-spec apply_offers([erl_mesos:'Offer'()], rms_offer_helper:constraints()) ->
                           {[erl_mesos:'OfferID'()], [erl_mesos:'Offer.Operation'()]}.
-apply_offers(Offers) ->
-    apply_offers(Offers, [], []).
+apply_offers(Offers, Constraints) ->
+    apply_offers(Offers, Constraints, [], []).
 
 -spec apply_offers([erl_mesos:'Offer'()],
+                   rms_offer_helper:constraints(),
                    [erl_mesos:'OfferID'()], [erl_mesos:'Offer.Operation'()]) ->
                           {[erl_mesos:'OfferID'()], [erl_mesos:'Offer.Operation'()]}.
-apply_offers([Offer | Offers], OfferIds, Operations) ->
-    {OfferId, Operations1} = apply_offer(Offer),
-    apply_offers(Offers, [OfferId | OfferIds],
+apply_offers([Offer | Offers], Constraints, OfferIds, Operations) ->
+    {OfferId, Operations1} = apply_offer(Offer, Constraints),
+    apply_offers(Offers, Constraints, [OfferId | OfferIds],
                  Operations ++ Operations1);
-apply_offers([], OfferIds, Operations) ->
+apply_offers([], _, OfferIds, Operations) ->
     {OfferIds, Operations}.
 
--spec apply_offer(erl_mesos:'Offer'()) ->
+-spec apply_offer(erl_mesos:'Offer'(), rms_offer_helper:constraints()) ->
                          {erl_mesos:'OfferID'(), [erl_mesos:'Offer.Operation'()]}.
-apply_offer(Offer) ->
+apply_offer(Offer, Constraints) ->
     OfferHelper = rms_offer_helper:new(Offer),
+    OfferHelper1 = rms_offer_helper:set_constraints(Constraints, OfferHelper),
     lager:info("Scheduler recevied offer. "
                "Offer id: ~s. "
                "Resources: ~p.",
-               [rms_offer_helper:get_offer_id_value(OfferHelper),
-                rms_offer_helper:resources_to_list(OfferHelper)]),
-    OfferHelper1 = rms_cluster_manager:apply_offer(OfferHelper),
-    OfferId = rms_offer_helper:get_offer_id(OfferHelper1),
-    Operations = rms_offer_helper:operations(OfferHelper1),
+               [rms_offer_helper:get_offer_id_value(OfferHelper1),
+                rms_offer_helper:resources_to_list(OfferHelper1)]),
+    OfferHelper2 = rms_cluster_manager:apply_offer(OfferHelper1),
+    OfferId = rms_offer_helper:get_offer_id(OfferHelper2),
+    Operations = rms_offer_helper:operations(OfferHelper2),
     {OfferId, Operations}.
 
 -spec reconcile_tasks([string()]) -> [erl_mesos:'Call.Reconcile.Task'()].

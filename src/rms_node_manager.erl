@@ -106,7 +106,7 @@ get_node_cluster_key(Key) ->
 get_node_hostname(Key) ->
     rms_node:get_field_value(hostname, Key).
 
--spec get_node_hosts() -> {ok, [string()]}.
+-spec get_node_hosts() -> {ok, rms_offer_helper:hostnames()}.
 get_node_hosts() ->
     {ok, lists:foldl(fun({_, Node}, Accum) -> 
                         case {proplists:get_value(status, Node),
@@ -118,7 +118,7 @@ get_node_hosts() ->
                         end
                 end, [], rms_metadata:get_nodes())}.
 
--spec get_node_attributes() -> {ok, [rms_constraint_helper:attributes()]}.
+-spec get_node_attributes() -> {ok, [rms_offer_helper:attributes_group()]}.
 get_node_attributes() ->
     {ok, lists:foldl(fun({_, Node}, Accum) -> 
                         case {proplists:get_value(status, Node),
@@ -260,10 +260,8 @@ apply_unreserved_offer(NodeKey, OfferHelper) ->
                                                      ContainerPath,
                                                      OfferHelper2),
 
-                    RawAttributes =
-                        rms_offer_helper:get_offer_attributes(OfferHelper3),
                     Attributes =
-                        rms_constraint_helper:attributes_to_list(RawAttributes),
+                        rms_offer_helper:get_attributes(OfferHelper3),
 
                     ok = rms_node:set_reserve(Pid, Hostname, AgentIdValue,
                                       PersistenceId, Attributes),

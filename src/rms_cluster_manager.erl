@@ -153,17 +153,21 @@ executors_to_shutdown([NodeKey|Rest], Accum) ->
 -spec apply_offer(rms_offer_helper:offer_helper()) ->
     rms_offer_helper:offer_helper().
 apply_offer(OfferHelper) ->
+    {ok, NodeHosts} = rms_node_manager:get_node_hosts(),
+    {ok, NodeAttributes} = rms_node_manager:get_node_attributes(),
+    OfferHelper1 = rms_offer_helper:set_node_hostnames(NodeHosts, OfferHelper),
+    OfferHelper2 = rms_offer_helper:set_node_attributes(NodeAttributes, OfferHelper1),
     case rms_node_manager:get_unreconciled_node_keys() of
         N when length(N) > 0 ->
-            OfferHelper;
+            OfferHelper2;
         _ ->
             NodeKeys = rms_node_manager:get_node_keys(),
-            OfferHelper1 = apply_offer(NodeKeys, OfferHelper),
-            case rms_offer_helper:has_tasks_to_launch(OfferHelper1) of
+            OfferHelper3 = apply_offer(NodeKeys, OfferHelper2),
+            case rms_offer_helper:has_tasks_to_launch(OfferHelper3) of
                 true ->
-                    OfferHelper1;
+                    OfferHelper3;
                 false ->
-                    unreserve_volumes(unreserve_resources(OfferHelper1))
+                    unreserve_volumes(unreserve_resources(OfferHelper3))
             end
     end.
 
@@ -244,38 +248,15 @@ schedule_node(NodeKey, NodeKeys, OfferHelper) ->
             apply_reserved_offer(NodeKey, NodeKeys,
                                  OfferHelper);
         false ->
-            %% New node.
-            %% TODO, improve so we reject all unreserved portions of an offer.
-            %% probably by moving constraint helper into offer helper or something
-            OfferHostname = rms_offer_helper:get_hostname(OfferHelper),
-            OfferAttributes = rms_offer_helper:get_offer_attributes(OfferHelper),
-            Constraints = rms_config:constraints(),
-            {ok, NodeHosts} = rms_node_manager:get_node_hosts(),
-            {ok, NodeAttributes} = rms_node_manager:get_node_attributes(),
-            case rms_constraint_helper:can_accept(
-                   OfferHostname, OfferAttributes, 
-                   Constraints, 
-                   NodeHosts, NodeAttributes) of
+            %% New Node
+            case rms_offer_helper:can_fit_constraints(OfferHelper) of
                 true ->
                     apply_unreserved_offer(NodeKey, NodeKeys,
                                            OfferHelper);
-                %% maybe ->
-                %%     case length(Offers) > 0 of
-                %%         true ->
-                %%             lager:info("Offer was filtered due to constraints: ~p. "
-                %%                        "Node hosts: ~p. "
-                %%                        "Node Attributes: ~p. ",
-                %%                        [Constraints, NodeHosts, NodeAttributes]),
-                %%             apply_offer(NodeKeys, OfferHelper);
-                %%         false ->
-                %%                 apply_unreserved_offer(NodeKey, NodeKeys,
-                %%                            OfferHelper)
-                %%     end;
                 false ->
-                    lager:info("Offer was filtered due to constraints: ~p. "
-                                   "Node hosts: ~p. "
-                               "Node Attributes: ~p. ",
-                               [Constraints, NodeHosts, NodeAttributes]),
+                    Constraints = rms_offer_helper:get_constraints(OfferHelper),
+                    lager:info("Offer was filtered due to constraints: ~p. ",
+                               [Constraints]),
                     apply_offer(NodeKeys, OfferHelper)
             end
     end.
