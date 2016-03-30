@@ -57,7 +57,8 @@
                   riak_config = <<>> :: binary(),
                   advanced_config = <<>> :: binary(),
                   node_keys = [] :: [rms_node:key()],
-                  generation = 1 :: pos_integer()}).
+                  generation = 1 :: pos_integer(),
+				  to_restart = {[], []} :: {list(rms_node:key()), list(rms_node:key())}}).
 
 -type key() :: string().
 -export_type([key/0]).
@@ -166,6 +167,7 @@ running(_Event, Cluster) ->
     {stop, {unhandled_event, _Event}, Cluster}.
 
 -spec restarting(event(), cluster_state()) -> state_cb_return().
+%% TODO Handle timeout when restarting (i.e. when node has not come back soon enougH)
 restarting(_Event, Cluster) ->
     {stop, {unhandled_event, _Event}, Cluster}.
 
@@ -258,9 +260,13 @@ handle_sync_event({leave, NodeKey}, _From, StateName,
             {reply, {error, Reason}, StateName, Cluster}
     end;
 handle_sync_event(commence_restart, _From, _StateName,
-				  #cluster{key=_Key} = Cluster) ->
-	%% TODO The thing.
-	{reply, ok, restarting, Cluster};
+				  #cluster{key=Key} = Cluster) ->
+	NodeKeys = rms_node_manager:get_running_node_keys(Key),
+	%% We'll move nodes from left to right as we confirm they've restarted
+	%% and stabilised
+	Cluster1 = Cluster#cluster{ to_restart = { NodeKeys, [] } },
+	RestartTimeout = 30000, %% TODO Validate this
+	{reply, ok, restarting, Cluster1, RestartTimeout};
 handle_sync_event(_Event, _From, StateName, State) ->
     {reply, {error, {unhandled_event, _Event}}, StateName, State}.
 
