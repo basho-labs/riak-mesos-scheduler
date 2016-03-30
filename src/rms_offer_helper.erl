@@ -8,6 +8,7 @@
          get_offer_id/1,
          get_offer_id_value/1,
          get_offer_attributes/1,
+         get_attributes/1,
          get_agent_id/1,
          get_agent_id_value/1,
          get_hostname/1,
@@ -29,7 +30,11 @@
          get_volumes_to_destroy/1,
          get_tasks_to_launch/1]).
 
--export([add_task_to_launch/2,
+-export([set_node_hostnames/2,
+         set_node_attributes/2,
+         set_constraints/2,
+         can_fit_constraints/1,
+         add_task_to_launch/2,
          has_reservations/1,
          has_volumes/1,
          make_reservation/7,
@@ -51,6 +56,9 @@
 -record(offer_helper, {offer :: erl_mesos:'Offer'(),
                        persistence_ids = [] :: [string()],
                        attributes = [] :: attributes(),
+                       constraints = [] :: constraints(),
+                       node_attributes = [] :: attributes_group(),
+                       node_hostnames = [] :: hostnames(),
                        applied_reserved_resources = [] :: erl_mesos_utils:resources(),
                        applied_unreserved_resources = [] :: erl_mesos_utils:resources(),
                        reserved_resources :: erl_mesos_utils:resources(),
@@ -70,13 +78,17 @@
 
 -type attribute() :: {string(), string()}.
 -type attributes() :: [attribute()].
--export_type([attributes/0]).
+-type attributes_group() :: [attributes()].
+-export_type([attributes/0, attributes_group/0]).
+
+-type hostname() :: string().
+-type hostnames() :: [hostname()].
+-export_type([hostnames/0]).
 
 %% External functions.
 
 -spec new(erl_mesos:'Offer'()) -> offer_helper().
-new(#'Offer'{resources = Resources,
-             attributes = RawAttributes} = Offer) ->
+new(#'Offer'{resources = Resources} = Offer) ->
     PersistenceIds = get_persistence_ids(Resources, []),
     ReservedCpus = get_scalar_resource_value("cpus", true, Resources),
     ReservedMem = get_scalar_resource_value("mem", true, Resources),
@@ -90,57 +102,58 @@ new(#'Offer'{resources = Resources,
     UnreservedPorts = get_ranges_resource_values("ports", false, Resources),
     UnreservedResources = resources(UnreservedCpus, UnreservedMem,
                                     UnreservedDisk, UnreservedPorts),
-    Attributes = attributes_to_list(RawAttributes),
+    OfferAttributes = get_offer_attributes(Offer),
+    Attributes = attributes_to_list(OfferAttributes),
     #offer_helper{offer = Offer,
                   persistence_ids = PersistenceIds,
                   reserved_resources = ReservedResources,
                   unreserved_resources = UnreservedResources,
                   attributes = Attributes}.
 
--spec apply_constraints(string(), [erl_mesos:'Attribute'()], 
-                 constraints(), 
-                 [string()], 
-                 [attributes()]) -> boolean() | maybe.
-apply_constraints(OfferHostname, OfferAttributes, Constraints, NodeHosts, NodeAttributes) ->
-    apply_constraints(OfferHostname, OfferAttributes, Constraints, NodeHosts, NodeAttributes, true).
+-spec set_node_hostnames(hostnames(), offer_helper()) -> offer_helper().
+set_node_hostnames(NodeHostnames, OfferHelper) -> 
+    OfferHelper#offer_helper{node_hostnames=NodeHostnames}.
 
--spec apply_constraints(string(), [erl_mesos:'Attribute'()], 
-                 [constraint()], 
-                 [string()], 
-                 [attributes()],
-                 true | maybe) -> boolean() | maybe.
-apply_constraints(_, _,[], _, _, Last) ->
-    Last;
-apply_constraints(OfferHostname, OfferAttributes, 
-           [["hostname"|Constraint]|Rest], 
-           NodeHosts, NodeAttributes, Last) ->
-    case apply_constraint(Constraint, OfferHostname, NodeHosts) of
-        false -> 
-            false;
-        maybe ->
-            apply_constraints(OfferHostname, OfferAttributes, Rest, NodeHosts, 
-                       NodeAttributes, maybe);
+-spec set_node_attributes(attributes_group(), offer_helper()) -> offer_helper().
+set_node_attributes(NodeAttributes, OfferHelper) -> 
+    OfferHelper#offer_helper{node_attributes=NodeAttributes}.
+
+-spec set_constraints(constraints(), offer_helper()) -> offer_helper().
+set_constraints(Constraints, OfferHelper) -> 
+    OfferHelper#offer_helper{constraints=Constraints}.
+
+-spec can_fit_constraints(offer_helper()) -> boolean().
+can_fit_constraints(#offer_helper{
+                       constraints=Constraints,
+                       node_hostnames=NodeHostnames,
+                       node_attributes=NodeAttributes}=OfferHelper) ->
+    can_fit_constraints(Constraints, NodeHostnames, NodeAttributes, OfferHelper).
+
+-spec can_fit_constraints(constraints(), hostnames(), attributes_group(), 
+                          offer_helper()) -> boolean().
+can_fit_constraints([], _, _, _) ->
+    true;
+can_fit_constraints([["hostname"|Constraint]|Rest], NodeHosts, NodeAttributes, 
+                    OfferHelper) ->
+    OfferHostname = get_hostname(OfferHelper),
+    case can_fit_constraint(Constraint, OfferHostname, NodeHosts) of
         true ->
-            apply_constraints(OfferHostname, OfferAttributes, Rest, NodeHosts, 
-                       NodeAttributes, Last)
+            can_fit_constraints(Rest, NodeHosts, NodeAttributes, OfferHelper);
+        false -> 
+            false
     end;
-apply_constraints(OfferHostname, OfferAttributes, 
-           [[Name|Constraint]|Rest], 
-           NodeHosts, NodeAttributes, Last) ->
-    Attributes = attributes_to_list(OfferAttributes, []),
+can_fit_constraints([[Name|Constraint]|Rest], NodeHosts, NodeAttributes, OfferHelper) ->
+    Attributes = get_attributes(OfferHelper),
     A = proplists:get_value(Name, Attributes),
-    As = lists:foldl(fun(X, Accum) -> 
-                             [proplists:get_value(Name, X)|Accum]
-                     end, [], NodeAttributes),
-    case apply_constraint(Constraint, A, As) of
-        false -> 
-            false;
-        maybe ->
-            apply_constraints(OfferHostname, OfferAttributes, Rest, NodeHosts, 
-                       NodeAttributes, maybe);
+    As = lists:foldl(
+           fun(X, Accum) -> 
+                   [proplists:get_value(Name, X)|Accum]
+           end, [], NodeAttributes),
+    case can_fit_constraint(Constraint, A, As) of
         true ->
-            apply_constraints(OfferHostname, OfferAttributes, Rest, NodeHosts, 
-                       NodeAttributes, Last)
+            can_fit_constraints(Rest, NodeHosts, NodeAttributes, OfferHelper);
+        false -> 
+            false
     end.
 
 -spec get_offer_id(offer_helper()|erl_mesos:'Offer'()) -> erl_mesos:'OfferID'().
@@ -156,6 +169,10 @@ get_offer_id_value(OfferHelper) ->
 
 -spec get_offer_attributes(offer_helper()) -> [erl_mesos:'Attribute'()].
 get_offer_attributes(#offer_helper{offer = #'Offer'{attributes = Attributes}}) ->
+    Attributes.
+
+-spec get_attributes(offer_helper()) -> attributes().
+get_attributes(#offer_helper{attributes = Attributes}) ->
     Attributes.
 
 -spec get_agent_id(offer_helper()) -> erl_mesos:'AgentID'().
@@ -750,46 +767,46 @@ attributes_to_list([#'Attribute'{
                      scalar=#'Value.Text'{value=Value}}|Rest], Accum) ->
     attributes_to_list(Rest, [{Name, Value}|Accum]).
 
--spec apply_constraint(constraint(), string(), [string()]) -> boolean()|maybe.
-apply_constraint(["UNIQUE"], V, Vs) -> 
+-spec can_fit_constraint(constraint(), string(), [string()]) -> boolean()|maybe.
+can_fit_constraint(["UNIQUE"], V, Vs) -> 
     %% Unique Value
     not lists:member(V, Vs);
-apply_constraint(["GROUP_BY"], V, Vs) ->
+can_fit_constraint(["GROUP_BY"], V, Vs) ->
     %% Groupby Value. If the value isn't unique, then attempt to
     %% schedule it on a different offer. If there are no other offers,
     %% go ahead and schedule it on this one. In other words, attempt
     %% to spread across all values, but don't refuse offers.
-    case apply_constraint(["UNIQUE"], V, Vs) of
+    case can_fit_constraint(["UNIQUE"], V, Vs) of
         true -> true;
         false -> maybe
     end;
-apply_constraint(["GROUP_BY", Param], V, Vs) ->
+can_fit_constraint(["GROUP_BY", Param], V, Vs) ->
     %% Compare total number of hosts to number of scheduled hosts
     case {list_to_integer(Param), length(Vs)} of
         %% There should still be unclaimed values, wait if not unique
         {N1, N2} when N1 > N2 ->
-            apply_constraint(["UNIQUE"], V, Vs);
+            can_fit_constraint(["UNIQUE"], V, Vs);
         %% There's a node on every host already, go ahead and use the offer
         _ ->
             %% TODO: get more sophisticated about attempting to spread
             %% nodes evenly, because we already know how many nodes there are
             true
     end;
-apply_constraint(["CLUSTER", V], V, _) -> 
+can_fit_constraint(["CLUSTER", V], V, _) -> 
     %% Cluster on value, values match
     true;
-apply_constraint(["CLUSTER", _], _, _) -> 
+can_fit_constraint(["CLUSTER", _], _, _) -> 
     %% Cluster on value, hosts do not match
     false;
-apply_constraint(["LIKE", Param], V, _) ->
+can_fit_constraint(["LIKE", Param], V, _) ->
     %% Value is like regex
     case re:run(V, Param) of
         {match, _} -> true;
         nomatch -> false
     end;
-apply_constraint(["UNLIKE", Param], V, Vs) -> 
+can_fit_constraint(["UNLIKE", Param], V, Vs) -> 
     %% Value is not like regex
-    not apply_constraint(["LIKE", Param], V, Vs);
-apply_constraint(_, _, _) -> 
+    not can_fit_constraint(["LIKE", Param], V, Vs);
+can_fit_constraint(_, _, _) -> 
     %% Undefined constraint, just schedule it
     true.
