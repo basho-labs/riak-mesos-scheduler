@@ -31,6 +31,7 @@
          add_cluster/1,
          set_cluster_riak_config/2,
          set_cluster_advanced_config/2,
+		 restart_cluster/1,
          delete_cluster/1]).
 
 -export([add_node/1]).
@@ -116,6 +117,17 @@ set_cluster_advanced_config(Key, AdvancedConfig) ->
         {error, Reason} ->
             {error, Reason}
     end.
+
+%% TODO Rename this to be clearer that returning 'ok' just means we've
+%% *commenced* restarting, not *completed*
+-spec restart_cluster(rms_cluster:key()) -> ok | {error, term()}.
+restart_cluster(Key) ->
+	case get_cluster_pid(Key) of
+		{ok, Pid} ->
+			rms_cluster:commence_restart(Pid);
+		{error, Reason} ->
+			{error, Reason}
+	end.
 
 -spec delete_cluster(rms_cluster:key()) -> ok | {error, term()}.
 delete_cluster(Key) ->

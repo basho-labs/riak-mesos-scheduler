@@ -281,8 +281,8 @@ handle_sync_event({leave, NodeKey}, _From, StateName,
         {error, Reason} ->
             {reply, {error, Reason}, StateName, Cluster}
     end;
-handle_sync_event(commence_restart, _From, StateName,
-				  #cluster{key=Key} = Cluster) ->
+handle_sync_event(commence_restart, _From, _StateName,
+				  #cluster{key=_Key} = Cluster) ->
 	%% TODO The thing.
 	{reply, ok, restarting, Cluster};
 handle_sync_event(_Event, _From, StateName, State) ->
