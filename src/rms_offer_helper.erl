@@ -7,6 +7,7 @@
 -export([new/1,
          get_offer_id/1,
          get_offer_id_value/1,
+         get_offer_attributes/1,
          get_agent_id/1,
          get_agent_id_value/1,
          get_hostname/1,
@@ -84,7 +85,9 @@ new(#'Offer'{resources = Resources} = Offer) ->
                   reserved_resources = ReservedResources,
                   unreserved_resources = UnreservedResources}.
 
--spec get_offer_id(offer_helper()) -> erl_mesos:'OfferID'().
+-spec get_offer_id(offer_helper()|erl_mesos:'Offer'()) -> erl_mesos:'OfferID'().
+get_offer_id(#'Offer'{id = OfferId}) ->
+    OfferId;
 get_offer_id(#offer_helper{offer = #'Offer'{id = OfferId}}) ->
     OfferId.
 
@@ -92,6 +95,10 @@ get_offer_id(#offer_helper{offer = #'Offer'{id = OfferId}}) ->
 get_offer_id_value(OfferHelper) ->
     #'OfferID'{value = OfferIdValue} = get_offer_id(OfferHelper),
     OfferIdValue.
+
+-spec get_offer_attributes(offer_helper()) -> [erl_mesos:'Attribute'()].
+get_offer_attributes(#offer_helper{offer = #'Offer'{attributes = Attributes}}) ->
+    Attributes.
 
 -spec get_agent_id(offer_helper()) -> erl_mesos:'AgentID'().
 get_agent_id(#offer_helper{offer = #'Offer'{agent_id = AgentId}}) ->

@@ -245,8 +245,39 @@ schedule_node(NodeKey, NodeKeys, OfferHelper) ->
                                  OfferHelper);
         false ->
             %% New node.
-            apply_unreserved_offer(NodeKey, NodeKeys,
-                                   OfferHelper)
+            %% TODO, improve so we reject all unreserved portions of an offer.
+            %% probably by moving constraint helper into offer helper or something
+            OfferHostname = rms_offer_helper:get_hostname(OfferHelper),
+            OfferAttributes = rms_offer_helper:get_offer_attributes(OfferHelper),
+            Constraints = rms_config:constraints(),
+            {ok, NodeHosts} = rms_node_manager:get_node_hosts(),
+            {ok, NodeAttributes} = rms_node_manager:get_node_attributes(),
+            case rms_constraint_helper:can_accept(
+                   OfferHostname, OfferAttributes, 
+                   Constraints, 
+                   NodeHosts, NodeAttributes) of
+                true ->
+                    apply_unreserved_offer(NodeKey, NodeKeys,
+                                           OfferHelper);
+                %% maybe ->
+                %%     case length(Offers) > 0 of
+                %%         true ->
+                %%             lager:info("Offer was filtered due to constraints: ~p. "
+                %%                        "Node hosts: ~p. "
+                %%                        "Node Attributes: ~p. ",
+                %%                        [Constraints, NodeHosts, NodeAttributes]),
+                %%             apply_offer(NodeKeys, OfferHelper);
+                %%         false ->
+                %%                 apply_unreserved_offer(NodeKey, NodeKeys,
+                %%                            OfferHelper)
+                %%     end;
+                false ->
+                    lager:info("Offer was filtered due to constraints: ~p. "
+                                   "Node hosts: ~p. "
+                               "Node Attributes: ~p. ",
+                               [Constraints, NodeHosts, NodeAttributes]),
+                    apply_offer(NodeKeys, OfferHelper)
+            end
     end.
 
 -spec apply_unreserved_offer(rms_node:key(), [rms_node:key()],

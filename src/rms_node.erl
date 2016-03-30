@@ -40,7 +40,7 @@
          can_be_scheduled/1,
          has_reservation/1,
          can_be_shutdown/1,
-         set_reserve/4,
+         set_reserve/5,
          set_unreserve/1,
          set_agent_info/8,
          delete/1,
@@ -87,7 +87,8 @@
                agent_id_value = "" :: string(),
                container_path = "" :: string(),
                persistence_id = "" :: string(),
-               reconciled = false :: boolean()}).
+               reconciled = false :: boolean(),
+               attributes = [] :: rms_constraint_helper:attributes()}).
 
 -type key() :: string().
 -export_type([key/0]).
@@ -191,11 +192,11 @@ handle_status_update(Pid, TaskStatus, Reason) ->
 set_reconciled(Pid) ->
     gen_fsm:sync_send_all_state_event(Pid, set_reconciled).
 
--spec set_reserve(pid(), string(), string(), string()) ->
+-spec set_reserve(pid(), string(), string(), string(), rms_constraint_helper:attributes()) ->
                          ok | {error, term()}.
-set_reserve(Pid, Hostname, AgentIdValue, PersistenceId) ->
+set_reserve(Pid, Hostname, AgentIdValue, PersistenceId, Attributes) ->
     gen_fsm:sync_send_all_state_event(
-      Pid, {set_reserve, Hostname, AgentIdValue, PersistenceId}).
+      Pid, {set_reserve, Hostname, AgentIdValue, PersistenceId, Attributes}).
 
 -spec set_unreserve(pid()) -> ok | {error, term()}.
 set_unreserve(Pid) ->
@@ -361,10 +362,11 @@ starting(_Event, _From, Node) ->
 -spec started(event(), from(), node_state()) -> state_cb_reply().
 started({status_update, StatusUpdate, _}, _From, Node) ->
     case StatusUpdate of
-        'TASK_FAILED' -> sync_update_node(started, restarting, Node);
-        'TASK_LOST' -> sync_update_node(started, restarting, Node);
-        'TASK_ERROR' -> sync_update_node(started, restarting, Node);
-        'TASK_KILLED' -> sync_update_node(started, restarting, Node);
+        'TASK_FINISHED' -> sync_update_node(started, reserved, Node);
+        'TASK_FAILED' -> sync_update_node(started, reserved, Node);
+        'TASK_LOST' -> sync_update_node(started, reserved, Node);
+        'TASK_ERROR' -> sync_update_node(started, reserved, Node);
+        'TASK_KILLED' -> sync_update_node(started, reserved, Node);
         _ -> {reply, ok, started, Node}
     end;
 started(_Event, _From, Node) ->
@@ -411,12 +413,13 @@ restarting(_Event, _From, Node) ->
 handle_sync_event({update_node_state, NewState},
                   _From, State, Node) ->
     sync_update_node(State, NewState, Node);
-handle_sync_event({set_reserve, Hostname, AgentIdValue, PersistenceId},
+handle_sync_event({set_reserve, Hostname, AgentIdValue, PersistenceId, Attributes},
                   _From, State, Node) ->
     lager:info("Setting reservation for node: ~p", [Node]),
     Node1 = Node#node{hostname = Hostname,
                       agent_id_value = AgentIdValue,
-                      persistence_id = PersistenceId},
+                      persistence_id = PersistenceId,
+                      attributes = Attributes},
     sync_update_node(State, reserved, Node, Node1);
 handle_sync_event({set_agent_info,
                    NodeName,
@@ -555,7 +558,8 @@ join(State, NewState, #node{cluster_key = Cluster, key = Key} = Node) ->
 unreserve(State, NewState, Node) ->
     Node1 = Node#node{hostname = "",
                       agent_id_value = "",
-                      persistence_id = ""},
+                      persistence_id = "",
+                      attributes = []},
     sync_update_node(State, NewState, Node, Node1).
 
 -spec from_list(rms_metadata:node_state()) -> {state(), node_state()}.
@@ -571,7 +575,8 @@ from_list(NodeList) ->
            agent_id_value = proplists:get_value(agent_id_value, NodeList),
            container_path = proplists:get_value(container_path, NodeList),
            persistence_id = proplists:get_value(persistence_id, NodeList),
-           reconciled = proplists:get_value(reconciled, NodeList)}}.
+           reconciled = proplists:get_value(reconciled, NodeList),
+           attributes = proplists:get_value(attributes, NodeList)}}.
 
 -spec to_list({state(), node_state()}) -> rms_metadata:node_state().
 to_list(
@@ -586,7 +591,8 @@ to_list(
          agent_id_value = AgentIdValue,
          container_path = ContainerPath,
          persistence_id = PersistenceId,
-         reconciled = Reconciled}}) ->
+         reconciled = Reconciled,
+         attributes = Attributes}}) ->
     [{key, Key},
      {status, Status},
      {cluster_key, ClusterKey},
@@ -598,4 +604,5 @@ to_list(
      {agent_id_value, AgentIdValue},
      {container_path, ContainerPath},
      {persistence_id, PersistenceId},
-     {reconciled, Reconciled}].
+     {reconciled, Reconciled},
+     {attributes, Attributes}].

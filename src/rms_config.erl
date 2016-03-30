@@ -21,6 +21,7 @@
 -module(rms_config).
 
 -export([
+         constraints/0,
          zk/0,
          framework_name/0,
          webui_url/0, 
@@ -32,8 +33,20 @@
 -define(DEFAULT_NAME, "riak").
 -define(DEFAULT_HOSTNAME, "riak.mesos").
 -define(DEFAULT_ZK, "master.mesos:2181").
+-define(DEFAULT_CONSTRAINTS, "[[\"hostname\", \"GROUP_BY\"]]").
 
 %% Helper functions.
+
+constraints() ->
+    ConstraintsStr = get_value(constraints, ?DEFAULT_CONSTRAINTS, string),
+    ConstraintsBin = mochijson2:decode(ConstraintsStr),
+    lists:foldr(
+      fun(X1, Accum1) -> 
+              [lists:foldr(
+                fun(X2, Accum2) -> 
+                        [binary_to_list(X2)|Accum2]
+                end, [], X1)|Accum1]
+      end, [], ConstraintsBin).
 
 zk() ->
     get_value(zk, ?DEFAULT_ZK, string).

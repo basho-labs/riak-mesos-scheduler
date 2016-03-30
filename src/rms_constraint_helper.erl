@@ -22,59 +22,20 @@
 
 -include_lib("erl_mesos/include/scheduler_protobuf.hrl").
 
--export([can_accept/4]).
+-export([can_accept/5,
+         attributes_to_list/1]).
 
 -type constraint() :: [string()].
 -type attribute() :: {string(), string()}.
 -type attributes() :: [attribute()].
--type cluster_attributes() :: [attributes()].
+-export_type([attributes/0]).
 
--spec can_accept(erl_mesos:'Offer'(), 
-                 [constraint()], 
-                 [string()], 
-                 cluster_attributes()) -> boolean() | maybe.
-can_accept(Offer, Constraints, ClusterHosts, ClusterAttributes) ->
-    can_accept(Offer, Constraints, ClusterHosts, ClusterAttributes, true).
-
--spec can_accept(erl_mesos:'Offer'(), 
-                 [constraint()], 
-                 [string()], 
-                 cluster_attributes(),
-                 true | maybe) -> boolean() | maybe.
-can_accept(_,[], _, _, Last) ->
-    Last;
-can_accept(#'Offer'{hostname=Host}=Offer, 
-           [["hostname"|Constraint]|Rest], 
-           ClusterHosts, ClusterAttributes, Last) ->
-    case check_constraint(Constraint, Host, ClusterHosts) of
-        false -> 
-            false;
-        maybe ->
-            can_accept(Offer, Rest, ClusterHosts, 
-                       ClusterAttributes, maybe);
-        true ->
-            can_accept(Offer, Rest, ClusterHosts, 
-                       ClusterAttributes, Last)
-    end;
-can_accept(#'Offer'{attributes=RawAttributes}=Offer, 
-           [[Name|Constraint]|Rest], 
-           ClusterHosts, ClusterAttributes, Last) ->
-    Attributes = attributes_to_list(RawAttributes, []),
-    A = proplists:get_value(Name, Attributes),
-    As = lists:foldl(fun(X, Accum) -> 
-                             proplists:get_value(Name, X) 
-                     end, [], ClusterAttributes),
-    case check_constraint(Constraint, A, As) of
-        false -> 
-            false;
-        maybe ->
-            can_accept(Offer, Rest, ClusterHosts, 
-                       ClusterAttributes, maybe);
-        true ->
-            can_accept(Offer, Rest, ClusterHosts, 
-                       ClusterAttributes, Last)
-    end.
-
+-spec attributes_to_list([erl_mesos:'Attribute'()]) -> attributes().
+attributes_to_list(RawAttributes) ->
+    attributes_to_list(RawAttributes, []).
+    
+-spec attributes_to_list([erl_mesos:'Attribute'()],
+                         attributes()) -> attributes().
 attributes_to_list([], Accum) ->
     Accum;
 attributes_to_list([#'Attribute'{
@@ -97,6 +58,52 @@ attributes_to_list([#'Attribute'{
                      type='TEXT', 
                      scalar=#'Value.Text'{value=Value}}|Rest], Accum) ->
     attributes_to_list(Rest, [{Name, Value}|Accum]).
+
+-spec can_accept(string(), [erl_mesos:'Attribute'()], 
+                 [constraint()], 
+                 [string()], 
+                 [attributes()]) -> boolean() | maybe.
+can_accept(OfferHostname, OfferAttributes, Constraints, NodeHosts, NodeAttributes) ->
+    can_accept(OfferHostname, OfferAttributes, Constraints, NodeHosts, NodeAttributes, true).
+
+-spec can_accept(string(), [erl_mesos:'Attribute'()], 
+                 [constraint()], 
+                 [string()], 
+                 [attributes()],
+                 true | maybe) -> boolean() | maybe.
+can_accept(_, _,[], _, _, Last) ->
+    Last;
+can_accept(OfferHostname, OfferAttributes, 
+           [["hostname"|Constraint]|Rest], 
+           NodeHosts, NodeAttributes, Last) ->
+    case check_constraint(Constraint, OfferHostname, NodeHosts) of
+        false -> 
+            false;
+        maybe ->
+            can_accept(OfferHostname, OfferAttributes, Rest, NodeHosts, 
+                       NodeAttributes, maybe);
+        true ->
+            can_accept(OfferHostname, OfferAttributes, Rest, NodeHosts, 
+                       NodeAttributes, Last)
+    end;
+can_accept(OfferHostname, OfferAttributes, 
+           [[Name|Constraint]|Rest], 
+           NodeHosts, NodeAttributes, Last) ->
+    Attributes = attributes_to_list(OfferAttributes, []),
+    A = proplists:get_value(Name, Attributes),
+    As = lists:foldl(fun(X, Accum) -> 
+                             [proplists:get_value(Name, X)|Accum]
+                     end, [], NodeAttributes),
+    case check_constraint(Constraint, A, As) of
+        false -> 
+            false;
+        maybe ->
+            can_accept(OfferHostname, OfferAttributes, Rest, NodeHosts, 
+                       NodeAttributes, maybe);
+        true ->
+            can_accept(OfferHostname, OfferAttributes, Rest, NodeHosts, 
+                       NodeAttributes, Last)
+    end.
 
 -spec check_constraint(constraint(), string(), [string()]) -> boolean()|maybe.
 check_constraint(["UNIQUE"], V, Vs) -> 
