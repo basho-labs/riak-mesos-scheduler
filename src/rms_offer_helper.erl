@@ -282,7 +282,7 @@ get_unreserved_applied_resources(#offer_helper{applied_unreserved_resources =
     AppliedUnreservedResources.
 
 -spec can_fit_reserved(undefined | float(), undefined | float(),
-                       undefined | float(), undefined | pos_integer(),
+                       undefined | float(), undefined | non_neg_integer(),
                        offer_helper()) ->
     boolean().
 can_fit_reserved(Cpus, Mem, Disk, NumPorts, OfferHelper) ->
@@ -292,7 +292,7 @@ can_fit_reserved(Cpus, Mem, Disk, NumPorts, OfferHelper) ->
     length(get_reserved_resources_ports(OfferHelper)) >= NumPorts.
 
 -spec can_fit_unreserved(undefined | float(), undefined | float(),
-                         undefined | float(), undefined | pos_integer(),
+                         undefined | float(), undefined | non_neg_integer(),
                          offer_helper()) ->
     boolean().
 can_fit_unreserved(Cpus, Mem, Disk, NumPorts, OfferHelper) ->
