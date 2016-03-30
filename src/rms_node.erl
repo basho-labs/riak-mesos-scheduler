@@ -44,7 +44,6 @@
          set_unreserve/1,
          set_agent_info/8,
          delete/1,
-         state_change/2,
          handle_status_update/3]).
 
 %%% gen_fsm callbacks
@@ -225,10 +224,6 @@ set_agent_info(Pid,
 -spec delete(pid()) -> ok | {error, term()}.
 delete(Pid) ->
     gen_fsm:sync_send_all_state_event(Pid, delete).
-
--spec state_change(pid(), term()) -> ok.
-state_change(Pid, State) ->
-    ok = gen_fsm:sync_send_all_state_event(Pid, {update_node_state, State}).
 
 %%% gen_fsm callbacks
 -spec init({key(), rms_cluster:key()}) ->
@@ -411,9 +406,6 @@ restarting(_Event, _From, Node) ->
 
 -spec handle_sync_event(event(), from(), state(), node_state()) ->
                                state_cb_reply().
-handle_sync_event({update_node_state, NewState},
-                  _From, State, Node) ->
-    sync_update_node(State, NewState, Node);
 handle_sync_event({set_reserve, Hostname, AgentIdValue, PersistenceId},
                   _From, State, Node) ->
     lager:info("Setting reservation for node: ~p", [Node]),
