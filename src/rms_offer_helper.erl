@@ -151,12 +151,12 @@ get_unreserved_resources_disk(OfferHelper) ->
 get_unreserved_resources_ports(OfferHelper) ->
     erl_mesos_utils:resources_ports(get_unreserved_resources(OfferHelper)).
 
--spec get_unreserved_applied_resources_ports(offer_helper()) -> [non_neg_integer()].
+-spec get_unreserved_applied_resources_ports(offer_helper()) ->
+    [non_neg_integer()].
 get_unreserved_applied_resources_ports(OfferHelper) ->
     UnreservedPorts = get_ranges_resource_values("ports", false, 
                           get_unreserved_applied_resources(OfferHelper)),
-    UnreservedResources = resources(0, 0,
-                                    0, UnreservedPorts),
+    UnreservedResources = resources(0.0, 0.0, 0.0, UnreservedPorts),
     erl_mesos_utils:resources_ports(UnreservedResources).
 
 -spec clean_applied_resources(offer_helper()) -> offer_helper().
