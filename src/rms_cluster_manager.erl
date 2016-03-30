@@ -67,12 +67,12 @@ get_cluster(Key) ->
     rms_cluster:get(Key).
 
 -spec get_cluster_riak_config(rms_cluster:key()) ->
-    {ok, string()} | {error, term()}.
+    {ok, binary()} | {error, term()}.
 get_cluster_riak_config(Key) ->
     rms_cluster:get_field_value(riak_config, Key).
 
 -spec get_cluster_advanced_config(rms_cluster:key()) ->
-    {ok, string()} | {error, term()}.
+    {ok, binary()} | {error, term()}.
 get_cluster_advanced_config(Key) ->
     rms_cluster:get_field_value(advanced_config, Key).
 
@@ -97,7 +97,7 @@ add_cluster(Key) ->
             end
     end.
 
--spec set_cluster_riak_config(rms_cluster:key(), string()) ->
+-spec set_cluster_riak_config(rms_cluster:key(), binary()) ->
     ok | {error, term()}.
 set_cluster_riak_config(Key, RiakConfig) ->
     case get_cluster_pid(Key) of
@@ -107,7 +107,7 @@ set_cluster_riak_config(Key, RiakConfig) ->
             {error, Reason}
     end.
 
--spec set_cluster_advanced_config(rms_cluster:key(), string()) ->
+-spec set_cluster_advanced_config(rms_cluster:key(), binary()) ->
     ok | {error, term()}.
 set_cluster_advanced_config(Key, AdvancedConfig) ->
     case get_cluster_pid(Key) of
