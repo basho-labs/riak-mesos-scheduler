@@ -30,8 +30,9 @@
          set_advanced_config/2,
          maybe_join/2,
          leave/2,
-         delete/1]).
--export([add_node/1]).
+         delete/1,
+		 add_node/1,
+		 commence_restart/1]).
 
 %% gen_fsm callbacks
 -export([init/1,
@@ -119,6 +120,10 @@ delete(Pid) ->
 -spec add_node(pid()) -> ok | {error, term()}.
 add_node(Pid) ->
     gen_fsm:sync_send_all_state_event(Pid, add_node).
+
+-spec commence_restart(pid()) -> ok | {error, term()}.
+commence_restart(Pid) ->
+	gen_fsm:sync_send_all_state_event(Pid, commence_restart).
 
 %%% gen_fsm callbacks
 -type state_timeout() :: non_neg_integer() | infinity.
@@ -276,6 +281,10 @@ handle_sync_event({leave, NodeKey}, _From, StateName,
         {error, Reason} ->
             {reply, {error, Reason}, StateName, Cluster}
     end;
+handle_sync_event(commence_restart, _From, StateName,
+				  #cluster{key=Key} = Cluster) ->
+	%% TODO The thing.
+	{reply, ok, restarting, Cluster};
 handle_sync_event(_Event, _From, StateName, State) ->
     {reply, {error, {unhandled_event, _Event}}, StateName, State}.
 
