@@ -266,7 +266,7 @@ apply_reserved_offer(NodeKey, OfferHelper) ->
             CanFitUnreserved =
                 rms_offer_helper:can_fit_unreserved(?CPUS_PER_EXECUTOR,
                                                     ?MEM_PER_EXECUTOR,
-                                                    0, NodeNumPorts,
+                                                    0.0, NodeNumPorts,
                                                     OfferHelper),
             case CanFitReserved and CanFitUnreserved of
                 true ->
