@@ -100,7 +100,7 @@
 -spec start_link(key(), rms_cluster:key()) ->
                         {ok, pid()} | {error, Error :: term()}.
 start_link(Key, ClusterKey) ->
-    gen_fsm:start_link(?MODULE, {Key, ClusterKey}, [{dbg, [log, trace]}]).
+    gen_fsm:start_link(?MODULE, {Key, ClusterKey}, [{debug, [log, trace]}]).
 
 %% TODO The following API functions operate only on the rms_metadata, but
 %% it feels like we should be asking the running FSM/server for that node,
