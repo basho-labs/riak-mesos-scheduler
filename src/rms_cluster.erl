@@ -48,6 +48,8 @@
          requested/3,
 		 running/2,
 		 running/3,
+		 restarting/2,
+		 restarting/3,
          shutting_down/2,
          shutting_down/3,
          shutdown/2,
@@ -63,7 +65,7 @@
 -type key() :: string().
 -export_type([key/0]).
 
--type status() :: undefined | requested | shutting_down.
+-type status() :: undefined | requested | running | restarting | shutting_down | shutdown.
 -export_type([status/0]).
 
 -type cluster_state() :: #cluster{}.
@@ -166,6 +168,10 @@ requested(_Event, Cluster) ->
 running(_Event, Cluster) ->
     {stop, {unhandled_event, _Event}, Cluster}.
 
+-spec restarting(event(), cluster_state()) -> state_cb_return().
+restarting(_Event, Cluster) ->
+    {stop, {unhandled_event, _Event}, Cluster}.
+
 -spec shutting_down(event(), cluster_state()) -> state_cb_return().
 shutting_down(_Event, Cluster) ->
     {stop, {unhandled_event, _Event}, Cluster}.
@@ -183,6 +189,10 @@ requested(_Event, _From, Cluster) ->
 -spec running(event(), from(), cluster_state()) -> state_cb_reply().
 running(_Event, _From, Cluster) ->
     {reply, {error, unhandled_event}, running, Cluster}.
+
+-spec restarting(event(), from(), cluster_state()) -> state_cb_reply().
+restarting(_Event, _From, Cluster) ->
+    {reply, {error, unhandled_event}, restarting, Cluster}.
 
 -spec undefined(event(), from(), cluster_state()) -> state_cb_reply().
 undefined(_Event, _From, Cluster) ->
