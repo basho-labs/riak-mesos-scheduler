@@ -49,8 +49,8 @@
 
 -record(offer_helper, {offer :: erl_mesos:'Offer'(),
                        persistence_ids = [] :: [string()],
-                       applied_reserved_resources = [] :: erl_mesos_utils:resources(),
-                       applied_unreserved_resources = [] :: erl_mesos_utils:resources(),
+                       applied_reserved_resources = [] :: [erl_mesos:'Resource'()],
+                       applied_unreserved_resources = [] :: [erl_mesos:'Resource'()],
                        reserved_resources :: erl_mesos_utils:resources(),
                        unreserved_resources :: erl_mesos_utils:resources(),
                        resources_to_reserve = [] :: [erl_mesos:'Resource'()],
@@ -270,13 +270,13 @@ apply_unreserved_resources(Cpus, Mem, Disk, NumPorts,
                                  AppliedUnreservedResources ++ AppliedUnreservedResources1}.
 
 -spec get_reserved_applied_resources(offer_helper()) ->
-                                           erl_mesos_utils:resources().
+    [erl_mesos:'Resource'()].
 get_reserved_applied_resources(#offer_helper{applied_reserved_resources =
                                                  AppliedReservedResources}) ->
     AppliedReservedResources.
 
 -spec get_unreserved_applied_resources(offer_helper()) ->
-                                           erl_mesos_utils:resources().
+    [erl_mesos:'Resource'()].
 get_unreserved_applied_resources(#offer_helper{applied_unreserved_resources =
                                                  AppliedUnreservedResources}) ->
     AppliedUnreservedResources.
