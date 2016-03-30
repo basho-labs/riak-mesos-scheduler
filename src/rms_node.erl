@@ -20,13 +20,13 @@
 
 %% Node transitions:
 %% add_node: requested -> reserved -> starting -> started
-%%                                             |> failed -> reserved -> ...
-%%                                 |> failed -> reserved -> ...
-%%                     |> failed -> requested
+%%                                             |> reserved -> ...
+%%                                 |> reserved -> ...
+%%                     |> requested
 %% remove_node: * -> shutting_down -> shutdown
-%%                |> failed -> -> shutdown
+%%                |> shutdown
 %% restart_node: * -> restarting -> reserved -> ...
-%%                 |> failed -> reserved -> ...
+%%                 |> reserved -> ...
 
 -module(rms_node).
 
@@ -56,8 +56,6 @@
 
 %%% States
 -export([
-         undefined/2,
-         undefined/3,
          requested/2,
          requested/3,
          reserved/2,
@@ -71,9 +69,7 @@
          shutdown/2,
          shutdown/3,
          restarting/2,
-         restarting/3,
-         failed/2,
-         failed/3
+         restarting/3
         ]).
 
 -record(node, {key :: key(),
@@ -265,10 +261,6 @@ init({Key, ClusterKey}) ->
       | {next_state, Next::state(), New::node_state()}
       | {next_state, Next::state(), New::node_state(), state_timeout()}.
 
--spec undefined(event(), node_state()) -> state_cb_return().
-undefined(_Event, Node) ->
-    {stop, {unhandled_event, _Event}, Node}.
-
 -spec requested(event(), node_state()) -> state_cb_return().
 requested(_Event, Node) ->
     {stop, {unhandled_event, _Event}, Node}.
@@ -291,10 +283,6 @@ shutting_down(_Event, Node) ->
 
 -spec shutdown(event(), node_state()) -> state_cb_return().
 shutdown(_Event, Node) ->
-    {stop, {unhandled_event, _Event}, Node}.
-
--spec failed(event(), node_state()) -> state_cb_return().
-failed(_Event, Node) ->
     {stop, {unhandled_event, _Event}, Node}.
 
 -spec restarting(event(), node_state()) -> state_cb_return().
@@ -323,10 +311,6 @@ requested({status_update, StatusUpdate, _}, _From, Node) ->
     end;
 requested(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, requested, Node}.
-
--spec undefined(event(), from(), node_state()) -> state_cb_reply().
-undefined(_Event, _From, Node) ->
-    {reply, {error, unhandled_event}, undefined, Node}.
 
 -spec reserved(event(), from(), node_state()) -> state_cb_reply().
 reserved({status_update, StatusUpdate, _}, _From, Node) ->
@@ -386,10 +370,6 @@ shutdown({status_update, _, _}, _From, Node) ->
     {reply, ok, shutdown, Node};
 shutdown(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, shutdown, Node}.
-
--spec failed(event(), from(), node_state()) -> state_cb_reply().
-failed(_Event, _From, Node) ->
-    {reply, {error, unhandled_event}, failed, Node}.
 
 -spec restarting(event(), from(), node_state()) -> state_cb_reply().
 restarting({status_update, StatusUpdate, _}, _From, Node) ->
