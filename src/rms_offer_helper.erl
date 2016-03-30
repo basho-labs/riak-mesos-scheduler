@@ -50,6 +50,7 @@
 
 -record(offer_helper, {offer :: erl_mesos:'Offer'(),
                        persistence_ids = [] :: [string()],
+                       attributes = [] :: attributes(),
                        applied_reserved_resources = [] :: erl_mesos_utils:resources(),
                        applied_unreserved_resources = [] :: erl_mesos_utils:resources(),
                        reserved_resources :: erl_mesos_utils:resources(),
@@ -63,10 +64,19 @@
 -type offer_helper() :: #offer_helper{}.
 -export_type([offer_helper/0]).
 
+-type constraint() :: [string()].
+-type constraints() :: [constraint()].
+-export_type([constraints/0]).
+
+-type attribute() :: {string(), string()}.
+-type attributes() :: [attribute()].
+-export_type([attributes/0]).
+
 %% External functions.
 
 -spec new(erl_mesos:'Offer'()) -> offer_helper().
-new(#'Offer'{resources = Resources} = Offer) ->
+new(#'Offer'{resources = Resources,
+             attributes = RawAttributes} = Offer) ->
     PersistenceIds = get_persistence_ids(Resources, []),
     ReservedCpus = get_scalar_resource_value("cpus", true, Resources),
     ReservedMem = get_scalar_resource_value("mem", true, Resources),
@@ -80,10 +90,58 @@ new(#'Offer'{resources = Resources} = Offer) ->
     UnreservedPorts = get_ranges_resource_values("ports", false, Resources),
     UnreservedResources = resources(UnreservedCpus, UnreservedMem,
                                     UnreservedDisk, UnreservedPorts),
+    Attributes = attributes_to_list(RawAttributes),
     #offer_helper{offer = Offer,
                   persistence_ids = PersistenceIds,
                   reserved_resources = ReservedResources,
-                  unreserved_resources = UnreservedResources}.
+                  unreserved_resources = UnreservedResources,
+                  attributes = Attributes}.
+
+-spec apply_constraints(string(), [erl_mesos:'Attribute'()], 
+                 constraints(), 
+                 [string()], 
+                 [attributes()]) -> boolean() | maybe.
+apply_constraints(OfferHostname, OfferAttributes, Constraints, NodeHosts, NodeAttributes) ->
+    apply_constraints(OfferHostname, OfferAttributes, Constraints, NodeHosts, NodeAttributes, true).
+
+-spec apply_constraints(string(), [erl_mesos:'Attribute'()], 
+                 [constraint()], 
+                 [string()], 
+                 [attributes()],
+                 true | maybe) -> boolean() | maybe.
+apply_constraints(_, _,[], _, _, Last) ->
+    Last;
+apply_constraints(OfferHostname, OfferAttributes, 
+           [["hostname"|Constraint]|Rest], 
+           NodeHosts, NodeAttributes, Last) ->
+    case apply_constraint(Constraint, OfferHostname, NodeHosts) of
+        false -> 
+            false;
+        maybe ->
+            apply_constraints(OfferHostname, OfferAttributes, Rest, NodeHosts, 
+                       NodeAttributes, maybe);
+        true ->
+            apply_constraints(OfferHostname, OfferAttributes, Rest, NodeHosts, 
+                       NodeAttributes, Last)
+    end;
+apply_constraints(OfferHostname, OfferAttributes, 
+           [[Name|Constraint]|Rest], 
+           NodeHosts, NodeAttributes, Last) ->
+    Attributes = attributes_to_list(OfferAttributes, []),
+    A = proplists:get_value(Name, Attributes),
+    As = lists:foldl(fun(X, Accum) -> 
+                             [proplists:get_value(Name, X)|Accum]
+                     end, [], NodeAttributes),
+    case apply_constraint(Constraint, A, As) of
+        false -> 
+            false;
+        maybe ->
+            apply_constraints(OfferHostname, OfferAttributes, Rest, NodeHosts, 
+                       NodeAttributes, maybe);
+        true ->
+            apply_constraints(OfferHostname, OfferAttributes, Rest, NodeHosts, 
+                       NodeAttributes, Last)
+    end.
 
 -spec get_offer_id(offer_helper()|erl_mesos:'Offer'()) -> erl_mesos:'OfferID'().
 get_offer_id(#'Offer'{id = OfferId}) ->
@@ -662,3 +720,76 @@ unreserve_volumes([_Resource | Resources], VolumesToDestroy) ->
     unreserve_volumes(Resources, VolumesToDestroy);
 unreserve_volumes([], VolumesToDestroy) ->
     VolumesToDestroy.
+
+-spec attributes_to_list([erl_mesos:'Attribute'()]) -> attributes().
+attributes_to_list(RawAttributes) ->
+    attributes_to_list(RawAttributes, []).
+    
+-spec attributes_to_list([erl_mesos:'Attribute'()],
+                         attributes()) -> attributes().
+attributes_to_list([], Accum) ->
+    Accum;
+attributes_to_list([#'Attribute'{
+                     name=Name, 
+                     type='SCALAR', 
+                     scalar=#'Value.Scalar'{value=Value}}|Rest], Accum) ->
+    attributes_to_list(Rest, [{Name, Value}|Accum]);
+attributes_to_list([#'Attribute'{
+                     type='RANGES', 
+                     ranges=#'Value.Scalar'{}}|Rest], Accum) ->
+    %% TODO: Deal with range attributes
+    attributes_to_list(Rest, Accum);
+attributes_to_list([#'Attribute'{
+                     name=Name, 
+                     type='SET', 
+                     scalar=#'Value.Set'{item=Value}}|Rest], Accum) ->
+    attributes_to_list(Rest, [{Name, Value}|Accum]);
+attributes_to_list([#'Attribute'{
+                     name=Name, 
+                     type='TEXT', 
+                     scalar=#'Value.Text'{value=Value}}|Rest], Accum) ->
+    attributes_to_list(Rest, [{Name, Value}|Accum]).
+
+-spec apply_constraint(constraint(), string(), [string()]) -> boolean()|maybe.
+apply_constraint(["UNIQUE"], V, Vs) -> 
+    %% Unique Value
+    not lists:member(V, Vs);
+apply_constraint(["GROUP_BY"], V, Vs) ->
+    %% Groupby Value. If the value isn't unique, then attempt to
+    %% schedule it on a different offer. If there are no other offers,
+    %% go ahead and schedule it on this one. In other words, attempt
+    %% to spread across all values, but don't refuse offers.
+    case apply_constraint(["UNIQUE"], V, Vs) of
+        true -> true;
+        false -> maybe
+    end;
+apply_constraint(["GROUP_BY", Param], V, Vs) ->
+    %% Compare total number of hosts to number of scheduled hosts
+    case {list_to_integer(Param), length(Vs)} of
+        %% There should still be unclaimed values, wait if not unique
+        {N1, N2} when N1 > N2 ->
+            apply_constraint(["UNIQUE"], V, Vs);
+        %% There's a node on every host already, go ahead and use the offer
+        _ ->
+            %% TODO: get more sophisticated about attempting to spread
+            %% nodes evenly, because we already know how many nodes there are
+            true
+    end;
+apply_constraint(["CLUSTER", V], V, _) -> 
+    %% Cluster on value, values match
+    true;
+apply_constraint(["CLUSTER", _], _, _) -> 
+    %% Cluster on value, hosts do not match
+    false;
+apply_constraint(["LIKE", Param], V, _) ->
+    %% Value is like regex
+    case re:run(V, Param) of
+        {match, _} -> true;
+        nomatch -> false
+    end;
+apply_constraint(["UNLIKE", Param], V, Vs) -> 
+    %% Value is not like regex
+    not apply_constraint(["LIKE", Param], V, Vs);
+apply_constraint(_, _, _) -> 
+    %% Undefined constraint, just schedule it
+    true.
