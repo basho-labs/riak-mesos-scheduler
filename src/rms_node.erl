@@ -25,7 +25,7 @@
 %%                     |> requested
 %% remove_node: * -> shutting_down -> shutdown
 %%                |> shutdown
-%% restart_node: * -> restarting -> reserved -> ...
+%% restart_node: * -> starting -> reserved -> ...
 %%                 |> reserved -> ...
 
 -module(rms_node).
@@ -67,9 +67,7 @@
          shutting_down/2,
          shutting_down/3,
          shutdown/2,
-         shutdown/3,
-         restarting/2,
-         restarting/3
+         shutdown/3
         ]).
 
 -record(node, {key :: key(),
@@ -149,7 +147,7 @@ can_be_shutdown(Key) ->
     case get_node(Key) of
         {ok, {shutting_down, _}} -> 
             {ok, true};
-        {ok, {restarting, _}} -> 
+        {ok, {starting, _}} -> 
             {ok, true};
         {ok, {_, _}} -> 
             {ok, false};
@@ -285,10 +283,6 @@ shutting_down(_Event, Node) ->
 shutdown(_Event, Node) ->
     {stop, {unhandled_event, _Event}, Node}.
 
--spec restarting(event(), node_state()) -> state_cb_return().
-restarting(_Event, Node) ->
-    {stop, {unhandled_event, _Event}, Node}.
-
 -spec handle_event(event(), StateName :: atom(), node_state()) -> state_cb_return().
 handle_event(_Event, StateName, State) ->
     {next_state, StateName, State}.
@@ -343,10 +337,10 @@ starting(_Event, _From, Node) ->
 -spec started(event(), from(), node_state()) -> state_cb_reply().
 started({status_update, StatusUpdate, _}, _From, Node) ->
     case StatusUpdate of
-        'TASK_FAILED' -> sync_update_node(started, restarting, Node);
-        'TASK_LOST' -> sync_update_node(started, restarting, Node);
-        'TASK_ERROR' -> sync_update_node(started, restarting, Node);
-        'TASK_KILLED' -> sync_update_node(started, restarting, Node);
+        'TASK_FAILED' -> sync_update_node(started, starting, Node);
+        'TASK_LOST' -> sync_update_node(started, starting, Node);
+        'TASK_ERROR' -> sync_update_node(started, starting, Node);
+        'TASK_KILLED' -> sync_update_node(started, starting, Node);
         _ -> {reply, ok, started, Node}
     end;
 started(_Event, _From, Node) ->
@@ -370,19 +364,6 @@ shutdown({status_update, _, _}, _From, Node) ->
     {reply, ok, shutdown, Node};
 shutdown(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, shutdown, Node}.
-
--spec restarting(event(), from(), node_state()) -> state_cb_reply().
-restarting({status_update, StatusUpdate, _}, _From, Node) ->
-    case StatusUpdate of
-        'TASK_FINISHED' -> sync_update_node(restarting, reserved, Node);
-        'TASK_KILLED' -> sync_update_node(restarting, reserved, Node);
-        'TASK_FAILED' -> {reply, ok, restarting, Node};
-        'TASK_LOST' -> sync_update_node(restarting, reserved, Node);
-        'TASK_ERROR' -> {reply, ok, restarting, Node};
-        _ -> {reply, ok, restarting, Node}
-    end;
-restarting(_Event, _From, Node) ->
-    {reply, {error, unhandled_event}, restarting, Node}.
 
 -spec handle_sync_event(event(), from(), state(), node_state()) ->
                                state_cb_reply().
