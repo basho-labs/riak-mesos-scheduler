@@ -22,160 +22,122 @@
 
 -include_lib("erl_mesos/include/scheduler_protobuf.hrl").
 
--export([new/3,
-         can_accept/2]).
+-export([can_accept/4]).
 
--record(constraint, {field :: string(),
-                     operator :: string(),
-                     parameter :: string()}).
+-type constraint() :: [string()].
+-type attribute() :: {string(), string()}.
+-type attributes() :: [attribute()].
+-type cluster_attributes() :: [attributes()].
 
--type constraint() :: #constraint{}.
+-spec can_accept(erl_mesos:'Offer'(), 
+                 [constraint()], 
+                 [string()], 
+                 cluster_attributes()) -> boolean() | maybe.
+can_accept(Offer, Constraints, ClusterHosts, ClusterAttributes) ->
+    can_accept(Offer, Constraints, ClusterHosts, ClusterAttributes, true).
 
--record(constraint_helper, {cluster_constraints :: [constraint()],
-                            cluster_hostnames :: [string()],
-                            cluster_attributes :: [{string(), string()}]
-                            }).
+-spec can_accept(erl_mesos:'Offer'(), 
+                 [constraint()], 
+                 [string()], 
+                 cluster_attributes(),
+                 true | maybe) -> boolean() | maybe.
+can_accept(_,[], _, _, Last) ->
+    Last;
+can_accept(#'Offer'{hostname=Host}=Offer, 
+           [["hostname"|Constraint]|Rest], 
+           ClusterHosts, ClusterAttributes, Last) ->
+    case check_constraint(Constraint, Host, ClusterHosts) of
+        false -> 
+            false;
+        maybe ->
+            can_accept(Offer, Rest, ClusterHosts, 
+                       ClusterAttributes, maybe);
+        true ->
+            can_accept(Offer, Rest, ClusterHosts, 
+                       ClusterAttributes, Last)
+    end;
+can_accept(#'Offer'{attributes=RawAttributes}=Offer, 
+           [[Name|Constraint]|Rest], 
+           ClusterHosts, ClusterAttributes, Last) ->
+    Attributes = attributes_to_list(RawAttributes, []),
+    A = proplists:get_value(Name, Attributes),
+    As = lists:foldl(fun(X, Accum) -> 
+                             proplists:get_value(Name, X) 
+                     end, [], ClusterAttributes),
+    case check_constraint(Constraint, A, As) of
+        false -> 
+            false;
+        maybe ->
+            can_accept(Offer, Rest, ClusterHosts, 
+                       ClusterAttributes, maybe);
+        true ->
+            can_accept(Offer, Rest, ClusterHosts, 
+                       ClusterAttributes, Last)
+    end.
 
--type constraint_helper() :: #constraint_helper{}.
--export_type([constraint_helper/0]).
-
-new(RawConstraints, ClusterHostnames, ClusterAttributes) ->
-    ClusterConstraints = parse_constraints(RawConstraints, []),
-    #constraint_helper{
-       cluster_constraints=ClusterConstraints,
-       cluster_hostnames=ClusterHostnames,
-       cluster_attributes=ClusterAttributes
-      }.
-
-parse_constraints([], Accum) ->
+attributes_to_list([], Accum) ->
     Accum;
-parse_constraints([[Field, Operator]|Rest], Accum) ->
-    parse_constraints(Rest, 
-                      [#constraint{
-                          field=Field,
-                          operator=Operator}|Accum]);
-parse_constraints([[Field, Operator, Parameter]|Rest], Accum) ->
-    parse_constraints(Rest, 
-                      [#constraint{
-                          field=Field,
-                          operator=Operator,
-                          parameter=Parameter}|Accum]).
-
-can_accept(#'Offer'{hostname=Hostname, attributes=RawAttributes},
-           #constraint_helper{cluster_constraints=Constraints}=Helper) ->
-    Attributes = parse_attributes(RawAttributes, []),
-    process_constraints(Constraints, Hostname, Attributes, Helper).
-
-parse_attributes([#'Attribute'{
+attributes_to_list([#'Attribute'{
                      name=Name, 
                      type='SCALAR', 
                      scalar=#'Value.Scalar'{value=Value}}|Rest], Accum) ->
-    parse_attributes(Rest, [{Name, Value}|Accum]);
-parse_attributes([#'Attribute'{
+    attributes_to_list(Rest, [{Name, Value}|Accum]);
+attributes_to_list([#'Attribute'{
                      type='RANGES', 
                      ranges=#'Value.Scalar'{}}|Rest], Accum) ->
     %% TODO: Deal with range attributes
-    parse_attributes(Rest, Accum);
-parse_attributes([#'Attribute'{
+    attributes_to_list(Rest, Accum);
+attributes_to_list([#'Attribute'{
                      name=Name, 
                      type='SET', 
                      scalar=#'Value.Set'{item=Value}}|Rest], Accum) ->
-    parse_attributes(Rest, [{Name, Value}|Accum]);
-parse_attributes([#'Attribute'{
+    attributes_to_list(Rest, [{Name, Value}|Accum]);
+attributes_to_list([#'Attribute'{
                      name=Name, 
                      type='TEXT', 
                      scalar=#'Value.Text'{value=Value}}|Rest], Accum) ->
-    parse_attributes(Rest, [{Name, Value}|Accum]).
+    attributes_to_list(Rest, [{Name, Value}|Accum]).
 
-process_constraints([], _, _, _) ->
+-spec check_constraint(constraint(), string(), [string()]) -> boolean()|maybe.
+check_constraint(["UNIQUE"], V, Vs) -> 
+    %% Unique Value
+    not lists:member(V, Vs);
+check_constraint(["GROUP_BY"], V, Vs) ->
+    %% Groupby Value. If the value isn't unique, then attempt to
+    %% schedule it on a different offer. If there are no other offers,
+    %% go ahead and schedule it on this one. In other words, attempt
+    %% to spread across all values, but don't refuse offers.
+    case check_constraint(["UNIQUE"], V, Vs) of
+        true -> true;
+        false -> maybe
+    end;
+check_constraint(["GROUP_BY", Param], V, Vs) ->
+    %% Compare total number of hosts to number of scheduled hosts
+    case {list_to_integer(Param), length(Vs)} of
+        %% There should still be unclaimed values, wait if not unique
+        {N1, N2} when N1 > N2 ->
+            check_constraint(["UNIQUE"], V, Vs);
+        %% There's a node on every host already, go ahead and use the offer
+        _ ->
+            %% TODO: get more sophisticated about attempting to spread
+            %% nodes evenly, because we already know how many nodes there are
+            true
+    end;
+check_constraint(["CLUSTER", V], V, _) -> 
+    %% Cluster on value, values match
     true;
-process_constraints([#constraint{
-                        field="hostname", 
-                        operator="UNIQUE",
-                        parameter=undefined}|Rest], 
-                    Hostname, Attributes, 
-                    #constraint_helper{
-                       cluster_hostnames=ClusterHostnames
-                      }=Helper) ->
-    case lists:member(Hostname, ClusterHostnames) of
-        true -> false;
-        false -> process_constraints(Rest, Hostname, Attributes, Helper)
+check_constraint(["CLUSTER", _], _, _) -> 
+    %% Cluster on value, hosts do not match
+    false;
+check_constraint(["LIKE", Param], V, _) ->
+    %% Value is like regex
+    case re:run(V, Param) of
+        {match, _} -> true;
+        nomatch -> false
     end;
-process_constraints([#constraint{
-                        field="hostname", 
-                        operator="CLUSTER",
-                        parameter=Parameter}|Rest], 
-                    Hostname, Attributes, Helper) ->
-    case Parameter =:= Hostname of
-        true -> process_constraints(Rest, Hostname, Attributes, Helper);
-        false -> false
-    end;
-process_constraints([#constraint{
-                        field=Name, 
-                        operator="CLUSTER",
-                        parameter=Parameter}|Rest], 
-                    Hostname, Attributes, Helper) ->
-    case proplists:get_value(Name, Attributes) of
-        Parameter -> process_constraints(Rest, Hostname, Attributes, Helper);
-        _ -> false
-    end;
-process_constraints([#constraint{
-                        field=Name,
-                        operator="GROUP_BY",
-                        parameter=ParameterStr}|Rest], 
-                    Hostname, Attributes, 
-                    #constraint_helper{
-                       cluster_attributes=ClusterAttributes
-                      }=Helper) ->
-    Parameter = list_to_integer(ParameterStr),
-    case group_by(ClusterAttributes, Attributes, Name, Parameter) of
-        true -> process_constraints(Rest, Hostname, Attributes, Helper);
-        false -> false
-    end.
-
-group_by(_ClusterAttributes, _Attributes, _Name, undefined) ->
-    %% We don't have a way of knowing how many available distinct values there are,
-    %% So basically always return true, but... return EXTRA true if the offer's
-    %% attribute value for Name is unique!
-    true;
-group_by(_ClusterAttributes, _Attributes, _Name, _Parameter) ->
-    %% TODO: attempt to find a suggested attribute value, 
-    %% and then match it against the attribute value from the offer
+check_constraint(["UNLIKE", Param], V, Vs) -> 
+    %% Value is not like regex
+    not check_constraint(["LIKE", Param], V, Vs);
+check_constraint(_, _, _) -> 
+    %% Undefined constraint, just schedule it
     true.
-
-
-
-%% {'Event.Offers',[
-
-%% {'Offer',
-%%   id={'OfferID',"9af79c87-3ba0-4aac-99c6-49a8a07343ab-O493"},
-%%   framework_id={'FrameworkID',"293cad27-15ce-4480-bacd-e6c075c8fdbe-0006"},
-%%   agent_id={'AgentID',"293cad27-15ce-4480-bacd-e6c075c8fdbe-S0"},
-%%   hostname="ubuntu.local",
-%%   url={'URL',
-%%     scheme="http",
-%%     address={'Address',"ubuntu.local","127.0.1.1",5051},
-%%     path="/slave(1)",
-%%     query=[],
-%%     fragment=undefined},
-%%   resources=[
-%%     {'Resource',"cpus",'SCALAR',{'Value.Scalar',2.6999999999999997},undefined,undefined,"*",undefined,undefined,undefined},
-%%     {'Resource',"mem",'SCALAR',{'Value.Scalar',4531.0},undefined,undefined,"*",undefined,undefined,undefined},
-%%     {'Resource',"disk",'SCALAR',{'Value.Scalar',27164.0},undefined,undefined,"*",undefined,undefined,undefined},
-%%     {'Resource',"ports",'RANGES',undefined,{'Value.Ranges',[{'Value.Range',31000,31162},{'Value.Range',31164,31491},{'Value.Range',31502,31936},{'Value.Range',31947,32000}]},undefined,"*",undefined,undefined,undefined}
-%%   ],
-%%   attributes=[
-%%     {'Attribute',
-%%       name="something",
-%%       type='TEXT'|'SCALAR'|'RANGES'|'SET',
-%%       scalar={'Value.Scalar',2.6999999999999997},
-%%       ranges={'Value.Ranges',[{'Value.Range',31000,31162},{'Value.Range',31164,31491},{'Value.Range',31502,31936},{'Value.Range',31947,32000}]},
-%%       set={'Value.Set',
-%%              item=["something1", "something2", "something3"]}
-%%       text={'Value.Text',
-%%         value="something"}],
-%%   executor_ids=[
-%%     {'ExecutorID',"riak-default-8"},
-%%     {'ExecutorID',"riak-default-7"}
-%%   ],undefined}],
-%%   unavailability=[]}.
