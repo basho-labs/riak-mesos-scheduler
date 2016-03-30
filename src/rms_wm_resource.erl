@@ -234,8 +234,8 @@ get_cluster(ReqData) ->
     BinNodeKeys = [list_to_binary(NodeKey) || NodeKey <- NodeKeys],
     ClusterData = [{Key, [{key, list_to_binary(Key)},
                           {status, Status},
-                          {advanced_config, list_to_binary(AdvancedConfig)},
-                          {riak_config, list_to_binary(RiakConfig)},
+                          {advanced_config, AdvancedConfig},
+                          {riak_config, RiakConfig},
                           {node_keys, BinNodeKeys}]}],
     {ClusterData, ReqData}.
 
