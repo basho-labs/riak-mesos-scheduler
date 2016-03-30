@@ -46,6 +46,8 @@
          undefined/3,
          requested/2,
          requested/3,
+		 running/2,
+		 running/3,
          shutting_down/2,
          shutting_down/3,
          shutdown/2,
@@ -160,6 +162,10 @@ undefined(_Event, Cluster) ->
 requested(_Event, Cluster) ->
     {stop, {unhandled_event, _Event}, Cluster}.
 
+-spec running(event(), cluster_state()) -> state_cb_return().
+running(_Event, Cluster) ->
+    {stop, {unhandled_event, _Event}, Cluster}.
+
 -spec shutting_down(event(), cluster_state()) -> state_cb_return().
 shutting_down(_Event, Cluster) ->
     {stop, {unhandled_event, _Event}, Cluster}.
@@ -173,6 +179,10 @@ shutdown(_Event, Cluster) ->
 -spec requested(event(), from(), cluster_state()) -> state_cb_reply().
 requested(_Event, _From, Cluster) ->
     {reply, {error, unhandled_event}, requested, Cluster}.
+
+-spec running(event(), from(), cluster_state()) -> state_cb_reply().
+running(_Event, _From, Cluster) ->
+    {reply, {error, unhandled_event}, running, Cluster}.
 
 -spec undefined(event(), from(), cluster_state()) -> state_cb_reply().
 undefined(_Event, _From, Cluster) ->
