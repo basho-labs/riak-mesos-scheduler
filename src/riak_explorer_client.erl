@@ -90,8 +90,7 @@ request_url(Host, Uri) ->
 
 %% @doc Returns request headers.
 %% @private
--spec request_headers(erl_mesos_data_format:data_format()) ->
-    erl_mesos_http:headers().
+-spec request_headers(binary()) -> erl_mesos_http:headers().
 request_headers(ContentType) ->
     [{<<"Content-Type">>, ContentType},
      {<<"Accept">>, ContentType},

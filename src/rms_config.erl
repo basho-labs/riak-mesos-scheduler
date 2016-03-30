@@ -44,15 +44,11 @@ framework_name() ->
 framework_hostname() ->
     case get_value(hostname, undefined, string) of
         undefined ->
-            case inet:gethostname() of
-                {ok, LH} ->
-                    case inet:gethostbyname(LH) of
-                        {ok, {_, FullHostname, _, _, _, _}} ->
-                            FullHostname;
-                        _ -> ?DEFAULT_HOSTNAME
-                    end;
-                _ ->
-                    ?DEFAULT_HOSTNAME
+            {ok, LH} = inet:gethostname(),
+            case inet:gethostbyname(LH) of
+                {ok, {_, FullHostname, _, _, _, _}} ->
+                    FullHostname;
+                _ -> ?DEFAULT_HOSTNAME
             end;
         HN -> HN
     end.

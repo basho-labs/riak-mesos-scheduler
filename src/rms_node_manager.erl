@@ -266,7 +266,7 @@ apply_reserved_offer(NodeKey, OfferHelper) ->
             CanFitUnreserved =
                 rms_offer_helper:can_fit_unreserved(?CPUS_PER_EXECUTOR,
                                                     ?MEM_PER_EXECUTOR,
-                                                    0, NodeNumPorts,
+                                                    0.0, NodeNumPorts,
                                                     OfferHelper),
             case CanFitReserved and CanFitUnreserved of
                 true ->
@@ -377,6 +377,8 @@ apply_reserved_offer(NodeKey, OfferHelper) ->
             {error, Reason}
     end.
 
+-spec handle_status_update(rms_node:key(), atom(), atom()) ->
+    ok | {error, term()}.
 handle_status_update(NodeKey, TaskStatus, Reason) ->
     {ok, N} = get_node_pid(NodeKey),
     lager:info("Handling status update ~p for node ~p", [TaskStatus, NodeKey]),
