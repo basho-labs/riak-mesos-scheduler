@@ -377,6 +377,8 @@ apply_reserved_offer(NodeKey, OfferHelper) ->
             {error, Reason}
     end.
 
+-spec handle_status_update(rms_node:key(), atom(), atom()) ->
+    ok | {error, term()}.
 handle_status_update(NodeKey, TaskStatus, Reason) ->
     {ok, N} = get_node_pid(NodeKey),
     lager:info("Handling status update ~p for node ~p", [TaskStatus, NodeKey]),
