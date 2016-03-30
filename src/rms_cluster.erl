@@ -53,8 +53,8 @@
         ]).
 
 -record(cluster, {key :: rms_cluster:key(),
-                  riak_config = "" :: string(),
-                  advanced_config = "" :: string(),
+                  riak_config = <<>> :: binary(),
+                  advanced_config = <<>> :: binary(),
                   node_keys = [] :: [rms_node:key()],
                   generation = 1 :: pos_integer()}).
 
@@ -92,11 +92,11 @@ get_field_value(Field, Key) ->
             {error, Reason}
     end.
 
--spec set_riak_config(pid(), string()) -> ok | {error, term()}.
+-spec set_riak_config(pid(), binary()) -> ok | {error, term()}.
 set_riak_config(Pid, RiakConfig) ->
     gen_fsm:sync_send_all_state_event(Pid, {set_riak_config, RiakConfig}).
 
--spec set_advanced_config(pid(), string()) -> ok | {error, term()}.
+-spec set_advanced_config(pid(), binary()) -> ok | {error, term()}.
 set_advanced_config(Pid, AdvancedConfig) ->
     gen_fsm:sync_send_all_state_event(Pid, {set_advanced_config, AdvancedConfig}).
 
