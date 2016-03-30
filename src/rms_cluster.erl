@@ -43,16 +43,12 @@
          code_change/4]).
 
 -export([
-         undefined/2,
-         undefined/3,
          requested/2,
          requested/3,
 		 running/2,
 		 running/3,
 		 restarting/2,
 		 restarting/3,
-         shutting_down/2,
-         shutting_down/3,
          shutdown/2,
          shutdown/3
         ]).
@@ -66,7 +62,7 @@
 -type key() :: string().
 -export_type([key/0]).
 
--type status() :: undefined | requested | running | restarting | shutting_down | shutdown.
+-type status() :: requested | running | restarting | shutdown.
 -export_type([status/0]).
 
 -type cluster_state() :: #cluster{}.
@@ -161,10 +157,6 @@ init(Key) ->
 
 %%% Async per-state handling
 %%% Note that there is none.
--spec undefined(event(), cluster_state()) -> state_cb_return().
-undefined(_Event, Cluster) ->
-    {stop, {unhandled_event, _Event}, Cluster}.
-
 -spec requested(event(), cluster_state()) -> state_cb_return().
 requested(_Event, Cluster) ->
     {stop, {unhandled_event, _Event}, Cluster}.
@@ -175,10 +167,6 @@ running(_Event, Cluster) ->
 
 -spec restarting(event(), cluster_state()) -> state_cb_return().
 restarting(_Event, Cluster) ->
-    {stop, {unhandled_event, _Event}, Cluster}.
-
--spec shutting_down(event(), cluster_state()) -> state_cb_return().
-shutting_down(_Event, Cluster) ->
     {stop, {unhandled_event, _Event}, Cluster}.
 
 -spec shutdown(event(), cluster_state()) -> state_cb_return().
@@ -198,14 +186,6 @@ running(_Event, _From, Cluster) ->
 -spec restarting(event(), from(), cluster_state()) -> state_cb_reply().
 restarting(_Event, _From, Cluster) ->
     {reply, {error, unhandled_event}, restarting, Cluster}.
-
--spec undefined(event(), from(), cluster_state()) -> state_cb_reply().
-undefined(_Event, _From, Cluster) ->
-    {reply, {error, unhandled_event}, undefined, Cluster}.
-
--spec shutting_down(event(), from(), cluster_state()) -> state_cb_reply().
-shutting_down(_Event, _From, Cluster) ->
-    {reply, {error, unhandled_event}, shutting_down, Cluster}.
 
 -spec shutdown(event(), from(), cluster_state()) -> state_cb_reply().
 shutdown(_Event, _From, Cluster) ->
@@ -238,12 +218,8 @@ handle_sync_event({set_advanced_config, AdvConfig}, _From, StateName, Cluster) -
 handle_sync_event(delete, _From, _StateName,
                   #cluster{key = Key} = Cluster) ->
     NodeKeys = rms_node_manager:get_active_node_keys(Key),
-    case do_delete(NodeKeys) of
-        ok ->
-            {reply, ok, shutdown, Cluster};
-        {error, _}=Err ->
-            {reply, Err, shutting_down, Cluster}
-    end;
+	Reply = do_delete(NodeKeys),
+	{reply, Reply, shutdown, Cluster};
 handle_sync_event(add_node, _From, StateName, Cluster) ->
     #cluster{key = Key,
              node_keys = NodeKeys,
