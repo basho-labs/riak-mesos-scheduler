@@ -63,6 +63,8 @@
          reserved/3,
          starting/2,
          starting/3,
+         restarting/2,
+         restarting/3,
          started/2,
          started/3,
          shutting_down/2,
@@ -138,7 +140,12 @@ can_be_scheduled(Key) ->
             {error, Reason}
     end.
 
--spec can_be_shutdown(key()) -> {ok, boolean()} | {error, term()}.
+-spec can_be_shutdown(key() | pid()) -> {ok, boolean()} | {error, term()}.
+can_be_shutdown(Pid) when is_pid(Pid) ->
+	case gen_fsm:sync_send_event(Pid, can_be_shutdown) of
+		{error, unhandled_event} -> {ok, false};
+		{ok, Reply} -> {ok, Reply}
+	end;
 can_be_shutdown(Key) -> 
     case get_node(Key) of
 		{ok, {Status, _}} ->
@@ -267,6 +274,10 @@ reserved(_Event, Node) ->
 starting(_Event, Node) ->
     {stop, {unhandled_event, _Event}, Node}.
 
+-spec restarting(event(), node_state()) -> state_cb_return().
+restarting(_Event, Node) ->
+    {stop, {unhandled_event, _Event}, Node}.
+
 -spec started(event(), node_state()) -> state_cb_return().
 started(_Event, Node) ->
     {stop, {unhandled_event, _Event}, Node}.
@@ -329,6 +340,21 @@ starting({status_update, StatusUpdate, _}, _From, Node) ->
 starting(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, starting, Node}.
 
+-spec restarting(event(), from(), node_state()) -> state_cb_reply().
+restarting({status_update, StatusUpdate, _}, _From, Node) ->
+    case StatusUpdate of
+        'TASK_FAILED' -> sync_update_node(restarting, reserved, Node);
+        'TASK_LOST' -> sync_update_node(restarting, reserved, Node);
+        'TASK_ERROR' -> sync_update_node(restarting, reserved, Node);
+        'TASK_reSTARTING' -> {reply, ok, restarting, Node};
+        'TASK_RUNNING' -> join(restarting, started, Node);
+        _ -> {reply, ok, restarting, Node}
+    end;
+restarting(can_be_shutdown, _From, Node) ->
+	{reply, {ok, true}, starting, Node};
+restarting(_Event, _From, Node) ->
+    {reply, {error, unhandled_event}, restarting, Node}.
+
 -spec started(event(), from(), node_state()) -> state_cb_reply().
 started({status_update, StatusUpdate, _}, _From, Node) ->
     case StatusUpdate of
@@ -342,7 +368,7 @@ started(restart, _From, Node) ->
 	%% TODO How do we actually control the executor from here? Or do we assume that if we've
 	%% been told to restart by the higher-ups, they'll have sent the appropriate Operations to
 	%% mesos?
-	sync_update_node(started, starting, Node);
+	sync_update_node(started, restarting, Node);
 started(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, started, Node}.
 
@@ -356,6 +382,8 @@ shutting_down({status_update, StatusUpdate, _}, _From, Node) ->
         'TASK_ERROR' -> leave(shutting_down, Node);
         _ -> {reply, ok, shutting_down, Node}
     end;
+shutting_down(can_be_shutdown, _From, Node) ->
+	{reply, {ok, true}, shutting_down, Node};
 shutting_down(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, shutting_down, Node}.
 
@@ -364,6 +392,8 @@ shutting_down(_Event, _From, Node) ->
 %% the TASK_FINISHED / TASK_KILLED / TASK_FAILED from here
 shutdown({status_update, _, _}, _From, Node) ->
     {reply, ok, shutdown, Node};
+shutdown(can_be_shutdown, _From, Node) ->
+	{reply, {ok, true}, shutdown, Node};
 shutdown(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, shutdown, Node}.
 
