@@ -351,7 +351,7 @@ do_leave(NodeKey, [ExistingNodeKey|Rest]) ->
                 {ok, _} ->
                     ok;
                 {error, Reason} ->
-                    lager:warning("Failed node join attempt from node ~s to node ~s. Reason: ~p", [N, E, Reason]),
+                    lager:warning("Failed node leave attempt from node ~s to node ~s. Reason: ~p", [N, E, Reason]),
                     do_leave(NodeKey, Rest)
             end;
         _ ->
