@@ -159,6 +159,7 @@ update_node(Key, Node) ->
 delete_node(Key) ->
     gen_server:call(?MODULE, {delete_node, Key}).
 
+-spec reset() -> ok.
 reset() ->
     gen_server:call(?MODULE, reset).
 
@@ -178,6 +179,8 @@ init({}) ->
     restore_nodes(State),
     {ok, State}.
 
+-spec handle_call({atom(), term()}, {pid(), term()}, state()) ->
+    {reply, ok | {error, term()}, state()}.
 handle_call({set_scheduler, Scheduler}, _From, State) ->
     {reply, set_scheduler(Scheduler, State), State};
 handle_call({add_cluster, Cluster}, _From, State) ->
@@ -209,15 +212,19 @@ handle_call(reset, _From, #state{root_node = RootNode} = State) ->
 handle_call(_Request, _From, State) ->
     {noreply, State}.
 
+-spec handle_cast(term(), state()) -> {noreply, state()}.
 handle_cast(_Request, State) ->
     {noreply, State}.
 
+-spec handle_info(term(), state()) -> {noreply, state()}.
 handle_info(_Request, State) ->
     {noreply, State}.
 
+-spec terminate(term(), state()) -> ok.
 terminate(_Reason, _State) ->
     ok.
 
+-spec code_change(term(), state(), term()) -> {ok, state()}.
 code_change(_OldVersion, State, _Extra) ->
     {ok, State}.
 
