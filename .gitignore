@@ -7,3 +7,4 @@ logs
 *.beam
 rel/riak_mesos_scheduler
 packages
+ct_log

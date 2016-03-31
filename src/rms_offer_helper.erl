@@ -129,7 +129,7 @@ can_fit_constraints(#offer_helper{
     can_fit_constraints(Constraints, NodeHostnames, NodeAttributes, OfferHelper).
 
 -spec can_fit_constraints(constraints(), hostnames(), attributes_group(), 
-                          offer_helper()) -> boolean().
+                          offer_helper()) -> boolean()|maybe.
 can_fit_constraints([], _, _, _) ->
     true;
 can_fit_constraints([["hostname"|Constraint]|Rest], NodeHosts, NodeAttributes, 
@@ -139,7 +139,9 @@ can_fit_constraints([["hostname"|Constraint]|Rest], NodeHosts, NodeAttributes,
         true ->
             can_fit_constraints(Rest, NodeHosts, NodeAttributes, OfferHelper);
         false -> 
-            false
+            false;
+        maybe ->
+            maybe
     end;
 can_fit_constraints([[Name|Constraint]|Rest], NodeHosts, NodeAttributes, OfferHelper) ->
     Attributes = get_attributes(OfferHelper),
@@ -152,7 +154,9 @@ can_fit_constraints([[Name|Constraint]|Rest], NodeHosts, NodeAttributes, OfferHe
         true ->
             can_fit_constraints(Rest, NodeHosts, NodeAttributes, OfferHelper);
         false -> 
-            false
+            false;
+        maybe ->
+            maybe
     end.
 
 -spec get_offer_id(offer_helper()|erl_mesos:'Offer'()) -> erl_mesos:'OfferID'().
@@ -748,23 +752,34 @@ attributes_to_list([], Accum) ->
 attributes_to_list([#'Attribute'{
                      name=Name, 
                      type='SCALAR', 
-                     scalar=#'Value.Scalar'{value=Value}}|Rest], Accum) ->
-    attributes_to_list(Rest, [{Name, Value}|Accum]);
+                     scalar=#'Value.Scalar'{value=Value}}|Rest], 
+                   Accum) when is_float(Value) ->
+    attributes_to_list(Rest, [{Name, float_to_list(Value)}|Accum]);
 attributes_to_list([#'Attribute'{
                      type='RANGES', 
                      ranges=#'Value.Scalar'{}}|Rest], Accum) ->
     %% TODO: Deal with range attributes
     attributes_to_list(Rest, Accum);
 attributes_to_list([#'Attribute'{
+                     type='SET', 
+                     scalar=#'Value.Set'{item=[]}}|Rest], 
+                   Accum) ->
+    attributes_to_list(Rest, Accum);
+attributes_to_list([#'Attribute'{
                      name=Name, 
                      type='SET', 
-                     scalar=#'Value.Set'{item=Value}}|Rest], Accum) ->
-    attributes_to_list(Rest, [{Name, Value}|Accum]);
+                     scalar=#'Value.Set'{item=[V1|_]=Value}}|Rest], 
+                   Accum) when is_list(V1) ->
+    NewValues = lists:map(fun(X) -> {Name, X} end, Value),
+    attributes_to_list(Rest, Accum ++ NewValues);
 attributes_to_list([#'Attribute'{
                      name=Name, 
                      type='TEXT', 
-                     scalar=#'Value.Text'{value=Value}}|Rest], Accum) ->
-    attributes_to_list(Rest, [{Name, Value}|Accum]).
+                     scalar=#'Value.Text'{value=Value}}|Rest], 
+                   Accum) when is_list(Value) ->
+    attributes_to_list(Rest, [{Name, Value}|Accum]);
+attributes_to_list([_|Rest], Accum) ->
+    attributes_to_list(Rest, Accum).
 
 -spec can_fit_constraint(constraint(), string(), [string()]) -> boolean()|maybe.
 can_fit_constraint(["UNIQUE"], V, Vs) -> 

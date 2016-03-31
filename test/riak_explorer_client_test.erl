@@ -12,7 +12,7 @@ riak_explorer_client_test_() ->
     application:ensure_all_started(hackney),
     case hackney:request(get,
                          <<"http://localhost:8098/admin">>, 
-                         [], <<>>, []) of
+                         [], <<>>, [{connect_timeout, 500}]) of
         {ok, 200, _, _} ->
             {foreach,
              SetupFun,
