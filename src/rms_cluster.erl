@@ -152,9 +152,9 @@ init(Key) ->
             {ok, State, Cluster};
         {error, not_found} ->
             Cluster = #cluster{key = Key},
-            case add_cluster({requested, Cluster}) of
+            case add_cluster({running, Cluster}) of
                 ok ->
-                    {ok, requested, Cluster};
+                    {ok, running, Cluster};
                 {error, Reason} ->
                     {stop, Reason}
             end
@@ -259,28 +259,30 @@ handle_sync_event(add_node, _From, StateName, Cluster) ->
                                        generation = (Generation + 1)},
             case update_cluster(Cluster#cluster.key, {StateName, Cluster1}) of
                 ok ->
-                    {reply, ok, StateName, Cluster1};
+                    {reply, ok, requested, Cluster1};
                 {error,_}=Err ->
                     {reply, Err, StateName, Cluster}
             end;
         {error,_}=Err ->
             {reply, Err, StateName, Cluster}
     end;
+%% TODO This should probably move to be a strict transition
 handle_sync_event({maybe_join, NodeKey}, _From, StateName, 
                   #cluster{key=Key} = Cluster) ->
     NodeKeys = rms_node_manager:get_running_node_keys(Key),
     case maybe_do_join(NodeKey, NodeKeys) of
         ok ->
-            {reply, ok, StateName, Cluster};
+            {reply, ok, running, Cluster};
         {error, Reason} ->
             {reply, {error, Reason}, StateName, Cluster}
     end;
+%% TODO This should probably move to be a strict transition
 handle_sync_event({leave, NodeKey}, _From, StateName,
                   #cluster{key=Key} = Cluster) ->
     NodeKeys = rms_node_manager:get_running_node_keys(Key),
     case do_leave(NodeKey, NodeKeys) of
         ok ->
-            {reply, ok, StateName, Cluster};
+            {reply, ok, running, Cluster};
         {error, Reason} ->
             {reply, {error, Reason}, StateName, Cluster}
     end;

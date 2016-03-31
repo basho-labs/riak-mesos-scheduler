@@ -133,12 +133,7 @@ needs_to_be_reconciled(Key) ->
 can_be_scheduled(Key) ->
     case get_node(Key) of
         {ok, {Status, _}} ->
-            CanBeScheduled = case Status of
-                                 requested -> true;
-                                 reserved -> true;
-                                 _ -> false
-                             end,
-            {ok, CanBeScheduled};
+			{ok, lists:member(Status, [requested, reserved])};
         {error, Reason} ->
             {error, Reason}
     end.
@@ -146,12 +141,8 @@ can_be_scheduled(Key) ->
 -spec can_be_shutdown(key()) -> {ok, boolean()} | {error, term()}.
 can_be_shutdown(Key) -> 
     case get_node(Key) of
-        {ok, {shutting_down, _}} -> 
-            {ok, true};
-        {ok, {starting, _}} -> 
-            {ok, true};
-        {ok, {_, _}} -> 
-            {ok, false};
+		{ok, {Status, _}} ->
+			{ok, lists:member(Status, [starting, shutting_down])};
         {error, Reason} ->
             {error, Reason}
     end.
