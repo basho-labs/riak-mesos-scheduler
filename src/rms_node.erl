@@ -44,6 +44,7 @@
          set_unreserve/1,
          set_agent_info/8,
          delete/1,
+		 restart/1,
          handle_status_update/3]).
 
 %%% gen_fsm callbacks
@@ -219,6 +220,10 @@ set_agent_info(Pid,
 delete(Pid) ->
     gen_fsm:sync_send_all_state_event(Pid, delete).
 
+-spec restart(pid()) -> ok | {error, term()}.
+restart(Pid) ->
+	gen_fsm:sync_send_event(Pid, restart).
+
 %%% gen_fsm callbacks
 -spec init({key(), rms_cluster:key()}) ->
                   {ok, StateName :: atom(), node_state()}
@@ -321,7 +326,6 @@ reserved(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, reserved, Node}.
 
 -spec starting(event(), from(), node_state()) -> state_cb_reply().
-
 starting({status_update, StatusUpdate, _}, _From, Node) ->
     case StatusUpdate of
         'TASK_FAILED' -> sync_update_node(starting, reserved, Node);
@@ -343,6 +347,11 @@ started({status_update, StatusUpdate, _}, _From, Node) ->
         'TASK_KILLED' -> sync_update_node(started, starting, Node);
         _ -> {reply, ok, started, Node}
     end;
+started(restart, _From, Node) ->
+	%% TODO How do we actually control the executor from here? Or do we assume that if we've
+	%% been told to restart by the higher-ups, they'll have sent the appropriate Operations to
+	%% mesos?
+	sync_update_node(started, starting, Node);
 started(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, started, Node}.
 
@@ -360,6 +369,8 @@ shutting_down(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, shutting_down, Node}.
 
 -spec shutdown(event(), from(), node_state()) -> state_cb_reply().
+%% TODO We should probably take care of actually stopping the process once we receive
+%% the TASK_FINISHED / TASK_KILLED / TASK_FAILED from here
 shutdown({status_update, _, _}, _From, Node) ->
     {reply, ok, shutdown, Node};
 shutdown(_Event, _From, Node) ->

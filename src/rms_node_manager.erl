@@ -22,6 +22,9 @@
 
 -behaviour(supervisor).
 
+%% FIXME Remove, debug only
+-export([get_node_pid/1]).
+
 -export([start_link/0]).
 
 -export([get_node_keys/0,
@@ -42,6 +45,7 @@
          node_has_reservation/1,
          node_can_be_shutdown/1,
          add_node/2,
+		 restart_node/1,
          delete_node/1]).
 
 -export([apply_unreserved_offer/2, apply_reserved_offer/2]).
@@ -183,6 +187,15 @@ add_node(Key, ClusterKey) ->
                     {error, Reason}
             end
     end.
+
+-spec restart_node(rms_node:key()) -> ok | {error, term()}.
+restart_node(Key) ->
+	case get_node_pid(Key) of
+		{ok, Pid} ->
+			rms_node:restart(Pid);
+		{error, Reason} ->
+			{error, Reason}
+	end.
 
 -spec delete_node(rms_node:key()) -> ok | {error, term()}.
 delete_node(Key) ->

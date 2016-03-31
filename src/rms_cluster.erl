@@ -259,14 +259,19 @@ handle_sync_event({leave, NodeKey}, _From, StateName,
         {error, Reason} ->
             {reply, {error, Reason}, StateName, Cluster}
     end;
-handle_sync_event(commence_restart, _From, _StateName,
+handle_sync_event(commence_restart, _From, StateName,
 				  #cluster{key=Key} = Cluster) ->
-	NodeKeys = rms_node_manager:get_running_node_keys(Key),
-	%% We'll move nodes from left to right as we confirm they've restarted
-	%% and stabilised
-	Cluster1 = Cluster#cluster{ to_restart = { NodeKeys, [] } },
-	RestartTimeout = 30000, %% TODO Validate this
-	{reply, ok, restarting, Cluster1, RestartTimeout};
+	case rms_node_manager:get_running_node_keys(Key) of
+		[] -> {reply, ok, StateName, Cluster}; %% TODO Validate this lack of state change
+											   %% Perhaps we should move to 'requested'
+		[Node1 | NodeKeys] ->
+			%% We'll move nodes from left to right as we confirm they've restarted
+			%% and stabilised
+			Cluster1 = Cluster#cluster{ to_restart = { NodeKeys, [Node1] } },
+			RestartTimeout = 30000, %% TODO Validate this timeout length - also move it somewhere more configurable
+			ok = rms_node_manager:restart_node(Node1),
+			{reply, ok, restarting, Cluster1, RestartTimeout}
+	end;
 handle_sync_event(_Event, _From, StateName, State) ->
     {reply, {error, {unhandled_event, _Event}}, StateName, State}.
 
