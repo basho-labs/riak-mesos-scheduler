@@ -35,12 +35,15 @@
 
 %% Helper functions.
 
+-spec zk() -> string().
 zk() ->
     get_value(zk, ?DEFAULT_ZK, string).
 
+-spec framework_name() -> string().
 framework_name() ->
     get_value(name, ?DEFAULT_NAME, string).
 
+-spec framework_hostname() -> string().
 framework_hostname() ->
     case get_value(hostname, undefined, string) of
         undefined ->
@@ -53,11 +56,13 @@ framework_hostname() ->
         HN -> HN
     end.
 
+-spec webui_url() -> string().
 webui_url() ->
     Hostname = framework_hostname(),
     Port = rms_config:get_value(port, 9090, integer),
     Hostname ++ ":" ++ integer_to_list(Port).
 
+-spec artifact_urls() -> [string()].
 artifact_urls() ->
     Base = "http://" ++ webui_url() ++ "/static/",
     [
@@ -68,6 +73,7 @@ artifact_urls() ->
 
 %% External functions.
 
+-spec get_value(atom(), term()) -> term().
 get_value(Key, Default) ->
     case get_env_value(Key) of
         false ->
@@ -76,6 +82,7 @@ get_value(Key, Default) ->
             Value
     end.
 
+-spec get_value(atom(), term(), atom()) -> term().
 get_value(Key, Default, Type) ->
     case get_value(Key, Default) of
         Default ->
@@ -86,6 +93,7 @@ get_value(Key, Default, Type) ->
 
 %% Internal functions.
 
+-spec convert_value(term(), atom()) -> term().
 convert_value(Value, integer) when is_list(Value) ->
     list_to_integer(Value);
 convert_value(Value, float) when is_list(Value) ->
@@ -99,6 +107,7 @@ convert_value(Value, binary) when is_list(Value) ->
 convert_value(Value, _Type) ->
     Value.
 
+-spec get_env_value(atom()) -> string() | false.
 get_env_value(Key) ->
     Key1 = "RIAK_MESOS_" ++ string:to_upper(atom_to_list(Key)),
     os:getenv(Key1).
