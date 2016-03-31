@@ -60,6 +60,8 @@ start_link() ->
 
 -spec get_cluster_keys() -> [rms_cluster:key()].
 get_cluster_keys() ->
+	%% FIXME This is why we should use the process states not what's in ZK.
+	%% This will need to query each cluster's FSM for status != 'shutdown'
     [Key || {Key, _} <- rms_metadata:get_clusters()].
 
 -spec get_cluster(rms_cluster:key()) ->

@@ -60,6 +60,10 @@
                   generation = 1 :: pos_integer(),
 				  to_restart = {[], []} :: {list(rms_node:key()), list(rms_node:key())}}).
 
+%% TODO Validate this timeout length - also move it somewhere more configurable
+-define(RESTART_TIMEOUT, 30000).
+-define(SHUTDOWN_TIMEOUT, 30000).
+
 -type key() :: string().
 -export_type([key/0]).
 
@@ -168,10 +172,25 @@ running(_Event, Cluster) ->
 
 -spec restarting(event(), cluster_state()) -> state_cb_return().
 %% TODO Handle timeout when restarting (i.e. when node has not come back soon enougH)
+restarting(timeout, #cluster{}=Cluster) ->
+	#cluster{ to_restart = { _PendingNodes, [ Waiting | _Restarted]}} = Cluster,
+	%% If we've hit this, we tried to restart a node and it's not come back yet...
+	lager:info("Node ~p has been restarted but not reported back.", [Waiting]),
+	{next_state, restarting, Cluster, ?RESTART_TIMEOUT};
 restarting(_Event, Cluster) ->
     {stop, {unhandled_event, _Event}, Cluster}.
 
 -spec shutdown(event(), cluster_state()) -> state_cb_return().
+shutdown(timeout, #cluster{}=Cluster) ->
+	#cluster{ key = Key } = Cluster,
+	case rms_node_manager:get_active_node_keys(Key) of
+		[] -> 
+			ok = rms_metadata:delete_cluster(Key),
+			{stop, normal, Cluster};
+		[_|_] = NodeKeys ->
+			_ = do_delete(NodeKeys),
+			{next_state, shutdown, Cluster}
+	end;
 shutdown(_Event, Cluster) ->
     {stop, {unhandled_event, _Event}, Cluster}.
 
@@ -219,9 +238,13 @@ handle_sync_event({set_advanced_config, AdvConfig}, _From, StateName, Cluster) -
     end;
 handle_sync_event(delete, _From, _StateName,
                   #cluster{key = Key} = Cluster) ->
-    NodeKeys = rms_node_manager:get_active_node_keys(Key),
-	Reply = do_delete(NodeKeys),
-	{reply, Reply, shutdown, Cluster};
+	case rms_node_manager:get_active_node_keys(Key) of
+		[] ->
+			{stop, normal, rms_metadata:delete_cluster(Key), Cluster};
+		NodeKeys ->
+			Reply = do_delete(NodeKeys),
+			{reply, Reply, shutdown, Cluster, ?SHUTDOWN_TIMEOUT}
+	end;
 handle_sync_event(add_node, _From, StateName, Cluster) ->
     #cluster{key = Key,
              node_keys = NodeKeys,
@@ -268,9 +291,8 @@ handle_sync_event(commence_restart, _From, StateName,
 			%% We'll move nodes from left to right as we confirm they've restarted
 			%% and stabilised
 			Cluster1 = Cluster#cluster{ to_restart = { NodeKeys, [Node1] } },
-			RestartTimeout = 30000, %% TODO Validate this timeout length - also move it somewhere more configurable
 			ok = rms_node_manager:restart_node(Node1),
-			{reply, ok, restarting, Cluster1, RestartTimeout}
+			{reply, ok, restarting, Cluster1, ?RESTART_TIMEOUT}
 	end;
 handle_sync_event(_Event, _From, StateName, State) ->
     {reply, {error, {unhandled_event, _Event}}, StateName, State}.
