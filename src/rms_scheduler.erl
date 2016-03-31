@@ -54,6 +54,8 @@
 
 %% erl_mesos_scheduler callback functions.
 
+-spec init(rms:options()) ->
+    {ok, erl_mesos:'FrameworkInfo'(), true, state()} | {stop, term()}.
 init(Options) ->
     lager:info("Scheduler options: ~p.", [Options]),
     case get_scheduler() of
@@ -68,6 +70,9 @@ init(Options) ->
             init_scheduler(Scheduler)
     end.
 
+-spec registered(erl_mesos_scheduler:scheduler_info(),
+                 erl_mesos:'Event.Subscribed'(), state()) ->
+    {ok, state()} | {stop, state()}.
 registered(SchedulerInfo, #'Event.Subscribed'{framework_id = FrameworkId},
            #state{scheduler = #scheduler{options = Options} = Scheduler} =
                State) ->
@@ -102,16 +107,23 @@ registered(SchedulerInfo, #'Event.Subscribed'{framework_id = FrameworkId},
             call(reconcile, [SchedulerInfo, ReconcileTasks], State)
     end.
 
+-spec reregistered(erl_mesos_scheduler:scheduler_info(), state()) ->
+    {ok, state()} | {stop, state()}.
 reregistered(_SchedulerInfo, State) ->
     lager:warning("Scheduler reregistered.", []),
     exec_calls(State).
 
+-spec disconnected(erl_mesos_scheduler:scheduler_info(), state()) ->
+    {ok, state()} | {stop, state()}.
 disconnected(_SchedulerInfo, State) ->
     lager:warning("Scheduler disconnected.", []),
     {ok, State}.
 
-resource_offers(SchedulerInfo, #'Event.Offers'{offers = Offers}, #state{scheduler = #scheduler{options = Options}} =
-               State) ->
+-spec resource_offers(erl_mesos_scheduler:scheduler_info(),
+                      erl_mesos:'Event.Offers'(), state()) ->
+                             {ok, state()} | {stop, state()}.
+resource_offers(SchedulerInfo, #'Event.Offers'{offers = Offers}, 
+                #state{scheduler = #scheduler{options = Options}}=State) ->
     Constraints = proplists:get_value(constraints, Options),
     {OfferIds, Operations} = apply_offers(Offers, Constraints),
     case length(Operations) of
@@ -128,12 +140,18 @@ resource_offers(SchedulerInfo, #'Event.Offers'{offers = Offers}, #state{schedule
         R -> R
     end.
 
+-spec offer_rescinded(erl_mesos_scheduler:scheduler_info(),
+                      erl_mesos:'Event.Rescind'(), state()) ->
+    {ok, state()}.
 offer_rescinded(_SchedulerInfo, #'Event.Rescind'{} = EventRescind, State) ->
     lager:info("Scheduler received offer rescinded event. "
                "Rescind: ~p.",
                [EventRescind]),
     {ok, State}.
 
+-spec status_update(erl_mesos_scheduler:scheduler_info(),
+                    erl_mesos:'Event.Update'(), state()) ->
+    {ok, state()} | {stop, state()}.
 status_update(SchedulerInfo, #'Event.Update'{
                                  status=#'TaskStatus'{
                                            reason=Reason,
@@ -143,7 +161,7 @@ status_update(SchedulerInfo, #'Event.Update'{
                                            uuid=Uuid}} = EventUpdate, State)->
     lager:info("Scheduler received status update event. "
                "Update: ~p~n", [EventUpdate]),
-    {ok, NodeName} = nodename_from_task_id(TaskId),
+    {ok, NodeName} = node_name_from_task_id(TaskId),
     {ok, ClusterName} = rms_node_manager:get_node_cluster_key(NodeName),
     case rms_cluster_manager:handle_status_update(ClusterName, NodeName, NodeState, Reason) of
         ok ->
@@ -158,27 +176,34 @@ status_update(SchedulerInfo, #'Event.Update'{
             {ok, State}
     end.
 
-%% TODO Move this function elsewhere in the module
-%% TODO This cannot possibly be this easy, can it?
-nodename_from_task_id(#'TaskID'{value = NodeName}) ->
-    {ok, NodeName}.
-
+-spec framework_message(erl_mesos_scheduler:scheduler_info(),
+                        erl_mesos:'Event.Message'(), state()) ->
+    {ok, state()}.
 framework_message(_SchedulerInfo, EventMessage, State) ->
     lager:info("Scheduler received framework message. "
                "Framework message: ~p.",
                [EventMessage]),
     {ok, State}.
 
+-spec slave_lost(erl_mesos_scheduler:scheduler_info(),
+                 erl_mesos:'Event.Failure'(), state()) ->
+    {ok, state()}.
 slave_lost(_SchedulerInfo, EventFailure, State) ->
     lager:info("Scheduler received slave lost event. Failure: ~p.",
                [EventFailure]),
     {ok, State}.
 
+-spec executor_lost(erl_mesos_scheduler:scheduler_info(),
+                    erl_mesos:'Event.Failure'(), state()) ->
+    {ok, state()}.
 executor_lost(_SchedulerInfo, EventFailure, State) ->
     lager:info("Scheduler received executor lost event. Failure: ~p.",
                [EventFailure]),
     {ok, State}.
 
+-spec error(erl_mesos_scheduler:scheduler_info(), erl_mesos:'Event.Error'(),
+            state()) ->
+    {stop, state()}.
 error(_SchedulerInfo, EventError, State) ->
     lager:info("Scheduler received error event. Error: ~p.", [EventError]),
     case EventError of
@@ -188,10 +213,14 @@ error(_SchedulerInfo, EventError, State) ->
     end,
     {stop, State}.
 
+-spec handle_info(erl_mesos_scheduler:scheduler_info(), term(), state()) ->
+    {ok, state()}.
 handle_info(_SchedulerInfo, Info, State) ->
     lager:info("Scheduler received unexpected message. Message: ~p.", [Info]),
     {ok, State}.
 
+-spec terminate(erl_mesos_scheduler:scheduler_info(), term(), state()) ->
+    ok.
 terminate(_SchedulerInfo, Reason, _State) ->
     lager:warning("Scheduler terminate. Reason: ~p.", [Reason]),
     ok.
@@ -199,7 +228,7 @@ terminate(_SchedulerInfo, Reason, _State) ->
 %% Internal functions.
 
 -spec init_scheduler(scheduler_state()) ->
-                            {ok, erl_mesos:'FrameworkInfo'(), true, state()} | {stop, term()}.
+    {ok, erl_mesos:'FrameworkInfo'(), true, state()} | {stop, term()}.
 init_scheduler(#scheduler{options = Options} = Scheduler) ->
     case set_scheduler(Scheduler) of
         ok ->
@@ -283,8 +312,7 @@ to_list(#scheduler{options = Options}) ->
 from_list(SchedulerList) ->
     #scheduler{options = proplists:get_value(options, SchedulerList)}.
 
--spec call(atom(), [term()], state()) ->
-                  {ok, state()} | {stop, state()}.
+-spec call(atom(), [term()], state()) -> {ok, state()} | {stop, state()}.
 call(Function, Args, #state{calls_queue = CallsQueue} = State) ->
     Call = {erl_mesos_scheduler, Function, Args},
     case erl_mesos_calls_queue:exec_or_push_call(Call, CallsQueue) of
@@ -366,6 +394,13 @@ reconcile_tasks(TaskIdValues) ->
          #'Call.Reconcile.Task'{task_id = TaskId}
      end || TaskIdValue <- TaskIdValues].
 
+-spec node_name_from_task_id(erl_mesos:'TaskID'()) -> {ok, string()}.
+node_name_from_task_id(#'TaskID'{value = NodeName}) ->
+    {ok, NodeName}.
+
+-spec shutdown_executors(erl_mesos_scheduler:scheduler_info(),
+                         [{string(), string()}], state()) ->
+    {ok, state()} | {stop, state()}.
 shutdown_executors(_, [], State) ->
     {ok, State};
 shutdown_executors(SchedulerInfo, [{NodeKey, AgentIdValue}|Rest], State) ->

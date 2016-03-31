@@ -28,11 +28,14 @@
 
 %% External functions.
 
+-spec start_link() -> {ok, pid()}.
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
 %% supervisor callback function.
 
+-spec init([]) ->
+    {ok, {{supervisor:strategy(), 1, 1}, [supervisor:child_spec()]}}.
 init([]) ->
     Ip = rms_config:get_value(ip, "0.0.0.0"),
     Port = rms_config:get_value(port, 9090, integer),
