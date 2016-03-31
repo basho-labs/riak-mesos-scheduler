@@ -186,6 +186,8 @@ shutdown(timeout, #cluster{}=Cluster) ->
 	case rms_node_manager:get_active_node_keys(Key) of
 		[] -> 
 			ok = rms_metadata:delete_cluster(Key),
+			%% FIXME We either need to subsequently do supervisor:delete_child(rms_cluster_manager, Key)
+			%% Or if someone tries to re-create this cluster, do supervisor:restart_child(rms_cluster_manager, Key)
 			{stop, normal, Cluster};
 		[_|_] = NodeKeys ->
 			_ = do_delete(NodeKeys),
