@@ -7,11 +7,11 @@
 -export([new/1,
          get_offer_id/1,
          get_offer_id_value/1,
-         get_offer_attributes/1,
          get_attributes/1,
          get_agent_id/1,
          get_agent_id_value/1,
          get_hostname/1,
+         get_constraints/1,
          get_persistence_ids/1,
          get_reserved_resources/1,
          get_reserved_resources_cpus/1,
@@ -88,7 +88,7 @@
 %% External functions.
 
 -spec new(erl_mesos:'Offer'()) -> offer_helper().
-new(#'Offer'{resources = Resources} = Offer) ->
+new(#'Offer'{resources = Resources, attributes = OfferAttributes} = Offer) ->
     PersistenceIds = get_persistence_ids(Resources, []),
     ReservedCpus = get_scalar_resource_value("cpus", true, Resources),
     ReservedMem = get_scalar_resource_value("mem", true, Resources),
@@ -102,7 +102,6 @@ new(#'Offer'{resources = Resources} = Offer) ->
     UnreservedPorts = get_ranges_resource_values("ports", false, Resources),
     UnreservedResources = resources(UnreservedCpus, UnreservedMem,
                                     UnreservedDisk, UnreservedPorts),
-    OfferAttributes = get_offer_attributes(Offer),
     Attributes = attributes_to_list(OfferAttributes),
     #offer_helper{offer = Offer,
                   persistence_ids = PersistenceIds,
@@ -167,10 +166,6 @@ get_offer_id_value(OfferHelper) ->
     #'OfferID'{value = OfferIdValue} = get_offer_id(OfferHelper),
     OfferIdValue.
 
--spec get_offer_attributes(offer_helper()) -> [erl_mesos:'Attribute'()].
-get_offer_attributes(#offer_helper{offer = #'Offer'{attributes = Attributes}}) ->
-    Attributes.
-
 -spec get_attributes(offer_helper()) -> attributes().
 get_attributes(#offer_helper{attributes = Attributes}) ->
     Attributes.
@@ -187,6 +182,10 @@ get_agent_id_value(OfferHelper) ->
 -spec get_hostname(offer_helper()) -> string().
 get_hostname(#offer_helper{offer = #'Offer'{hostname = Hostname}}) ->
     Hostname.
+
+-spec get_constraints(offer_helper()) -> string().
+get_constraints(#offer_helper{constraints = Constraints}) ->
+    Constraints.
 
 -spec get_persistence_ids(offer_helper()) -> [string()].
 get_persistence_ids(#offer_helper{persistence_ids = PersistenceIds}) ->

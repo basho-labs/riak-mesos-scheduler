@@ -379,9 +379,11 @@ apply_offer(Offer, Constraints) ->
     OfferHelper1 = rms_offer_helper:set_constraints(Constraints, OfferHelper),
     lager:info("Scheduler recevied offer. "
                "Offer id: ~s. "
-               "Resources: ~p.",
+               "Resources: ~p. "
+               "Constraints: ~p. ",
                [rms_offer_helper:get_offer_id_value(OfferHelper1),
-                rms_offer_helper:resources_to_list(OfferHelper1)]),
+                rms_offer_helper:resources_to_list(OfferHelper1),
+                rms_offer_helper:get_constraints(OfferHelper1)]),
     OfferHelper2 = rms_cluster_manager:apply_offer(OfferHelper1),
     OfferId = rms_offer_helper:get_offer_id(OfferHelper2),
     Operations = rms_offer_helper:operations(OfferHelper2),

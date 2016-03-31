@@ -153,27 +153,6 @@ executors_to_shutdown([NodeKey|Rest], Accum) ->
             executors_to_shutdown(Rest, Accum)
   end.
 
--spec apply_offer(rms_offer_helper:offer_helper()) ->
-    rms_offer_helper:offer_helper().
-apply_offer(OfferHelper) ->
-    {ok, NodeHosts} = rms_node_manager:get_node_hosts(),
-    {ok, NodeAttributes} = rms_node_manager:get_node_attributes(),
-    OfferHelper1 = rms_offer_helper:set_node_hostnames(NodeHosts, OfferHelper),
-    OfferHelper2 = rms_offer_helper:set_node_attributes(NodeAttributes, OfferHelper1),
-    case rms_node_manager:get_unreconciled_node_keys() of
-        N when length(N) > 0 ->
-            OfferHelper2;
-        _ ->
-            NodeKeys = rms_node_manager:get_node_keys(),
-            OfferHelper3 = apply_offer(NodeKeys, OfferHelper2),
-            case rms_offer_helper:has_tasks_to_launch(OfferHelper3) of
-                true ->
-                    OfferHelper3;
-                false ->
-                    unreserve_volumes(unreserve_resources(OfferHelper3))
-            end
-    end.
-
 -spec maybe_join(rms_cluster:key(), rms_node:key()) -> ok | {error, term()}.
 maybe_join(Key, NodeKey) ->
     case get_cluster_pid(Key) of
@@ -197,6 +176,27 @@ leave(Key, NodeKey) ->
 handle_status_update(_Key, NodeKey, TaskStatus, Reason) ->
     rms_node_manager:handle_status_update(NodeKey, TaskStatus, Reason).
 
+-spec apply_offer(rms_offer_helper:offer_helper()) ->
+    rms_offer_helper:offer_helper().
+apply_offer(OfferHelper) ->
+    {ok, NodeHosts} = rms_node_manager:get_node_hosts(),
+    {ok, NodeAttributes} = rms_node_manager:get_node_attributes(),
+    OfferHelper1 = rms_offer_helper:set_node_hostnames(NodeHosts, OfferHelper),
+    OfferHelper2 = rms_offer_helper:set_node_attributes(NodeAttributes, OfferHelper1),
+    case rms_node_manager:get_unreconciled_node_keys() of
+        N when length(N) > 0 ->
+            OfferHelper2;
+        _ ->
+            NodeKeys = rms_node_manager:get_node_keys(),
+            OfferHelper3 = apply_offer(NodeKeys, OfferHelper2),
+            case rms_offer_helper:has_tasks_to_launch(OfferHelper3) of
+                true ->
+                    OfferHelper3;
+                false ->
+                    unreserve_volumes(unreserve_resources(OfferHelper3))
+            end
+    end.
+
 %% supervisor callback function.
 
 -spec init({}) ->
@@ -207,21 +207,6 @@ init({}) ->
     {ok, {{one_for_one, 1, 1}, Specs}}.
 
 %% Internal functions.
-
--spec cluster_spec(rms_cluster:key()) -> supervisor:child_spec().
-cluster_spec(Key) ->
-    {Key,
-        {rms_cluster, start_link, [Key]},
-        transient, 5000, worker, [rms_cluster]}.
-
--spec get_cluster_pid(rms_cluster:key()) -> {ok, pid()} | {error, not_found}.
-get_cluster_pid(Key) ->
-    case lists:keyfind(Key, 1, supervisor:which_children(?MODULE)) of
-        {_Key, Pid, _, _} ->
-            {ok, Pid};
-        false ->
-            {error, not_found}
-    end.
 
 -spec apply_offer([rms_node:key()],
                   rms_offer_helper:offer_helper()) ->
@@ -259,10 +244,7 @@ schedule_node(NodeKey, NodeKeys, OfferHelper) ->
                     apply_unreserved_offer(NodeKey, NodeKeys,
                                            OfferHelper);
                 false ->
-                    Constraints = rms_offer_helper:get_constraints(OfferHelper),
-                    lager:info("Offer was filtered due to constraints: ~p. ",
-                               [Constraints]),
-                    apply_offer(NodeKeys, OfferHelper)
+                    OfferHelper
             end
     end.
 
@@ -277,9 +259,9 @@ apply_unreserved_offer(NodeKey, NodeKeys, OfferHelper) ->
                        "Offer id: ~s. "
                        "Offer resources: ~p.",
                        [NodeKey,
-                        rms_offer_helper:get_offer_id_value(OfferHelper),
-                        rms_offer_helper:resources_to_list(OfferHelper)]),
-            apply_offer(NodeKeys, OfferHelper1);
+                        rms_offer_helper:get_offer_id_value(OfferHelper1),
+                        rms_offer_helper:resources_to_list(OfferHelper1)]),
+            OfferHelper1;
         {error, Reason} ->
             lager:warning("Applying of unreserved resources error. "
                           "Node key: ~s. "
@@ -314,7 +296,7 @@ apply_reserved_offer(NodeKey, NodeKeys, OfferHelper) ->
                                "Offer resources: ~p.",
                                [NodeKey, PersistenceId, OfferIdValue,
                                 ResourcesList]),
-                    apply_offer(NodeKeys, OfferHelper1);
+                    OfferHelper1;
                 {error, Reason} ->
                     lager:warning("Adding node for scheduling error. "
                                   "Node has persistence id. "
@@ -360,4 +342,19 @@ unreserve_volumes(OfferHelper) ->
             rms_offer_helper:unreserve_volumes(OfferHelper);
         false ->
             OfferHelper
+    end.
+
+-spec cluster_spec(rms_cluster:key()) -> supervisor:child_spec().
+cluster_spec(Key) ->
+    {Key,
+        {rms_cluster, start_link, [Key]},
+        transient, 5000, worker, [rms_cluster]}.
+
+-spec get_cluster_pid(rms_cluster:key()) -> {ok, pid()} | {error, not_found}.
+get_cluster_pid(Key) ->
+    case lists:keyfind(Key, 1, supervisor:which_children(?MODULE)) of
+        {_Key, Pid, _, _} ->
+            {ok, Pid};
+        false ->
+            {error, not_found}
     end.
