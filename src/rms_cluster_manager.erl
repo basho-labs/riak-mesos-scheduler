@@ -32,6 +32,7 @@
          set_cluster_riak_config/2,
          set_cluster_advanced_config/2,
 		 restart_cluster/1,
+		 node_started/2,
          delete_cluster/1]).
 
 -export([add_node/1]).
@@ -127,6 +128,15 @@ restart_cluster(Key) ->
 	case get_cluster_pid(Key) of
 		{ok, Pid} ->
 			rms_cluster:commence_restart(Pid);
+		{error, Reason} ->
+			{error, Reason}
+	end.
+
+-spec node_started(rms_cluster:key(), rms_node:key()) -> ok.
+node_started(Key, NodeKey) ->
+	case get_cluster_pid(Key) of
+		{ok, Pid} ->
+			rms_cluster:node_started(Pid, NodeKey);
 		{error, Reason} ->
 			{error, Reason}
 	end.
@@ -243,10 +253,10 @@ apply_offer([NodeKey | NodeKeys], OfferHelper) ->
             OfferHelper;
         false ->
             case rms_node_manager:node_can_be_scheduled(NodeKey) of
-                true ->
+                {ok, true} ->
                     schedule_node(NodeKey, NodeKeys,
                                   OfferHelper);
-                false ->
+                {ok, false} ->
                     apply_offer(NodeKeys, OfferHelper)
             end
     end;

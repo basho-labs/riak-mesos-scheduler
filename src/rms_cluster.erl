@@ -32,7 +32,8 @@
          leave/2,
          delete/1,
 		 add_node/1,
-		 commence_restart/1]).
+		 commence_restart/1,
+		 node_started/2]).
 
 %% gen_fsm callbacks
 -export([init/1,
@@ -58,10 +59,11 @@
                   advanced_config = <<>> :: binary(),
                   node_keys = [] :: [rms_node:key()],
                   generation = 1 :: pos_integer(),
+				  starting = [] :: list(rms_node:key()),
 				  to_restart = {[], []} :: {list(rms_node:key()), list(rms_node:key())}}).
 
 %% TODO Validate this timeout length - also move it somewhere more configurable
--define(RESTART_TIMEOUT, 30000).
+-define(RESTART_TIMEOUT, 60000).
 -define(SHUTDOWN_TIMEOUT, 30000).
 
 -type key() :: string().
@@ -126,6 +128,10 @@ add_node(Pid) ->
 commence_restart(Pid) ->
 	gen_fsm:sync_send_all_state_event(Pid, commence_restart).
 
+-spec node_started(pid(), rms_node:key()) -> ok.
+node_started(Pid, NodeKey) ->
+	gen_fsm:send_event(Pid, {node_started, NodeKey}).
+
 %%% gen_fsm callbacks
 -type state_timeout() :: non_neg_integer() | infinity.
 -type state() :: atom().
@@ -163,10 +169,23 @@ init(Key) ->
 %%% Async per-state handling
 %%% Note that there is none.
 -spec requested(event(), cluster_state()) -> state_cb_return().
+requested({node_started, NodeKey}, #cluster{
+									starting = Starting 
+								   }=Cluster) ->
+	Rest = lists:delete(NodeKey, Starting),
+	NextState =
+		case Rest of
+			[] -> running; 
+			[_|_] -> requested
+		end,
+	{next_state, NextState, Cluster#cluster{starting = Rest}};
 requested(_Event, Cluster) ->
     {stop, {unhandled_event, _Event}, Cluster}.
 
 -spec running(event(), cluster_state()) -> state_cb_return().
+running({node_started,_} = Event, #cluster{}=Cluster) ->
+	%% NB Copy the transitions from requested
+	requested(Event, Cluster);
 running(_Event, Cluster) ->
     {stop, {unhandled_event, _Event}, Cluster}.
 
@@ -176,7 +195,20 @@ restarting(timeout, #cluster{}=Cluster) ->
 	#cluster{ to_restart = { _PendingNodes, [ Waiting | _Restarted]}} = Cluster,
 	%% If we've hit this, we tried to restart a node and it's not come back yet...
 	lager:info("Node ~p has been restarted but not reported back.", [Waiting]),
+	ok = rms_node_manager:restart_node(Waiting),
 	{next_state, restarting, Cluster, ?RESTART_TIMEOUT};
+%% NB: When restarting, we should only be starting one node at a time
+%% TODO What happens if a user issues 'node add' while we're restarting?
+restarting({node_started, NodeKey}, #cluster{
+									   to_restart = { [], [NodeKey|_]}
+									  }=Cluster) ->
+	{next_state, running, Cluster#cluster{to_restart={[], []}}};
+restarting({node_started, NodeKey}, #cluster{
+									   to_restart = { [Next | Pending], [NodeKey|_]=Restarted}
+									  }=Cluster) ->
+	Cluster1 = Cluster#cluster{to_restart={Pending, [Next | Restarted]}},
+	ok = rms_node_manager:restart_node(Next),
+	{next_state, restarting, Cluster1};
 restarting(_Event, Cluster) ->
     {stop, {unhandled_event, _Event}, Cluster}.
 
@@ -249,6 +281,7 @@ handle_sync_event(delete, _From, _StateName,
 	end;
 handle_sync_event(add_node, _From, StateName, Cluster) ->
     #cluster{key = Key,
+			 starting = Starting,
              node_keys = NodeKeys,
              generation = Generation} = Cluster,
     FrameworkName = rms_config:framework_name(),
@@ -256,6 +289,7 @@ handle_sync_event(add_node, _From, StateName, Cluster) ->
     case rms_node_manager:add_node(NodeKey, Key) of
         ok ->
             Cluster1 = Cluster#cluster{node_keys = [NodeKey | NodeKeys],
+									   starting = [NodeKey | Starting],
                                        generation = (Generation + 1)},
             case update_cluster(Cluster#cluster.key, {StateName, Cluster1}) of
                 ok ->
@@ -272,7 +306,7 @@ handle_sync_event({maybe_join, NodeKey}, _From, StateName,
     NodeKeys = rms_node_manager:get_running_node_keys(Key),
     case maybe_do_join(NodeKey, NodeKeys) of
         ok ->
-            {reply, ok, running, Cluster};
+            {reply, ok, StateName, Cluster};
         {error, Reason} ->
             {reply, {error, Reason}, StateName, Cluster}
     end;
@@ -404,6 +438,8 @@ from_list(ClusterList) ->
               advanced_config = proplists:get_value(advanced_config,
                                                     ClusterList),
               node_keys = proplists:get_value(node_keys, ClusterList),
+			  starting = proplists:get_value(starting, ClusterList, []),
+			  to_restart = proplists:get_value(to_restart, ClusterList, {[], []}),
               generation = proplists:get_value(generation, ClusterList)}}.
 
 -spec to_list({atom(), cluster_state()}) -> rms_metadata:cluster_state().
@@ -412,10 +448,14 @@ to_list({State,
                   riak_config = RiakConf,
                   advanced_config = AdvancedConfig,
                   node_keys = NodeKeys,
+				  starting = Starting,
+				  to_restart = ToRestart,
                   generation = Generation}}) ->
     [{key, Key},
      {status, State},
      {riak_config, RiakConf},
      {advanced_config, AdvancedConfig},
+	 {starting, Starting},
+	 {to_restart, ToRestart},
      {node_keys, NodeKeys},
      {generation, Generation}].

@@ -146,12 +146,10 @@ node_needs_to_be_reconciled(NodeKey) ->
 
 -spec node_can_be_scheduled(rms_node:key()) -> boolean().
 node_can_be_scheduled(NodeKey) ->
-    case rms_node:can_be_scheduled(NodeKey) of
-        {ok, CanBeScheduled} ->
-            CanBeScheduled;
-        {error, _Reason} ->
-            false
-    end.
+	case get_node_pid(NodeKey) of
+		{ok, Pid} -> rms_node:can_be_scheduled(Pid);
+		{error, _}=Error -> Error
+	end.
 
 -spec node_has_reservation(rms_node:key()) -> boolean().
 node_has_reservation(NodeKey) ->
@@ -394,10 +392,7 @@ apply_reserved_offer(NodeKey, OfferHelper) ->
     ok | {error, term()}.
 handle_status_update(NodeKey, TaskStatus, Reason) ->
     {ok, N} = get_node_pid(NodeKey),
-    lager:info("Handling status update ~p for node ~p", [TaskStatus, NodeKey]),
-    Response = rms_node:handle_status_update(N, TaskStatus, Reason),
-    lager:info("Status update response: ~p", [Response]),
-    Response.
+    rms_node:handle_status_update(N, TaskStatus, Reason).
 
 %% supervisor callback function.
 
