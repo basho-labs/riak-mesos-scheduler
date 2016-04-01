@@ -159,12 +159,12 @@ executors_to_shutdown() ->
 executors_to_shutdown([], Accum) ->
     Accum;
 executors_to_shutdown([NodeKey|Rest], Accum) ->
-    case rms_node_manager:node_can_be_shutdown(NodeKey) of
-        true ->
-            {ok, AgentIdValue} = rms_node_manager:get_node_agent_id_value(NodeKey),
-            executors_to_shutdown(Rest, [{NodeKey, AgentIdValue}|Accum]);
-        false ->
-            executors_to_shutdown(Rest, Accum)
+  case rms_node_manager:node_can_be_shutdown(NodeKey) of
+	  {ok, true} ->
+		  {ok, AgentIdValue} = rms_node_manager:get_node_agent_id_value(NodeKey),
+		  executors_to_shutdown(Rest, [{NodeKey, AgentIdValue}|Accum]);
+	  {ok, false} ->
+		  executors_to_shutdown(Rest, Accum)
   end.
 
 -spec apply_offer(rms_offer_helper:offer_helper()) ->

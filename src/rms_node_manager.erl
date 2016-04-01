@@ -164,12 +164,12 @@ node_has_reservation(NodeKey) ->
 
 -spec node_can_be_shutdown(rms_node:key()) -> boolean().
 node_can_be_shutdown(NodeKey) ->
-    case rms_node:can_be_shutdown(NodeKey) of
-        {ok, CanBeShutDown} ->
-            CanBeShutDown;
-        {error, _Reason} ->
-            false
-    end.
+	case get_node_pid(NodeKey) of
+		{ok, Pid} ->
+			rms_node:can_be_shutdown(Pid);
+		{error, Reason} ->
+			{error, Reason}
+	end.
 
 -spec add_node(rms_node:key(), rms_cluster:key()) -> ok | {error, term()}.
 add_node(Key, ClusterKey) ->

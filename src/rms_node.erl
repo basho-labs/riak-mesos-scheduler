@@ -145,13 +145,6 @@ can_be_shutdown(Pid) when is_pid(Pid) ->
 	case gen_fsm:sync_send_event(Pid, can_be_shutdown) of
 		{error, unhandled_event} -> {ok, false};
 		{ok, Reply} -> {ok, Reply}
-	end;
-can_be_shutdown(Key) -> 
-    case get_node(Key) of
-		{ok, {Status, _}} ->
-			{ok, lists:member(Status, [starting, shutting_down])};
-        {error, Reason} ->
-            {error, Reason}
     end.
 
 -spec has_reservation(key()) -> {ok, boolean()} | {error, term()}.
@@ -346,7 +339,7 @@ restarting({status_update, StatusUpdate, _}, _From, Node) ->
         'TASK_FAILED' -> sync_update_node(restarting, reserved, Node);
         'TASK_LOST' -> sync_update_node(restarting, reserved, Node);
         'TASK_ERROR' -> sync_update_node(restarting, reserved, Node);
-        'TASK_reSTARTING' -> {reply, ok, restarting, Node};
+        'TASK_STARTING' -> {reply, ok, restarting, Node};
         'TASK_RUNNING' -> join(restarting, started, Node);
         _ -> {reply, ok, restarting, Node}
     end;
@@ -361,6 +354,7 @@ started({status_update, StatusUpdate, _}, _From, Node) ->
         'TASK_FAILED' -> sync_update_node(started, starting, Node);
         'TASK_LOST' -> sync_update_node(started, starting, Node);
         'TASK_ERROR' -> sync_update_node(started, starting, Node);
+		'TASK_FINISHED' -> sync_update_node(started, shutdown, Node);
         'TASK_KILLED' -> sync_update_node(started, starting, Node);
         _ -> {reply, ok, started, Node}
     end;
