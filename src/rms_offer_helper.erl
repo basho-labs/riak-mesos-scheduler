@@ -129,7 +129,7 @@ can_fit_constraints(#offer_helper{
     can_fit_constraints(Constraints, NodeHostnames, NodeAttributes, OfferHelper).
 
 -spec can_fit_constraints(constraints(), hostnames(), attributes_group(), 
-                          offer_helper()) -> boolean()|maybe.
+                          offer_helper()) -> boolean().
 can_fit_constraints([], _, _, _) ->
     true;
 can_fit_constraints([["hostname"|Constraint]|Rest], NodeHosts, NodeAttributes, 
@@ -139,9 +139,7 @@ can_fit_constraints([["hostname"|Constraint]|Rest], NodeHosts, NodeAttributes,
         true ->
             can_fit_constraints(Rest, NodeHosts, NodeAttributes, OfferHelper);
         false -> 
-            false;
-        maybe ->
-            maybe
+            false
     end;
 can_fit_constraints([[Name|Constraint]|Rest], NodeHosts, NodeAttributes, OfferHelper) ->
     Attributes = get_attributes(OfferHelper),
@@ -154,9 +152,7 @@ can_fit_constraints([[Name|Constraint]|Rest], NodeHosts, NodeAttributes, OfferHe
         true ->
             can_fit_constraints(Rest, NodeHosts, NodeAttributes, OfferHelper);
         false -> 
-            false;
-        maybe ->
-            maybe
+            false
     end.
 
 -spec get_offer_id(offer_helper()|erl_mesos:'Offer'()) -> erl_mesos:'OfferID'().
@@ -781,7 +777,7 @@ attributes_to_list([#'Attribute'{
 attributes_to_list([_|Rest], Accum) ->
     attributes_to_list(Rest, Accum).
 
--spec can_fit_constraint(constraint(), string(), [string()]) -> boolean()|maybe.
+-spec can_fit_constraint(constraint(), string(), [string()]) -> boolean().
 can_fit_constraint(["UNIQUE"], V, Vs) -> 
     %% Unique Value
     not lists:member(V, Vs);
@@ -790,9 +786,11 @@ can_fit_constraint(["GROUP_BY"], V, Vs) ->
     %% schedule it on a different offer. If there are no other offers,
     %% go ahead and schedule it on this one. In other words, attempt
     %% to spread across all values, but don't refuse offers.
+    %% TODO: when false is returned, we should only
+    %% apply when there are no other offers being considered?
     case can_fit_constraint(["UNIQUE"], V, Vs) of
         true -> true;
-        false -> maybe
+        false -> true
     end;
 can_fit_constraint(["GROUP_BY", Param], V, Vs) ->
     %% Compare total number of hosts to number of scheduled hosts

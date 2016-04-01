@@ -244,12 +244,7 @@ schedule_node(NodeKey, NodeKeys, OfferHelper) ->
                     apply_unreserved_offer(NodeKey, NodeKeys,
                                            OfferHelper);
                 false ->
-                    OfferHelper;
-                maybe ->
-                    %% TODO: when maybe is returned, we should only
-                    %% apply when there are no other offers being considered?
-                    apply_unreserved_offer(NodeKey, NodeKeys,
-                                           OfferHelper)
+                    OfferHelper
             end
     end.
 

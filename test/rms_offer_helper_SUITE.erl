@@ -278,7 +278,7 @@ can_fit_hostname_constraints(_Config) ->
               [["hostname", "UNIQUE"]],
               "ubuntu2.local",
               ["ubuntu1.local"]),
-    maybe = test_hostname_constraint(
+    true = test_hostname_constraint(
               [["hostname", "GROUP_BY"]],
               "ubuntu1.local",
               ["ubuntu1.local"]),
@@ -328,7 +328,7 @@ can_fit_attribute_constraints(_Config) ->
               [["rack_id", "UNIQUE"]],
               [{"rack_id", "2"}],
               [[{"rack_id", "1"}]]),
-    maybe = test_attribute_constraint(
+    true = test_attribute_constraint(
               [["rack_id", "GROUP_BY"]],
               [{"rack_id", "1"}],
               [[{"rack_id", "1"}]]),
