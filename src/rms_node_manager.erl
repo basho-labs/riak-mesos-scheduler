@@ -45,7 +45,7 @@
          node_has_reservation/1,
          node_can_be_shutdown/1,
          add_node/2,
-		 restart_node/1,
+         restart_node/1,
          delete_node/1]).
 
 -export([apply_unreserved_offer/2, apply_reserved_offer/2]).
@@ -85,13 +85,13 @@ get_node_keys(ClusterKey) ->
 -spec get_active_node_keys(rms_cluster:key()) -> [rms_node:key()].
 get_active_node_keys(ClusterKey) ->
     [Key || {Key, Node} <- rms_metadata:get_nodes(),
-            ClusterKey =:= proplists:get_value(cluster_key, Node), 
+            ClusterKey =:= proplists:get_value(cluster_key, Node),
             shutdown =/= proplists:get_value(status, Node)].
 
 -spec get_running_node_keys(rms_cluster:key()) -> [rms_node:key()].
 get_running_node_keys(ClusterKey) ->
     [Key || {Key, Node} <- rms_metadata:get_nodes(),
-            ClusterKey =:= proplists:get_value(cluster_key, Node), 
+            ClusterKey =:= proplists:get_value(cluster_key, Node),
             started =:= proplists:get_value(status, Node)].
 
 -spec get_node(rms_node:key()) ->
@@ -146,10 +146,10 @@ node_needs_to_be_reconciled(NodeKey) ->
 
 -spec node_can_be_scheduled(rms_node:key()) -> boolean().
 node_can_be_scheduled(NodeKey) ->
-	case get_node_pid(NodeKey) of
-		{ok, Pid} -> rms_node:can_be_scheduled(Pid);
-		{error, _}=Error -> Error
-	end.
+    case get_node_pid(NodeKey) of
+        {ok, Pid} -> rms_node:can_be_scheduled(Pid);
+        {error, _}=Error -> Error
+    end.
 
 -spec node_has_reservation(rms_node:key()) -> boolean().
 node_has_reservation(NodeKey) ->
@@ -162,12 +162,12 @@ node_has_reservation(NodeKey) ->
 
 -spec node_can_be_shutdown(rms_node:key()) -> boolean().
 node_can_be_shutdown(NodeKey) ->
-	case get_node_pid(NodeKey) of
-		{ok, Pid} ->
-			rms_node:can_be_shutdown(Pid);
-		{error, Reason} ->
-			{error, Reason}
-	end.
+    case get_node_pid(NodeKey) of
+        {ok, Pid} ->
+            rms_node:can_be_shutdown(Pid);
+        {error, Reason} ->
+            {error, Reason}
+    end.
 
 -spec add_node(rms_node:key(), rms_cluster:key()) -> ok | {error, term()}.
 add_node(Key, ClusterKey) ->
@@ -188,12 +188,12 @@ add_node(Key, ClusterKey) ->
 
 -spec restart_node(rms_node:key()) -> ok | {error, term()}.
 restart_node(Key) ->
-	case get_node_pid(Key) of
-		{ok, Pid} ->
-			rms_node:restart(Pid);
-		{error, Reason} ->
-			{error, Reason}
-	end.
+    case get_node_pid(Key) of
+        {ok, Pid} ->
+            rms_node:restart(Pid);
+        {error, Reason} ->
+            {error, Reason}
+    end.
 
 -spec delete_node(rms_node:key()) -> ok | {error, term()}.
 delete_node(Key) ->
@@ -287,7 +287,7 @@ apply_reserved_offer(NodeKey, OfferHelper) ->
                     {ok, AgentIdValue} = get_node_agent_id_value(NodeKey),
 
                     %% Apply reserved resources for task.
-                    OfferHelper0 = 
+                    OfferHelper0 =
                         rms_offer_helper:clean_applied_resources(OfferHelper),
                     OfferHelper1 =
                         rms_offer_helper:apply_reserved_resources(
@@ -300,9 +300,9 @@ apply_reserved_offer(NodeKey, OfferHelper) ->
                           undefined, undefined, undefined, NodeNumPorts,
                           OfferHelper1),
                     %% Grab Task resources from offer helper in current state.
-                    TaskInfoReservedResources = 
+                    TaskInfoReservedResources =
                         rms_offer_helper:get_reserved_applied_resources(OfferHelper2),
-                    TaskInfoUnreservedResources = 
+                    TaskInfoUnreservedResources =
                         rms_offer_helper:get_unreserved_applied_resources(OfferHelper2),
                     TaskInfoResources = TaskInfoReservedResources ++ TaskInfoUnreservedResources,
 
@@ -312,7 +312,7 @@ apply_reserved_offer(NodeKey, OfferHelper) ->
                           ?CPUS_PER_EXECUTOR, ?MEM_PER_EXECUTOR, undefined, undefined,
                           OfferHelper),
                     %% Grab Executor resources from exec offer helper in current state.
-                    ExecutorInfoResources = 
+                    ExecutorInfoResources =
                         rms_offer_helper:get_unreserved_applied_resources(OfferHelperExec),
                     %% Apply Executor Resources against the real offer helper.
                     OfferHelper3 =
@@ -370,7 +370,7 @@ apply_reserved_offer(NodeKey, OfferHelper) ->
                                                   TaskDataBin),
 
                     {ok, N} = get_node_pid(NodeKey),
-                    rms_node:set_agent_info(N, 
+                    rms_node:set_agent_info(N,
                                             binary_to_list(NodeName),
                                             NodeHostname,
                                             HTTPPort,

@@ -31,8 +31,8 @@
          add_cluster/1,
          set_cluster_riak_config/2,
          set_cluster_advanced_config/2,
-		 restart_cluster/1,
-		 node_started/2,
+         restart_cluster/1,
+         node_started/2,
          delete_cluster/1]).
 
 -export([add_node/1]).
@@ -61,8 +61,8 @@ start_link() ->
 
 -spec get_cluster_keys() -> [rms_cluster:key()].
 get_cluster_keys() ->
-	%% FIXME This is why we should use the process states not what's in ZK.
-	%% This will need to query each cluster's FSM for status != 'shutdown'
+    %% FIXME This is why we should use the process states not what's in ZK.
+    %% This will need to query each cluster's FSM for status != 'shutdown'
     [Key || {Key, _} <- rms_metadata:get_clusters()].
 
 -spec get_cluster(rms_cluster:key()) ->
@@ -125,21 +125,21 @@ set_cluster_advanced_config(Key, AdvancedConfig) ->
 %% *commenced* restarting, not *completed*
 -spec restart_cluster(rms_cluster:key()) -> ok | {error, term()}.
 restart_cluster(Key) ->
-	case get_cluster_pid(Key) of
-		{ok, Pid} ->
-			rms_cluster:commence_restart(Pid);
-		{error, Reason} ->
-			{error, Reason}
-	end.
+    case get_cluster_pid(Key) of
+        {ok, Pid} ->
+            rms_cluster:commence_restart(Pid);
+        {error, Reason} ->
+            {error, Reason}
+    end.
 
 -spec node_started(rms_cluster:key(), rms_node:key()) -> ok.
 node_started(Key, NodeKey) ->
-	case get_cluster_pid(Key) of
-		{ok, Pid} ->
-			rms_cluster:node_started(Pid, NodeKey);
-		{error, Reason} ->
-			{error, Reason}
-	end.
+    case get_cluster_pid(Key) of
+        {ok, Pid} ->
+            rms_cluster:node_started(Pid, NodeKey);
+        {error, Reason} ->
+            {error, Reason}
+    end.
 
 -spec delete_cluster(rms_cluster:key()) -> ok | {error, term()}.
 delete_cluster(Key) ->
@@ -170,11 +170,11 @@ executors_to_shutdown([], Accum) ->
     Accum;
 executors_to_shutdown([NodeKey|Rest], Accum) ->
   case rms_node_manager:node_can_be_shutdown(NodeKey) of
-	  {ok, true} ->
-		  {ok, AgentIdValue} = rms_node_manager:get_node_agent_id_value(NodeKey),
-		  executors_to_shutdown(Rest, [{NodeKey, AgentIdValue}|Accum]);
-	  {ok, false} ->
-		  executors_to_shutdown(Rest, Accum)
+      {ok, true} ->
+          {ok, AgentIdValue} = rms_node_manager:get_node_agent_id_value(NodeKey),
+          executors_to_shutdown(Rest, [{NodeKey, AgentIdValue}|Accum]);
+      {ok, false} ->
+          executors_to_shutdown(Rest, Accum)
   end.
 
 -spec apply_offer(rms_offer_helper:offer_helper()) ->
