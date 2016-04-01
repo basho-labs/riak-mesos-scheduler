@@ -57,6 +57,7 @@ init([]) ->
     FrameworkFailoverTimeout =
         rms_config:get_value(failover_timeout, 10000.0, float),
     FrameworkWebUIURL = rms_config:webui_url(),
+    Constraints = rms_config:constraints(),
 
     %% TODO: use these if they are set
     _FrameworkAuthProvider = rms_config:get_value(provider, "", string),
@@ -81,6 +82,7 @@ init([]) ->
                         {framework_principal, FrameworkPrincipal},
                         {framework_failover_timeout, FrameworkFailoverTimeout},
                         {framework_webui_url, FrameworkWebUIURL},
+                        {constraints, Constraints},
                         {node_cpus, NodeCpus},
                         {node_mem, NodeMem},
                         {node_disk, NodeDisk},

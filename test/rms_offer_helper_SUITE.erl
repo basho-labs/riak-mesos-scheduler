@@ -7,6 +7,8 @@
 -export([all/0]).
 
 -export([new/1,
+         can_fit_hostname_constraints/1,
+         can_fit_attribute_constraints/1,
          has_reservations/1,
          has_volumes/1,
          make_reservation/1,
@@ -15,6 +17,8 @@
 
 all() ->
     [new,
+     can_fit_hostname_constraints,
+     can_fit_attribute_constraints,
      has_reservations,
      has_volumes,
      make_reservation,
@@ -265,6 +269,106 @@ apply_resources(_Config) ->
         rms_offer_helper:get_unreserved_resources_ports(OfferHelper3),
     AfterApplyPortsLength = length(AfterApplyPorts).
 
+can_fit_hostname_constraints(_Config) ->
+    false = test_hostname_constraint(
+              [["hostname", "UNIQUE"]],
+              "ubuntu1.local",
+              ["ubuntu1.local"]),
+    true = test_hostname_constraint(
+              [["hostname", "UNIQUE"]],
+              "ubuntu2.local",
+              ["ubuntu1.local"]),
+    true = test_hostname_constraint(
+              [["hostname", "GROUP_BY"]],
+              "ubuntu1.local",
+              ["ubuntu1.local"]),
+    true = test_hostname_constraint(
+              [["hostname", "GROUP_BY"]],
+              "ubuntu2.local",
+              ["ubuntu1.local"]),
+    false = test_hostname_constraint(
+              [["hostname", "GROUP_BY", "2"]],
+              "ubuntu1.local",
+              ["ubuntu1.local"]),
+    true = test_hostname_constraint(
+              [["hostname", "GROUP_BY", "1"]],
+              "ubuntu2.local",
+              ["ubuntu1.local"]),
+    true = test_hostname_constraint(
+              [["hostname", "CLUSTER", "ubuntu1.local"]],
+              "ubuntu1.local",
+              ["ubuntu1.local"]),
+    false = test_hostname_constraint(
+              [["hostname", "CLUSTER", "ubuntu1.local"]],
+              "ubuntu2.local",
+              ["ubuntu1.local"]),
+    false = test_hostname_constraint(
+              [["hostname", "LIKE", "ubuntu[1-2].local"]],
+              "ubuntu3.local",
+              ["ubuntu1.local"]),
+    true = test_hostname_constraint(
+              [["hostname", "LIKE", "ubuntu[1-2].local"]],
+              "ubuntu1.local",
+              ["ubuntu1.local"]),
+    true = test_hostname_constraint(
+              [["hostname", "UNLIKE", "ubuntu[1-2].local"]],
+              "ubuntu3.local",
+              ["ubuntu1.local"]),
+    false = test_hostname_constraint(
+              [["hostname", "UNLIKE", "ubuntu[1-2].local"]],
+              "ubuntu1.local",
+              ["ubuntu1.local"]).
+
+can_fit_attribute_constraints(_Config) ->
+    false = test_attribute_constraint(
+              [["rack_id", "UNIQUE"]],
+              [{"rack_id", "1"}],
+              [[{"rack_id", "1"}]]),
+    true = test_attribute_constraint(
+              [["rack_id", "UNIQUE"]],
+              [{"rack_id", "2"}],
+              [[{"rack_id", "1"}]]),
+    true = test_attribute_constraint(
+              [["rack_id", "GROUP_BY"]],
+              [{"rack_id", "1"}],
+              [[{"rack_id", "1"}]]),
+    true = test_attribute_constraint(
+              [["rack_id", "GROUP_BY"]],
+              [{"rack_id", "2"}],
+              [[{"rack_id", "1"}]]),
+    false = test_attribute_constraint(
+              [["rack_id", "GROUP_BY", "2"]],
+              [{"rack_id", "1"}],
+              [[{"rack_id", "1"}]]),
+    true = test_attribute_constraint(
+              [["rack_id", "GROUP_BY", "1"]],
+              [{"rack_id", "1"}],
+              [[{"rack_id", "1"}]]),
+    true = test_attribute_constraint(
+              [["rack_id", "CLUSTER", "1"]],
+              [{"rack_id", "1"}],
+              [[{"rack_id", "1"}]]),
+    false = test_attribute_constraint(
+              [["rack_id", "CLUSTER", "2"]],
+              [{"rack_id", "1"}],
+              [[{"rack_id", "1"}]]),
+    false = test_attribute_constraint(
+              [["rack_id", "LIKE", "[1-2]"]],
+              [{"rack_id", "3"}],
+              [[{"rack_id", "1"}]]),
+    true = test_attribute_constraint(
+              [["rack_id", "LIKE", "[1-2]"]],
+              [{"rack_id", "1"}],
+              [[{"rack_id", "1"}]]),
+    true = test_attribute_constraint(
+              [["rack_id", "UNLIKE", "[1-2]"]],
+              [{"rack_id", "3"}],
+              [[{"rack_id", "1"}]]),
+    false = test_attribute_constraint(
+              [["rack_id", "UNLIKE", "[1-2]"]],
+              [{"rack_id", "1"}],
+              [[{"rack_id", "1"}]]).
+
 cpus_resources_reservation() ->
     [erl_mesos_utils:scalar_resource_reservation("cpus", 0.2, "*",
                                                  "principal"),
@@ -311,6 +415,39 @@ volume_resources() ->
     [erl_mesos_utils:volume_resource(2048.0, "id_1", "path_1", 'RW'),
      erl_mesos_utils:volume_resource(4096.0, "id_2", "path_2", 'RW')].
 
+offer(OfferIdValue, Resources, Hostname, Attributes) ->
+    Offer1 = offer(OfferIdValue, Resources),
+    Offer1#'Offer'{hostname=Hostname,
+                  attributes=Attributes}.
+
 offer(OfferIdValue, Resources) ->
     #'Offer'{id = #'OfferID'{value = OfferIdValue},
              resources = Resources}.
+
+test_hostname_constraint(Constraints, Hostname, NodeHosts) ->
+    OfferResources1 = cpus_resources() ++
+                      mem_resources() ++
+                      ports_resources() ++
+                      volume_resources(),
+    rms_offer_helper:can_fit_constraints(
+            rms_offer_helper:set_constraints(Constraints, 
+            rms_offer_helper:set_node_hostnames(NodeHosts,
+            rms_offer_helper:set_node_attributes([[]],
+            rms_offer_helper:new(offer("offer_1", OfferResources1, 
+              Hostname, 
+              []
+            )))))).
+
+test_attribute_constraint(Constraints, [{Attr,AttrVal}], NodeAttrs) ->
+    OfferResources1 = cpus_resources() ++
+                      mem_resources() ++
+                      ports_resources() ++
+                      volume_resources(),
+    rms_offer_helper:can_fit_constraints(
+            rms_offer_helper:set_constraints(Constraints, 
+            rms_offer_helper:set_node_hostnames([],
+            rms_offer_helper:set_node_attributes(NodeAttrs,
+            rms_offer_helper:new(offer("offer_1", OfferResources1, 
+              "ubuntu.local", 
+              [#'Attribute'{name=Attr,type='TEXT',scalar=#'Value.Text'{value=AttrVal}}]
+            )))))).

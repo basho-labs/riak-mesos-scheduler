@@ -7,9 +7,11 @@
 -export([new/1,
          get_offer_id/1,
          get_offer_id_value/1,
+         get_attributes/1,
          get_agent_id/1,
          get_agent_id_value/1,
          get_hostname/1,
+         get_constraints/1,
          get_persistence_ids/1,
          get_reserved_resources/1,
          get_reserved_resources_cpus/1,
@@ -28,7 +30,11 @@
          get_volumes_to_destroy/1,
          get_tasks_to_launch/1]).
 
--export([add_task_to_launch/2,
+-export([set_node_hostnames/2,
+         set_node_attributes/2,
+         set_constraints/2,
+         can_fit_constraints/1,
+         add_task_to_launch/2,
          has_reservations/1,
          has_volumes/1,
          make_reservation/7,
@@ -49,6 +55,10 @@
 
 -record(offer_helper, {offer :: erl_mesos:'Offer'(),
                        persistence_ids = [] :: [string()],
+                       attributes = [] :: attributes(),
+                       constraints = [] :: constraints(),
+                       node_attributes = [] :: attributes_group(),
+                       node_hostnames = [] :: hostnames(),
                        applied_reserved_resources = [] :: [erl_mesos:'Resource'()],
                        applied_unreserved_resources = [] :: [erl_mesos:'Resource'()],
                        reserved_resources :: erl_mesos_utils:resources(),
@@ -62,10 +72,23 @@
 -type offer_helper() :: #offer_helper{}.
 -export_type([offer_helper/0]).
 
+-type constraint() :: [string()].
+-type constraints() :: [constraint()].
+-export_type([constraints/0]).
+
+-type attribute() :: {string(), string()}.
+-type attributes() :: [attribute()].
+-type attributes_group() :: [attributes()].
+-export_type([attributes/0, attributes_group/0]).
+
+-type hostname() :: string().
+-type hostnames() :: [hostname()].
+-export_type([hostnames/0]).
+
 %% External functions.
 
 -spec new(erl_mesos:'Offer'()) -> offer_helper().
-new(#'Offer'{resources = Resources} = Offer) ->
+new(#'Offer'{resources = Resources, attributes = OfferAttributes} = Offer) ->
     PersistenceIds = get_persistence_ids(Resources, []),
     ReservedCpus = get_scalar_resource_value("cpus", true, Resources),
     ReservedMem = get_scalar_resource_value("mem", true, Resources),
@@ -79,12 +102,62 @@ new(#'Offer'{resources = Resources} = Offer) ->
     UnreservedPorts = get_ranges_resource_values("ports", false, Resources),
     UnreservedResources = resources(UnreservedCpus, UnreservedMem,
                                     UnreservedDisk, UnreservedPorts),
+    Attributes = attributes_to_list(OfferAttributes),
     #offer_helper{offer = Offer,
                   persistence_ids = PersistenceIds,
                   reserved_resources = ReservedResources,
-                  unreserved_resources = UnreservedResources}.
+                  unreserved_resources = UnreservedResources,
+                  attributes = Attributes}.
 
--spec get_offer_id(offer_helper()) -> erl_mesos:'OfferID'().
+-spec set_node_hostnames(hostnames(), offer_helper()) -> offer_helper().
+set_node_hostnames(NodeHostnames, OfferHelper) -> 
+    OfferHelper#offer_helper{node_hostnames=NodeHostnames}.
+
+-spec set_node_attributes(attributes_group(), offer_helper()) -> offer_helper().
+set_node_attributes(NodeAttributes, OfferHelper) -> 
+    OfferHelper#offer_helper{node_attributes=NodeAttributes}.
+
+-spec set_constraints(constraints(), offer_helper()) -> offer_helper().
+set_constraints(Constraints, OfferHelper) -> 
+    OfferHelper#offer_helper{constraints=Constraints}.
+
+-spec can_fit_constraints(offer_helper()) -> boolean().
+can_fit_constraints(#offer_helper{
+                       constraints=Constraints,
+                       node_hostnames=NodeHostnames,
+                       node_attributes=NodeAttributes}=OfferHelper) ->
+    can_fit_constraints(Constraints, NodeHostnames, NodeAttributes, OfferHelper).
+
+-spec can_fit_constraints(constraints(), hostnames(), attributes_group(), 
+                          offer_helper()) -> boolean().
+can_fit_constraints([], _, _, _) ->
+    true;
+can_fit_constraints([["hostname"|Constraint]|Rest], NodeHosts, NodeAttributes, 
+                    OfferHelper) ->
+    OfferHostname = get_hostname(OfferHelper),
+    case can_fit_constraint(Constraint, OfferHostname, NodeHosts) of
+        true ->
+            can_fit_constraints(Rest, NodeHosts, NodeAttributes, OfferHelper);
+        false -> 
+            false
+    end;
+can_fit_constraints([[Name|Constraint]|Rest], NodeHosts, NodeAttributes, OfferHelper) ->
+    Attributes = get_attributes(OfferHelper),
+    A = proplists:get_value(Name, Attributes),
+    As = lists:foldl(
+           fun(X, Accum) -> 
+                   [proplists:get_value(Name, X)|Accum]
+           end, [], NodeAttributes),
+    case can_fit_constraint(Constraint, A, As) of
+        true ->
+            can_fit_constraints(Rest, NodeHosts, NodeAttributes, OfferHelper);
+        false -> 
+            false
+    end.
+
+-spec get_offer_id(offer_helper()|erl_mesos:'Offer'()) -> erl_mesos:'OfferID'().
+get_offer_id(#'Offer'{id = OfferId}) ->
+    OfferId;
 get_offer_id(#offer_helper{offer = #'Offer'{id = OfferId}}) ->
     OfferId.
 
@@ -92,6 +165,10 @@ get_offer_id(#offer_helper{offer = #'Offer'{id = OfferId}}) ->
 get_offer_id_value(OfferHelper) ->
     #'OfferID'{value = OfferIdValue} = get_offer_id(OfferHelper),
     OfferIdValue.
+
+-spec get_attributes(offer_helper()) -> attributes().
+get_attributes(#offer_helper{attributes = Attributes}) ->
+    Attributes.
 
 -spec get_agent_id(offer_helper()) -> erl_mesos:'AgentID'().
 get_agent_id(#offer_helper{offer = #'Offer'{agent_id = AgentId}}) ->
@@ -105,6 +182,10 @@ get_agent_id_value(OfferHelper) ->
 -spec get_hostname(offer_helper()) -> string().
 get_hostname(#offer_helper{offer = #'Offer'{hostname = Hostname}}) ->
     Hostname.
+
+-spec get_constraints(offer_helper()) -> string().
+get_constraints(#offer_helper{constraints = Constraints}) ->
+    Constraints.
 
 -spec get_persistence_ids(offer_helper()) -> [string()].
 get_persistence_ids(#offer_helper{persistence_ids = PersistenceIds}) ->
@@ -655,3 +736,89 @@ unreserve_volumes([_Resource | Resources], VolumesToDestroy) ->
     unreserve_volumes(Resources, VolumesToDestroy);
 unreserve_volumes([], VolumesToDestroy) ->
     VolumesToDestroy.
+
+-spec attributes_to_list([erl_mesos:'Attribute'()]) -> attributes().
+attributes_to_list(RawAttributes) ->
+    attributes_to_list(RawAttributes, []).
+    
+-spec attributes_to_list([erl_mesos:'Attribute'()],
+                         attributes()) -> attributes().
+attributes_to_list([], Accum) ->
+    Accum;
+attributes_to_list([#'Attribute'{
+                     name=Name, 
+                     type='SCALAR', 
+                     scalar=#'Value.Scalar'{value=Value}}|Rest], 
+                   Accum) when is_float(Value) ->
+    attributes_to_list(Rest, [{Name, float_to_list(Value)}|Accum]);
+attributes_to_list([#'Attribute'{
+                     type='RANGES', 
+                     ranges=#'Value.Scalar'{}}|Rest], Accum) ->
+    %% TODO: Deal with range attributes
+    attributes_to_list(Rest, Accum);
+attributes_to_list([#'Attribute'{
+                     type='SET', 
+                     scalar=#'Value.Set'{item=[]}}|Rest], 
+                   Accum) ->
+    attributes_to_list(Rest, Accum);
+attributes_to_list([#'Attribute'{
+                     name=Name, 
+                     type='SET', 
+                     scalar=#'Value.Set'{item=[V1|_]=Value}}|Rest], 
+                   Accum) when is_list(V1) ->
+    NewValues = lists:map(fun(X) -> {Name, X} end, Value),
+    attributes_to_list(Rest, Accum ++ NewValues);
+attributes_to_list([#'Attribute'{
+                     name=Name, 
+                     type='TEXT', 
+                     scalar=#'Value.Text'{value=Value}}|Rest], 
+                   Accum) when is_list(Value) ->
+    attributes_to_list(Rest, [{Name, Value}|Accum]);
+attributes_to_list([_|Rest], Accum) ->
+    attributes_to_list(Rest, Accum).
+
+-spec can_fit_constraint(constraint(), string(), [string()]) -> boolean().
+can_fit_constraint(["UNIQUE"], V, Vs) -> 
+    %% Unique Value
+    not lists:member(V, Vs);
+can_fit_constraint(["GROUP_BY"], V, Vs) ->
+    %% Groupby Value. If the value isn't unique, then attempt to
+    %% schedule it on a different offer. If there are no other offers,
+    %% go ahead and schedule it on this one. In other words, attempt
+    %% to spread across all values, but don't refuse offers.
+    %% TODO: when false is returned, we should only
+    %% apply when there are no other offers being considered?
+    case can_fit_constraint(["UNIQUE"], V, Vs) of
+        true -> true;
+        false -> true
+    end;
+can_fit_constraint(["GROUP_BY", Param], V, Vs) ->
+    %% Compare total number of hosts to number of scheduled hosts
+    case {list_to_integer(Param), length(Vs)} of
+        %% There should still be unclaimed values, wait if not unique
+        {N1, N2} when N1 > N2 ->
+            can_fit_constraint(["UNIQUE"], V, Vs);
+        %% There's a node on every host already, go ahead and use the offer
+        _ ->
+            %% TODO: get more sophisticated about attempting to spread
+            %% nodes evenly, because we already know how many nodes there are
+            true
+    end;
+can_fit_constraint(["CLUSTER", V], V, _) -> 
+    %% Cluster on value, values match
+    true;
+can_fit_constraint(["CLUSTER", _], _, _) -> 
+    %% Cluster on value, hosts do not match
+    false;
+can_fit_constraint(["LIKE", Param], V, _) ->
+    %% Value is like regex
+    case re:run(V, Param) of
+        {match, _} -> true;
+        nomatch -> false
+    end;
+can_fit_constraint(["UNLIKE", Param], V, Vs) -> 
+    %% Value is not like regex
+    not can_fit_constraint(["LIKE", Param], V, Vs);
+can_fit_constraint(_, _, _) -> 
+    %% Undefined constraint, just schedule it
+    true.

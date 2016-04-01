@@ -27,7 +27,9 @@
 
 -export([start_link/0]).
 
--export([get_node_keys/0,
+-export([get_node_hosts/0,
+         get_node_attributes/0,
+         get_node_keys/0,
          get_unreconciled_node_keys/0,
          get_node_keys/1,
          get_active_node_keys/1,
@@ -107,6 +109,30 @@ get_node_cluster_key(Key) ->
 -spec get_node_hostname(rms_node:key()) -> {ok, string()} | {error, term()}.
 get_node_hostname(Key) ->
     rms_node:get_field_value(hostname, Key).
+
+-spec get_node_hosts() -> {ok, rms_offer_helper:hostnames()}.
+get_node_hosts() ->
+    {ok, lists:foldl(fun({_, Node}, Accum) -> 
+                        case {proplists:get_value(status, Node),
+                              proplists:get_value(hostname, Node)} of
+                            {shutdown, _} -> Accum;
+                            {_,{error, _}} -> Accum;
+                            {_,undefined} -> Accum;
+                            {_,Host} -> [Host|Accum]
+                        end
+                end, [], rms_metadata:get_nodes())}.
+
+-spec get_node_attributes() -> {ok, [rms_offer_helper:attributes_group()]}.
+get_node_attributes() ->
+    {ok, lists:foldl(fun({_, Node}, Accum) -> 
+                        case {proplists:get_value(status, Node),
+                              proplists:get_value(attributes, Node)} of
+                            {shutdown, _} -> Accum;
+                            {_,{error, _}} -> Accum;
+                            {_,undefined} -> Accum;
+                            {_,Attributes} -> [Attributes|Accum]
+                        end
+                end, [], rms_metadata:get_nodes())}.
 
 -spec get_node_http_port(rms_node:key()) -> {ok, pos_integer()} | {error, term()}.
 get_node_http_port(Key) ->
@@ -244,8 +270,12 @@ apply_unreserved_offer(NodeKey, OfferHelper) ->
                                                      PersistenceId,
                                                      ContainerPath,
                                                      OfferHelper2),
+
+                    Attributes =
+                        rms_offer_helper:get_attributes(OfferHelper3),
+
                     ok = rms_node:set_reserve(Pid, Hostname, AgentIdValue,
-                                      PersistenceId),
+                                      PersistenceId, Attributes),
                     {ok, OfferHelper3};
                 false ->
                     {error, not_enough_resources}

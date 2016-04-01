@@ -17,6 +17,9 @@ ERLANG_BIN       = $(shell dirname $(shell which erl))
 REBAR           ?= $(BASE_DIR)/rebar
 OVERLAY_VARS    ?=
 
+CT_SUITE        ?= rms_offer_helper
+CT_CASE         ?= can_fit_hostname_constraints
+
 ifneq (,$(shell whereis sha256sum | awk '{print $2}';))
 SHASUM = sha256sum
 else
@@ -39,16 +42,20 @@ rebar.config.lock:
 	$(REBAR) get-deps compile
 	$(REBAR) lock-deps
 clean-lock:
-	rm rebar.config.lock
+	-rm rebar.config.lock
 lock: clean-lock distclean rebar.config.lock
 deps: rebar.config.lock
 	$(REBAR) -C rebar.config.lock get-deps
 cleantest:
-	rm -rf .eunit/*
-	rm -rf ct_log/*
+	-rm -rf .eunit/*
+	-rm -rf ct_log/*
 test: cleantest
 	$(REBAR) skip_deps=true eunit
 	$(REBAR) skip_deps=true ct
+test-case: cleantest recompile
+	$(REBAR) skip_deps=true ct suites=$(PWD)/test/$(CT_SUITE) cases=$(CT_CASE)
+test-suite: cleantest recompile
+	$(REBAR) skip_deps=true ct suites=$(PWD)/test/$(CT_SUITE)
 rel: relclean compile
 	$(REBAR) skip_deps=true generate $(OVERLAY_VARS)
 relclean:
