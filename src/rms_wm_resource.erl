@@ -234,8 +234,8 @@ get_cluster(ReqData) ->
     BinNodeKeys = [list_to_binary(NodeKey) || NodeKey <- NodeKeys],
     ClusterData = [{Key, [{key, list_to_binary(Key)},
                           {status, Status},
-                          {advanced_config, list_to_binary(AdvancedConfig)},
-                          {riak_config, list_to_binary(RiakConfig)},
+                          {advanced_config, AdvancedConfig},
+                          {riak_config, RiakConfig},
                           {node_keys, BinNodeKeys}]}],
     {ClusterData, ReqData}.
 
@@ -251,8 +251,8 @@ delete_cluster(ReqData) ->
      ReqData)}.
 
 restart_cluster(ReqData) ->
-    %% TODO: implement restart call through rms_cluster_manager.
-    Response = [{success, true}],
+    Key = wrq:path_info(key, ReqData),
+    Response = build_response(rms_cluster_manager:restart_cluster(Key)),
     {true, wrq:append_to_response_body(mochijson2:encode(Response), ReqData)}.
 
 get_cluster_riak_config(ReqData) ->

@@ -20,13 +20,15 @@
 
 %% Node transitions:
 %% add_node: requested -> reserved -> starting -> started
-%%                                             |> failed -> reserved -> ...
-%%                                 |> failed -> reserved -> ...
-%%                     |> failed -> requested
+%%                                             |> reserved -> ...
+%%                                 |> reserved -> ...
+%%                     |> requested
 %% remove_node: * -> shutting_down -> shutdown
-%%                |> failed -> -> shutdown
-%% restart_node: * -> restarting -> reserved -> ...
-%%                 |> failed -> reserved -> ...
+%%                |> shutdown
+%% restart_node: * -> starting -> reserved -> ...
+%%                 |> reserved -> ...
+
+%% TODO FSM process never terminates in shutdown, just sits there.
 
 -module(rms_node).
 
@@ -44,7 +46,7 @@
          set_unreserve/1,
          set_agent_info/8,
          delete/1,
-         state_change/2,
+         restart/1,
          handle_status_update/3]).
 
 %%% gen_fsm callbacks
@@ -57,24 +59,20 @@
 
 %%% States
 -export([
-         undefined/2,
-         undefined/3,
          requested/2,
          requested/3,
          reserved/2,
          reserved/3,
          starting/2,
          starting/3,
+         restarting/2,
+         restarting/3,
          started/2,
          started/3,
          shutting_down/2,
          shutting_down/3,
          shutdown/2,
-         shutdown/3,
-         restarting/2,
-         restarting/3,
-         failed/2,
-         failed/3
+         shutdown/3
         ]).
 
 -record(node, {key :: key(),
@@ -137,30 +135,17 @@ needs_to_be_reconciled(Key) ->
     end.
 
 -spec can_be_scheduled(key()) -> {ok, boolean()} | {error, term()}.
-can_be_scheduled(Key) ->
-    case get_node(Key) of
-        {ok, {Status, _}} ->
-            CanBeScheduled = case Status of
-                                 requested -> true;
-                                 reserved -> true;
-                                 _ -> false
-                             end,
-            {ok, CanBeScheduled};
-        {error, Reason} ->
-            {error, Reason}
+can_be_scheduled(Pid) when is_pid(Pid) ->
+    case gen_fsm:sync_send_event(Pid, can_be_scheduled) of
+        {error, unhandled_event} -> {ok, false};
+        {ok, Reply} -> {ok, Reply}
     end.
 
--spec can_be_shutdown(key()) -> {ok, boolean()} | {error, term()}.
-can_be_shutdown(Key) -> 
-    case get_node(Key) of
-        {ok, {shutting_down, _}} -> 
-            {ok, true};
-        {ok, {restarting, _}} -> 
-            {ok, true};
-        {ok, {_, _}} -> 
-            {ok, false};
-        {error, Reason} ->
-            {error, Reason}
+-spec can_be_shutdown(key() | pid()) -> {ok, boolean()} | {error, term()}.
+can_be_shutdown(Pid) when is_pid(Pid) ->
+    case gen_fsm:sync_send_event(Pid, can_be_shutdown) of
+        {error, unhandled_event} -> {ok, false};
+        {ok, Reply} -> {ok, Reply}
     end.
 
 -spec has_reservation(key()) -> {ok, boolean()} | {error, term()}.
@@ -227,9 +212,9 @@ set_agent_info(Pid,
 delete(Pid) ->
     gen_fsm:sync_send_all_state_event(Pid, delete).
 
--spec state_change(pid(), term()) -> ok.
-state_change(Pid, State) ->
-    ok = gen_fsm:sync_send_all_state_event(Pid, {update_node_state, State}).
+-spec restart(pid()) -> ok | {error, term()}.
+restart(Pid) ->
+    gen_fsm:sync_send_event(Pid, restart).
 
 %%% gen_fsm callbacks
 -spec init({key(), rms_cluster:key()}) ->
@@ -271,10 +256,6 @@ init({Key, ClusterKey}) ->
       | {next_state, Next::state(), New::node_state()}
       | {next_state, Next::state(), New::node_state(), state_timeout()}.
 
--spec undefined(event(), node_state()) -> state_cb_return().
-undefined(_Event, Node) ->
-    {stop, {unhandled_event, _Event}, Node}.
-
 -spec requested(event(), node_state()) -> state_cb_return().
 requested(_Event, Node) ->
     {stop, {unhandled_event, _Event}, Node}.
@@ -287,6 +268,10 @@ reserved(_Event, Node) ->
 starting(_Event, Node) ->
     {stop, {unhandled_event, _Event}, Node}.
 
+-spec restarting(event(), node_state()) -> state_cb_return().
+restarting(_Event, Node) ->
+    {stop, {unhandled_event, _Event}, Node}.
+
 -spec started(event(), node_state()) -> state_cb_return().
 started(_Event, Node) ->
     {stop, {unhandled_event, _Event}, Node}.
@@ -297,14 +282,6 @@ shutting_down(_Event, Node) ->
 
 -spec shutdown(event(), node_state()) -> state_cb_return().
 shutdown(_Event, Node) ->
-    {stop, {unhandled_event, _Event}, Node}.
-
--spec failed(event(), node_state()) -> state_cb_return().
-failed(_Event, Node) ->
-    {stop, {unhandled_event, _Event}, Node}.
-
--spec restarting(event(), node_state()) -> state_cb_return().
-restarting(_Event, Node) ->
     {stop, {unhandled_event, _Event}, Node}.
 
 -spec handle_event(event(), StateName :: atom(), node_state()) -> state_cb_return().
@@ -325,53 +302,83 @@ requested({status_update, StatusUpdate, _}, _From, Node) ->
         'TASK_FAILED' -> {reply, ok, requested, Node};
         'TASK_LOST' -> {reply, ok, requested, Node};
         'TASK_ERROR' -> {reply, ok, requested, Node};
-        _ -> {reply, ok, requested, Node}
+        _ ->
+            lager:debug("Unexpected status_update [~p]: ~p", [requested, StatusUpdate]),
+            {reply, ok, requested, Node}
     end;
+requested(can_be_scheduled, _From, Node) ->
+    {reply, {ok, true}, requested, Node};
 requested(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, requested, Node}.
-
--spec undefined(event(), from(), node_state()) -> state_cb_reply().
-undefined(_Event, _From, Node) ->
-    {reply, {error, unhandled_event}, undefined, Node}.
 
 -spec reserved(event(), from(), node_state()) -> state_cb_reply().
 reserved({status_update, StatusUpdate, _}, _From, Node) ->
     case StatusUpdate of
         'TASK_FAILED' -> {reply, ok, reserved, Node};
+        %% TODO Maybe these should swing back to reserved?
         'TASK_LOST' -> unreserve(reserved, requested, Node);
         'TASK_ERROR' -> unreserve(reserved, requested, Node);
         'TASK_STAGING' -> sync_update_node(reserved, starting, Node);
         'TASK_STARTING' -> sync_update_node(reserved, starting, Node);
-        'TASK_RUNNING' -> join(starting, started, Node);
-        _ -> {reply, ok, reserved, Node}
+        %% TODO This seems wrong: shouldn't it be 'started'? Maybe this never happens?
+        'TASK_RUNNING' -> join(starting, Node);
+        _ ->
+            lager:debug("Unexpected status_update [~p]: ~p", [reserved, StatusUpdate]),
+            {reply, ok, reserved, Node}
     end;
+reserved(can_be_scheduled, _From, Node) ->
+    {reply, {ok, true}, reserved, Node};
 reserved(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, reserved, Node}.
 
 -spec starting(event(), from(), node_state()) -> state_cb_reply().
-
 starting({status_update, StatusUpdate, _}, _From, Node) ->
     case StatusUpdate of
         'TASK_FAILED' -> sync_update_node(starting, reserved, Node);
         'TASK_LOST' -> sync_update_node(starting, reserved, Node);
         'TASK_ERROR' -> sync_update_node(starting, reserved, Node);
         'TASK_STARTING' -> {reply, ok, starting, Node};
-        'TASK_RUNNING' -> join(starting, started, Node);
-        _ -> {reply, ok, starting, Node}
+        'TASK_RUNNING' -> join(starting, Node);
+        _ ->
+            lager:debug("Unexpected status_update [~p]: ~p", [starting, StatusUpdate]),
+            {reply, ok, starting, Node}
     end;
 starting(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, starting, Node}.
 
+-spec restarting(event(), from(), node_state()) -> state_cb_reply().
+restarting({status_update, StatusUpdate, _}, _From, Node) ->
+    case StatusUpdate of
+        'TASK_FINISHED' -> sync_update_node(restarting, reserved, Node);
+        'TASK_FAILED' ->   sync_update_node(restarting, reserved, Node);
+        'TASK_LOST' ->     sync_update_node(restarting, reserved, Node);
+        'TASK_ERROR' ->    sync_update_node(restarting, reserved, Node);
+        %% TODO I'm not convinced this should be allowed.
+        'TASK_RUNNING' -> join(restarting, Node);
+        _ ->
+            lager:debug("Unexpected status_update [~p]: ~p", [restarting, StatusUpdate]),
+            {reply, ok, restarting, Node}
+    end;
+restarting(can_be_shutdown, _From, Node) ->
+    {reply, {ok, true}, restarting, Node};
+restarting(_Event, _From, Node) ->
+    {reply, {error, unhandled_event}, restarting, Node}.
+
 -spec started(event(), from(), node_state()) -> state_cb_reply().
 started({status_update, StatusUpdate, _}, _From, Node) ->
     case StatusUpdate of
-        'TASK_FINISHED' -> sync_update_node(started, reserved, Node);
         'TASK_FAILED' -> sync_update_node(started, reserved, Node);
         'TASK_LOST' -> sync_update_node(started, reserved, Node);
         'TASK_ERROR' -> sync_update_node(started, reserved, Node);
         'TASK_KILLED' -> sync_update_node(started, reserved, Node);
-        _ -> {reply, ok, started, Node}
+        'TASK_FINISHED' -> sync_update_node(started, reserved, Node);
+        _ ->
+            lager:debug("Unexpected status_update [~p]: ~p", [started, StatusUpdate]),
+            {reply, ok, started, Node}
     end;
+started(restart, _From, Node) ->
+    %% TODO Maybe there's a chance we don't have a reservation here?
+    sync_update_node(started, restarting, Node);
 started(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, started, Node}.
 
@@ -383,39 +390,27 @@ shutting_down({status_update, StatusUpdate, _}, _From, Node) ->
         'TASK_FAILED' -> leave(shutting_down, Node);
         'TASK_LOST' -> leave(shutting_down, Node);
         'TASK_ERROR' -> leave(shutting_down, Node);
-        _ -> {reply, ok, shutting_down, Node}
+        _ ->
+            lager:debug("Unexpected status_update [~p]: ~p", [shutting_down, StatusUpdate]),
+            {reply, ok, shutting_down, Node}
     end;
+shutting_down(can_be_shutdown, _From, Node) ->
+    {reply, {ok, true}, shutting_down, Node};
 shutting_down(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, shutting_down, Node}.
 
 -spec shutdown(event(), from(), node_state()) -> state_cb_reply().
-shutdown({status_update, _, _}, _From, Node) ->
+shutdown({status_update, StatusUpdate, _}, _From, Node) ->
+    lager:debug("Unexpected status_update [~p]: ~p", [shutdown, StatusUpdate]),
     {reply, ok, shutdown, Node};
+shutdown(can_be_shutdown, _From, Node) ->
+    {reply, {ok, true}, shutdown, Node};
 shutdown(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, shutdown, Node}.
 
--spec failed(event(), from(), node_state()) -> state_cb_reply().
-failed(_Event, _From, Node) ->
-    {reply, {error, unhandled_event}, failed, Node}.
-
--spec restarting(event(), from(), node_state()) -> state_cb_reply().
-restarting({status_update, StatusUpdate, _}, _From, Node) ->
-    case StatusUpdate of
-        'TASK_FINISHED' -> sync_update_node(restarting, reserved, Node);
-        'TASK_KILLED' -> sync_update_node(restarting, reserved, Node);
-        'TASK_FAILED' -> {reply, ok, restarting, Node};
-        'TASK_LOST' -> sync_update_node(restarting, reserved, Node);
-        'TASK_ERROR' -> {reply, ok, restarting, Node};
-        _ -> {reply, ok, restarting, Node}
-    end;
-restarting(_Event, _From, Node) ->
-    {reply, {error, unhandled_event}, restarting, Node}.
-
 -spec handle_sync_event(event(), from(), state(), node_state()) ->
                                state_cb_reply().
-handle_sync_event({update_node_state, NewState},
-                  _From, State, Node) ->
-    sync_update_node(State, NewState, Node);
+
 handle_sync_event({set_reserve, Hostname, AgentIdValue, PersistenceId, Attributes},
                   _From, State, Node) ->
     lager:info("Setting reservation for node: ~p", [Node]),
@@ -518,15 +513,17 @@ leave(State, NewState, #node{cluster_key = Cluster, key = Key} = Node) ->
 leave(State, Node) ->
     leave(State, shutdown, Node).
 
-join(State, NewState, #node{cluster_key = Cluster, key = Key} = Node) ->
+join(State, #node{cluster_key = Cluster, key = Key} = Node) ->
     case rms_cluster_manager:maybe_join(Cluster, Key) of
         ok ->
-            sync_update_node(State, NewState, Node);
+            ok = rms_cluster_manager:node_started(Cluster, Key),
+            sync_update_node(State, started, Node);
         {error, no_suitable_nodes} ->
-            sync_update_node(State, NewState, Node);
+            ok = rms_cluster_manager:node_started(Cluster, Key),
+            sync_update_node(State, started, Node);
         {error, Reason} ->
             %% Maybe we should try to kill the node and restart task here?
-            {reply, {error, Reason}, starting, Node}
+            {reply, {error, Reason}, State, Node}
     end.
 
 unreserve(State, NewState, Node) ->
