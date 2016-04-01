@@ -202,13 +202,9 @@ executor_lost(_SchedulerInfo, EventFailure, State) ->
 -spec error(erl_mesos_scheduler:scheduler_info(), erl_mesos:'Event.Error'(),
             state()) ->
     {stop, state()}.
-error(_SchedulerInfo, EventError, State) ->
-    lager:info("Scheduler received error event. Error: ~p.", [EventError]),
-    case EventError of
-        {'Event.Error',"Framework has been removed"} -> 
-            %% TODO: Unset the frameworkID in this case, failover wasn't set high enough.
-            ok
-    end,
+error(_SchedulerInfo, #'Event.Error'{message = Message}, State) ->
+    lager:info("Scheduler received error event. Error message: ~s.", [Message]),
+    may_be_delete_scheduler(Message),
     {stop, State}.
 
 -spec handle_info(erl_mesos_scheduler:scheduler_info(), term(), state()) ->
@@ -393,6 +389,19 @@ reconcile_tasks(TaskIdValues) ->
 -spec node_name_from_task_id(erl_mesos:'TaskID'()) -> {ok, string()}.
 node_name_from_task_id(#'TaskID'{value = NodeName}) ->
     {ok, NodeName}.
+
+-spec may_be_delete_scheduler(string()) -> ok | {error, term()}.
+may_be_delete_scheduler("Framework has been removed") ->
+    case rms_metadata:set_scheduler([]) of
+        ok ->
+            ok;
+        {error, Reason} ->
+            lager:error("Error during saving scheduler state. "
+                        "Reason: ~p.", [Reason]),
+            {error, Reason}
+    end;
+may_be_delete_scheduler(_Message) ->
+    ok.
 
 -spec shutdown_executors(erl_mesos_scheduler:scheduler_info(),
                          [{string(), string()}], state()) ->
