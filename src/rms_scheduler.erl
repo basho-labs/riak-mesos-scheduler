@@ -125,20 +125,37 @@ disconnected(_SchedulerInfo, State) ->
 resource_offers(SchedulerInfo, #'Event.Offers'{offers = Offers}, 
                 #state{scheduler = #scheduler{options = Options}}=State) ->
     Constraints = proplists:get_value(constraints, Options),
-    {OfferIds, Operations} = apply_offers(Offers, Constraints),
-    case length(Operations) of
-        0 ->
-            ok;
-        _Len ->
-            lager:info("Scheduler accept operations: ~p.", [Operations])
-    end,
     Filters = #'Filters'{refuse_seconds = ?OFFER_INTERVAL},
-    case call(accept, [SchedulerInfo, OfferIds, Operations, Filters], State) of
-        {ok, S1} ->
+    OpsState = lists:foldl(
+      fun(Offer, S1) ->
+              case S1 of
+                  #state{} ->
+                      {OfferIds, Operations} = apply_offers([Offer], Constraints),
+                      case length(Operations) of
+                          0 ->
+                              ok;
+                          _Len ->
+                              lager:info("Scheduler accept operations: ~p.", [Operations])
+                      end,
+                      case call(accept, [SchedulerInfo, OfferIds, Operations, Filters], S1) of
+                          {ok, S2} -> S2;
+                          Error -> Error
+                      end;
+                  _ -> S1
+              end
+      end, State, Offers),
+    
+    case OpsState of
+        #state{} ->
             ExecsToShutdown = rms_cluster_manager:executors_to_shutdown(),
-            shutdown_executors(SchedulerInfo, ExecsToShutdown, S1);
+            shutdown_executors(SchedulerInfo, ExecsToShutdown, OpsState);
         R -> R
     end.
+
+
+    
+
+    
 
 -spec offer_rescinded(erl_mesos_scheduler:scheduler_info(),
                       erl_mesos:'Event.Rescind'(), state()) ->

@@ -308,6 +308,8 @@ requested({status_update, StatusUpdate, _}, _From, Node) ->
     end;
 requested(can_be_scheduled, _From, Node) ->
     {reply, {ok, true}, requested, Node};
+requested(can_be_shutdown, _From, Node) ->
+    {reply, {ok, false}, requested, Node};
 requested(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, requested, Node}.
 
@@ -328,6 +330,8 @@ reserved({status_update, StatusUpdate, _}, _From, Node) ->
     end;
 reserved(can_be_scheduled, _From, Node) ->
     {reply, {ok, true}, reserved, Node};
+reserved(can_be_shutdown, _From, Node) ->
+    {reply, {ok, false}, reserved, Node};
 reserved(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, reserved, Node}.
 
@@ -343,6 +347,10 @@ starting({status_update, StatusUpdate, _}, _From, Node) ->
             lager:debug("Unexpected status_update [~p]: ~p", [starting, StatusUpdate]),
             {reply, ok, starting, Node}
     end;
+starting(can_be_scheduled, _From, Node) ->
+    {reply, {ok, false}, starting, Node};
+starting(can_be_shutdown, _From, Node) ->
+    {reply, {ok, false}, starting, Node};
 starting(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, starting, Node}.
 
@@ -361,6 +369,8 @@ restarting({status_update, StatusUpdate, _}, _From, Node) ->
     end;
 restarting(can_be_shutdown, _From, Node) ->
     {reply, {ok, true}, restarting, Node};
+restarting(can_be_scheduled, _From, Node) ->
+    {reply, {ok, false}, restarting, Node};
 restarting(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, restarting, Node}.
 
@@ -379,6 +389,10 @@ started({status_update, StatusUpdate, _}, _From, Node) ->
 started(restart, _From, Node) ->
     %% TODO Maybe there's a chance we don't have a reservation here?
     sync_update_node(started, restarting, Node);
+started(can_be_scheduled, _From, Node) ->
+    {reply, {ok, false}, started, Node};
+started(can_be_shutdown, _From, Node) ->
+    {reply, {ok, false}, started, Node};
 started(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, started, Node}.
 
@@ -396,6 +410,8 @@ shutting_down({status_update, StatusUpdate, _}, _From, Node) ->
     end;
 shutting_down(can_be_shutdown, _From, Node) ->
     {reply, {ok, true}, shutting_down, Node};
+shutting_down(can_be_scheduled, _From, Node) ->
+    {reply, {ok, false}, shutting_down, Node};
 shutting_down(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, shutting_down, Node}.
 
@@ -404,7 +420,9 @@ shutdown({status_update, StatusUpdate, _}, _From, Node) ->
     lager:debug("Unexpected status_update [~p]: ~p", [shutdown, StatusUpdate]),
     {reply, ok, shutdown, Node};
 shutdown(can_be_shutdown, _From, Node) ->
-    {reply, {ok, true}, shutdown, Node};
+    {reply, {ok, false}, shutdown, Node};
+shutdown(can_be_scheduled, _From, Node) ->
+    {reply, {ok, false}, shutdown, Node};
 shutdown(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, shutdown, Node}.
 
