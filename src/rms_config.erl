@@ -33,20 +33,26 @@
 -define(DEFAULT_NAME, "riak").
 -define(DEFAULT_HOSTNAME, "riak.mesos").
 -define(DEFAULT_ZK, "master.mesos:2181").
--define(DEFAULT_CONSTRAINTS, "[[\"hostname\", \"GROUP_BY\"]]").
+-define(DEFAULT_CONSTRAINTS, "[]").
 
 %% Helper functions.
 
 -spec constraints() -> rms_offer_helper:constraints().
 constraints() ->
     ConstraintsStr = get_value(constraints, ?DEFAULT_CONSTRAINTS, string),
-    ConstraintsBin = mochijson2:decode(ConstraintsStr),
+    ConstraintsBin = case mochijson2:decode(ConstraintsStr) of
+        [] -> [];
+        [[]] -> [];
+        [[F|_]|_]=C when is_binary(F) -> C;
+        [F|_]=C when is_binary(F) -> [C];
+        _ -> []
+    end,
     lists:foldr(
       fun(X1, Accum1) -> 
               [lists:foldr(
-                fun(X2, Accum2) -> 
-                        [binary_to_list(X2)|Accum2]
-                end, [], X1)|Accum1]
+                 fun(X2, Accum2) -> 
+                         [binary_to_list(X2)|Accum2]
+                 end, [], X1)|Accum1]
       end, [], ConstraintsBin).
 
 -spec zk() -> string().

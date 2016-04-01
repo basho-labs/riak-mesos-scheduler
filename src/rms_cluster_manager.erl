@@ -244,7 +244,7 @@ schedule_node(NodeKey, NodeKeys, OfferHelper) ->
                     apply_unreserved_offer(NodeKey, NodeKeys,
                                            OfferHelper);
                 false ->
-                    OfferHelper
+                    apply_offer(NodeKeys, OfferHelper)
             end
     end.
 
