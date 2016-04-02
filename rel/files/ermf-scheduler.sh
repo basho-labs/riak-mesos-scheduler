@@ -30,10 +30,15 @@ main() {
 
     mkdir -p artifacts
     mv riak-*.tar.gz artifacts/$RIAK_MESOS_RIAK_PKG  &> /dev/null
+    mv riak.*.tar.gz artifacts/$RIAK_MESOS_RIAK_PKG  &> /dev/null
     mv riak_ts-*.tar.gz artifacts/$RIAK_MESOS_RIAK_PKG  &> /dev/null
+    mv riak_ts.*.tar.gz artifacts/$RIAK_MESOS_RIAK_PKG  &> /dev/null
     mv riak_ee-*.tar.gz artifacts/$RIAK_MESOS_RIAK_PKG  &> /dev/null
+    mv riak_ee.*.tar.gz artifacts/$RIAK_MESOS_RIAK_PKG  &> /dev/null
     mv riak_explorer-*.tar.gz artifacts/$RIAK_MESOS_EXPLORER_PKG
+    mv riak-explorer*.tar.gz artifacts/$RIAK_MESOS_EXPLORER_PKG
     mv riak_mesos_executor-*.tar.gz artifacts/$RIAK_MESOS_EXECUTOR_PKG
+    mv riak-mesos-executor*.tar.gz artifacts/$RIAK_MESOS_EXECUTOR_PKG
     rm -rf root
     rm -rf riak_mesos_executor
 
