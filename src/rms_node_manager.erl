@@ -48,7 +48,8 @@
          node_can_be_shutdown/1,
          add_node/2,
          restart_node/1,
-         delete_node/1]).
+         delete_node/1,
+         delete_node/2]).
 
 -export([apply_unreserved_offer/2, apply_reserved_offer/2]).
 
@@ -223,9 +224,13 @@ restart_node(Key) ->
 
 -spec delete_node(rms_node:key()) -> ok | {error, term()}.
 delete_node(Key) ->
+    delete_node(Key, false).
+
+-spec delete_node(rms_node:key(), boolean()) -> ok | {error, term()}.
+delete_node(Key, Force) ->
     case get_node_pid(Key) of
         {ok, Pid} ->
-            rms_node:delete(Pid);
+            rms_node:delete(Pid, Force);
         {error, Reason} ->
             {error, Reason}
     end.

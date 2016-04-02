@@ -80,11 +80,11 @@ framework_hostname() ->
 webui_url() ->
     Hostname = framework_hostname(),
     Port = rms_config:get_value(port, 9090, integer),
-    Hostname ++ ":" ++ integer_to_list(Port).
+    "http://" ++ Hostname ++ ":" ++ integer_to_list(Port) ++ "/".
 
 -spec artifact_urls() -> [string()].
 artifact_urls() ->
-    Base = "http://" ++ webui_url() ++ "/static/",
+    Base = webui_url() ++ "static/",
     [
      Base ++ get_value(riak_pkg, "riak.tar.gz", string),
      Base ++ get_value(explorer_pkg, "riak_explorer.tar.gz", string),

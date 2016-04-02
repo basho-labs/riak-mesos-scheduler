@@ -46,6 +46,7 @@
          set_unreserve/1,
          set_agent_info/8,
          delete/1,
+         delete/2,
          restart/1,
          handle_status_update/3]).
 
@@ -210,7 +211,11 @@ set_agent_info(Pid,
 
 -spec delete(pid()) -> ok | {error, term()}.
 delete(Pid) ->
-    gen_fsm:sync_send_all_state_event(Pid, delete).
+    delete(Pid, false).
+
+-spec delete(pid(), boolean()) -> ok | {error, term()}.
+delete(Pid, Force) ->
+    gen_fsm:sync_send_event(Pid, {delete, Force}).
 
 -spec restart(pid()) -> ok | {error, term()}.
 restart(Pid) ->
@@ -310,6 +315,8 @@ requested(can_be_scheduled, _From, Node) ->
     {reply, {ok, true}, requested, Node};
 requested(can_be_shutdown, _From, Node) ->
     {reply, {ok, false}, requested, Node};
+requested({delete, _}, _From, Node) ->
+    leave(requested, Node);
 requested(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, requested, Node}.
 
@@ -332,6 +339,8 @@ reserved(can_be_scheduled, _From, Node) ->
     {reply, {ok, true}, reserved, Node};
 reserved(can_be_shutdown, _From, Node) ->
     {reply, {ok, false}, reserved, Node};
+reserved({delete, _}, _From, Node) ->
+    leave(reserved, Node);
 reserved(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, reserved, Node}.
 
@@ -351,6 +360,8 @@ starting(can_be_scheduled, _From, Node) ->
     {reply, {ok, false}, starting, Node};
 starting(can_be_shutdown, _From, Node) ->
     {reply, {ok, false}, starting, Node};
+starting({delete, _}, _From, Node) ->
+    sync_update_node(restarting, shutting_down, Node);
 starting(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, starting, Node}.
 
@@ -371,6 +382,8 @@ restarting(can_be_shutdown, _From, Node) ->
     {reply, {ok, true}, restarting, Node};
 restarting(can_be_scheduled, _From, Node) ->
     {reply, {ok, false}, restarting, Node};
+restarting({delete, _}, _From, Node) ->
+    sync_update_node(restarting, shutting_down, Node);
 restarting(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, restarting, Node}.
 
@@ -393,6 +406,8 @@ started(can_be_scheduled, _From, Node) ->
     {reply, {ok, false}, started, Node};
 started(can_be_shutdown, _From, Node) ->
     {reply, {ok, false}, started, Node};
+started({delete, _}, _From, Node) ->
+    sync_update_node(started, shutting_down, Node);
 started(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, started, Node}.
 
@@ -412,6 +427,10 @@ shutting_down(can_be_shutdown, _From, Node) ->
     {reply, {ok, true}, shutting_down, Node};
 shutting_down(can_be_scheduled, _From, Node) ->
     {reply, {ok, false}, shutting_down, Node};
+shutting_down({delete, false}, _From, Node) ->
+    {reply, ok, shutting_down, Node};
+shutting_down({delete, true}, _From, Node) ->
+    leave(shutting_down, Node);
 shutting_down(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, shutting_down, Node}.
 
@@ -423,6 +442,8 @@ shutdown(can_be_shutdown, _From, Node) ->
     {reply, {ok, false}, shutdown, Node};
 shutdown(can_be_scheduled, _From, Node) ->
     {reply, {ok, false}, shutdown, Node};
+shutdown({delete, _}, _From, Node) ->
+    {reply, ok, shutdown, Node};
 shutdown(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, shutdown, Node}.
 
@@ -462,8 +483,6 @@ handle_sync_event(set_reconciled, _From, State, Node) ->
 handle_sync_event(set_unreserve, _From, State, Node) ->
     lager:info("Removing reservation for node: ~p", [Node]),
     unreserve(State, requested, Node);
-handle_sync_event(delete, _From, State, Node) ->
-    sync_update_node(State, shutting_down, Node);
 handle_sync_event(_Event, _From, StateName, State) ->
     {reply, {error, {unhandled_sync_event, _Event}}, StateName, State}.
 
