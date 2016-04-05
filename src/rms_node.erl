@@ -181,7 +181,7 @@ set_reconciled(Pid) ->
 -spec set_reserve(pid(), string(), string(), string(), rms_offer_helper:attributes()) ->
                          ok | {error, term()}.
 set_reserve(Pid, Hostname, AgentIdValue, PersistenceId, Attributes) ->
-    gen_fsm:sync_send_all_state_event(
+    gen_fsm:sync_send_event(
       Pid, {set_reserve, Hostname, AgentIdValue, PersistenceId, Attributes}).
 
 -spec set_unreserve(pid()) -> ok | {error, term()}.
@@ -302,6 +302,12 @@ handle_event(_Event, StateName, State) ->
       | {reply, reply(), Next::state(), New::node_state(), state_timeout()}.
 
 -spec requested(event(), from(), node_state()) -> state_cb_reply().
+requested({set_reserve, Hostname, AgentIdValue, PersistenceId, Attributes}, _From, Node) ->
+    Node1 = Node#node{hostname = Hostname,
+                      agent_id_value = AgentIdValue,
+                      persistence_id = PersistenceId,
+                      attributes = Attributes},
+    sync_update_node(requested, reserved, Node, Node1);
 requested({status_update, StatusUpdate, _}, _From, Node) ->
     case StatusUpdate of
         'TASK_FAILED' -> {reply, ok, requested, Node};
@@ -449,15 +455,6 @@ shutdown(_Event, _From, Node) ->
 
 -spec handle_sync_event(event(), from(), state(), node_state()) ->
                                state_cb_reply().
-
-handle_sync_event({set_reserve, Hostname, AgentIdValue, PersistenceId, Attributes},
-                  _From, State, Node) ->
-    lager:info("Setting reservation for node: ~p", [Node]),
-    Node1 = Node#node{hostname = Hostname,
-                      agent_id_value = AgentIdValue,
-                      persistence_id = PersistenceId,
-                      attributes = Attributes},
-    sync_update_node(State, reserved, Node, Node1);
 handle_sync_event({set_agent_info,
                    NodeName,
                    Hostname,
