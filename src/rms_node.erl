@@ -186,7 +186,7 @@ set_reserve(Pid, Hostname, AgentIdValue, PersistenceId, Attributes) ->
 
 -spec set_unreserve(pid()) -> ok | {error, term()}.
 set_unreserve(Pid) ->
-    gen_fsm:sync_send_all_state_event(Pid, set_unreserve).
+    gen_fsm:sync_send_event(Pid, set_unreserve).
 
 -spec set_agent_info(pid(), string(), string(), pos_integer(), pos_integer(),
                      pos_integer(), string(), string()) ->
@@ -327,6 +327,9 @@ requested(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, requested, Node}.
 
 -spec reserved(event(), from(), node_state()) -> state_cb_reply().
+reserved(set_unreserve, _From, Node) ->
+    lager:info("Removing reservation for node: ~p", [Node]),
+    unreserve(reserved, requested, Node);
 reserved({status_update, StatusUpdate, _}, _From, Node) ->
     case StatusUpdate of
         'TASK_FAILED' -> {reply, ok, reserved, Node};
@@ -477,9 +480,6 @@ handle_sync_event(set_reconciled, _From, State, Node) ->
     lager:info("Setting reconciliation for node: ~p", [Node]),
     Node1 = Node#node{reconciled = true},
     sync_update_node(State, State, Node, Node1);
-handle_sync_event(set_unreserve, _From, State, Node) ->
-    lager:info("Removing reservation for node: ~p", [Node]),
-    unreserve(State, requested, Node);
 handle_sync_event(_Event, _From, StateName, State) ->
     {reply, {error, {unhandled_sync_event, _Event}}, StateName, State}.
 
