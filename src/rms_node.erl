@@ -307,7 +307,7 @@ requested({set_reserve, Hostname, AgentIdValue, PersistenceId, Attributes}, _Fro
                       agent_id_value = AgentIdValue,
                       persistence_id = PersistenceId,
                       attributes = Attributes},
-    update_and_reply(requested, reserved, Node, Node1);
+    update_and_reply({requested, Node}, {reserved, Node1});
 requested({status_update, StatusUpdate, _}, _From, Node) ->
     case StatusUpdate of
         'TASK_FAILED' -> {reply, ok, requested, Node};
@@ -347,15 +347,15 @@ reserved({set_agent_info,
                       agent_id_value = AgentIdValue,
                       container_path = ContainerPath},
     lager:info("Setting agent info for node to ~p", [Node1]),
-    update_and_reply(reserved, reserved, Node, Node1);
+    update_and_reply({reserved, Node}, {reserved, Node1});
 reserved({status_update, StatusUpdate, _}, _From, Node) ->
     case StatusUpdate of
         'TASK_FAILED' -> {reply, ok, reserved, Node};
         %% TODO Maybe these should swing back to reserved?
         'TASK_LOST' -> unreserve(reserved, requested, Node);
         'TASK_ERROR' -> unreserve(reserved, requested, Node);
-        'TASK_STAGING' -> update_and_reply(reserved, starting, Node);
-        'TASK_STARTING' -> update_and_reply(reserved, starting, Node);
+        'TASK_STAGING' -> update_and_reply({reserved, Node}, {starting, Node});
+        'TASK_STARTING' -> update_and_reply({reserved, Node}, {starting, Node});
         %% TODO This seems wrong: shouldn't it be 'started'? Maybe this never happens?
         'TASK_RUNNING' -> join(starting, Node);
         _ ->
@@ -374,9 +374,9 @@ reserved(_Event, _From, Node) ->
 -spec starting(event(), from(), node_state()) -> state_cb_reply().
 starting({status_update, StatusUpdate, _}, _From, Node) ->
     case StatusUpdate of
-        'TASK_FAILED' -> update_and_reply(starting, reserved, Node);
-        'TASK_LOST' -> update_and_reply(starting, reserved, Node);
-        'TASK_ERROR' -> update_and_reply(starting, reserved, Node);
+        'TASK_FAILED' -> update_and_reply({starting, Node}, {reserved, Node});
+        'TASK_LOST' -> update_and_reply({starting, Node}, {reserved, Node});
+        'TASK_ERROR' -> update_and_reply({starting, Node}, {reserved, Node});
         'TASK_STARTING' -> {reply, ok, starting, Node};
         'TASK_RUNNING' -> join(starting, Node);
         _ ->
@@ -388,17 +388,17 @@ starting(can_be_scheduled, _From, Node) ->
 starting(can_be_shutdown, _From, Node) ->
     {reply, {ok, false}, starting, Node};
 starting({destroy, _}, _From, Node) ->
-    update_and_reply(restarting, shutting_down, Node);
+    update_and_reply({restarting, Node}, {shutting_down, Node});
 starting(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, starting, Node}.
 
 -spec restarting(event(), from(), node_state()) -> state_cb_reply().
 restarting({status_update, StatusUpdate, _}, _From, Node) ->
     case StatusUpdate of
-        'TASK_FINISHED' -> update_and_reply(restarting, reserved, Node);
-        'TASK_FAILED' ->   update_and_reply(restarting, reserved, Node);
-        'TASK_LOST' ->     update_and_reply(restarting, reserved, Node);
-        'TASK_ERROR' ->    update_and_reply(restarting, reserved, Node);
+        'TASK_FINISHED' -> update_and_reply({restarting, Node}, {reserved, Node});
+        'TASK_FAILED' ->   update_and_reply({restarting, Node}, {reserved, Node});
+        'TASK_LOST' ->     update_and_reply({restarting, Node}, {reserved, Node});
+        'TASK_ERROR' ->    update_and_reply({restarting, Node}, {reserved, Node});
         %% TODO I'm not convinced this should be allowed.
         'TASK_RUNNING' -> join(restarting, Node);
         _ ->
@@ -410,31 +410,31 @@ restarting(can_be_shutdown, _From, Node) ->
 restarting(can_be_scheduled, _From, Node) ->
     {reply, {ok, false}, restarting, Node};
 restarting({destroy, _}, _From, Node) ->
-    update_and_reply(restarting, shutting_down, Node);
+    update_and_reply({restarting, Node}, {shutting_down, Node});
 restarting(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, restarting, Node}.
 
 -spec started(event(), from(), node_state()) -> state_cb_reply().
 started({status_update, StatusUpdate, _}, _From, Node) ->
     case StatusUpdate of
-        'TASK_FAILED' -> update_and_reply(started, reserved, Node);
-        'TASK_LOST' -> update_and_reply(started, reserved, Node);
-        'TASK_ERROR' -> update_and_reply(started, reserved, Node);
-        'TASK_KILLED' -> update_and_reply(started, reserved, Node);
-        'TASK_FINISHED' -> update_and_reply(started, reserved, Node);
+        'TASK_FAILED' -> update_and_reply({started, Node}, {reserved, Node});
+        'TASK_LOST' -> update_and_reply({started, Node}, {reserved, Node});
+        'TASK_ERROR' -> update_and_reply({started, Node}, {reserved, Node});
+        'TASK_KILLED' -> update_and_reply({started, Node}, {reserved, Node});
+        'TASK_FINISHED' -> update_and_reply({started, Node}, {reserved, Node});
         _ ->
             lager:debug("Unexpected status_update [~p]: ~p", [started, StatusUpdate]),
             {reply, ok, started, Node}
     end;
 started(restart, _From, Node) ->
     %% TODO Maybe there's a chance we don't have a reservation here?
-    update_and_reply(started, restarting, Node);
+    update_and_reply({started, Node}, {restarting, Node});
 started(can_be_scheduled, _From, Node) ->
     {reply, {ok, false}, started, Node};
 started(can_be_shutdown, _From, Node) ->
     {reply, {ok, false}, started, Node};
 started({destroy, _}, _From, Node) ->
-    update_and_reply(started, shutting_down, Node);
+    update_and_reply({started, Node}, {shutting_down, Node});
 started(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, started, Node}.
 
@@ -479,7 +479,7 @@ shutdown(_Event, _From, Node) ->
 handle_sync_event(set_reconciled, _From, State, Node) ->
     lager:info("Setting reconciliation for node: ~p", [Node]),
     Node1 = Node#node{reconciled = true},
-    update_and_reply(State, State, Node, Node1);
+    update_and_reply({State, Node}, {State, Node1});
 handle_sync_event(_Event, _From, StateName, State) ->
     {reply, {error, {unhandled_sync_event, _Event}}, StateName, State}.
 
@@ -514,12 +514,8 @@ get_node(Key) ->
 add_node({State, Node}) ->
     rms_metadata:add_node(to_list({State, Node})).
 
--spec update_and_reply(state(), state(), node_state()) -> state_cb_reply().
-update_and_reply(State, NewState, Node) ->
-    update_and_reply(State, NewState, Node, Node).
-
--spec update_and_reply(state(), state(), node_state(), node_state()) -> state_cb_reply().
-update_and_reply(State, NewState, #node{key = Key} = Node, Node1) ->
+-spec update_and_reply({state(), node_state()}, {state(), node_state()}) -> state_cb_reply().
+update_and_reply({State, #node{key = Key} = Node}, {NewState, Node1}) ->
     case rms_metadata:update_node(Key, to_list({NewState, Node1})) of
         ok ->
             {reply, ok, NewState, Node1};
@@ -535,10 +531,10 @@ leave(State, NewState, #node{cluster_key = Cluster, key = Key} = Node) ->
     case rms_cluster_manager:leave(Cluster, Key) of
         ok ->
             lager:info("~p left cluster ~p successfully.", [Key, Cluster]),
-            update_and_reply(State, NewState, Node, Node1);
+            update_and_reply({State, Node}, {NewState, Node1});
         {error, no_suitable_nodes} ->
             lager:info("~p was unable to leave cluster ~p because no nodes were available to leave from.", [Key, Cluster]),
-            update_and_reply(State, NewState, Node, Node1);
+            update_and_reply({State, Node}, {NewState, Node1});
         {error, Reason} ->
             lager:warning("~p was unable to leave cluster ~p because ~p.", [Key, Cluster, Reason]),
             {reply, {error, Reason}, State, Node}
@@ -551,10 +547,10 @@ join(State, #node{cluster_key = Cluster, key = Key} = Node) ->
     case rms_cluster_manager:maybe_join(Cluster, Key) of
         ok ->
             ok = rms_cluster_manager:node_started(Cluster, Key),
-            update_and_reply(State, started, Node);
+            update_and_reply({State, Node}, {started, Node});
         {error, no_suitable_nodes} ->
             ok = rms_cluster_manager:node_started(Cluster, Key),
-            update_and_reply(State, started, Node);
+            update_and_reply({State, Node}, {started, Node});
         {error, Reason} ->
             %% Maybe we should try to kill the node and restart task here?
             {reply, {error, Reason}, State, Node}
@@ -565,7 +561,7 @@ unreserve(State, NewState, Node) ->
                       agent_id_value = "",
                       persistence_id = "",
                       attributes = []},
-    update_and_reply(State, NewState, Node, Node1).
+    update_and_reply({State, Node}, {NewState, Node1}).
 
 -spec from_list(rms_metadata:node_state()) -> {state(), node_state()}.
 from_list(NodeList) ->
