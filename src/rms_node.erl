@@ -388,7 +388,7 @@ starting(can_be_scheduled, _From, Node) ->
 starting(can_be_shutdown, _From, Node) ->
     {reply, {ok, false}, starting, Node};
 starting({destroy, _}, _From, Node) ->
-    update_and_reply({restarting, Node}, {shutting_down, Node});
+    update_and_reply({starting, Node}, {shutting_down, Node});
 starting(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, starting, Node}.
 
