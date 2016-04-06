@@ -33,7 +33,7 @@
          set_cluster_advanced_config/2,
          restart_cluster/1,
          node_started/2,
-         delete_cluster/1]).
+         destroy_cluster/1]).
 
 -export([add_node/1]).
 
@@ -141,11 +141,11 @@ node_started(Key, NodeKey) ->
             {error, Reason}
     end.
 
--spec delete_cluster(rms_cluster:key()) -> ok | {error, term()}.
-delete_cluster(Key) ->
+-spec destroy_cluster(rms_cluster:key()) -> ok | {error, term()}.
+destroy_cluster(Key) ->
     case get_cluster_pid(Key) of
         {ok, Pid} ->
-            rms_cluster:delete(Pid);
+            rms_cluster:destroy(Pid);
         {error, Reason} ->
             {error, Reason}
     end.

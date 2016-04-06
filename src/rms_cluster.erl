@@ -30,7 +30,7 @@
          set_advanced_config/2,
          maybe_join/2,
          leave/2,
-         delete/1,
+         destroy/1,
          add_node/1,
          commence_restart/1,
          node_started/2]).
@@ -116,9 +116,9 @@ maybe_join(Pid, NodeKey) ->
 leave(Pid, NodeKey) ->
     gen_fsm:sync_send_all_state_event(Pid, {leave, NodeKey}).
 
--spec delete(pid()) -> ok | {error, term()}.
-delete(Pid) ->
-    gen_fsm:sync_send_all_state_event(Pid, delete).
+-spec destroy(pid()) -> ok | {error, term()}.
+destroy(Pid) ->
+    gen_fsm:sync_send_all_state_event(Pid, destroy).
 
 -spec add_node(pid()) -> ok | {error, term()}.
 add_node(Pid) ->
@@ -222,7 +222,7 @@ shutdown(timeout, #cluster{}=Cluster) ->
             %% Or if someone tries to re-create this cluster, do supervisor:restart_child(rms_cluster_manager, Key)
             {stop, normal, Cluster};
         [_|_] = NodeKeys ->
-            _ = do_delete(NodeKeys),
+            _ = do_destroy(NodeKeys),
             {next_state, shutdown, Cluster}
     end;
 shutdown(_Event, Cluster) ->
@@ -270,13 +270,13 @@ handle_sync_event({set_advanced_config, AdvConfig}, _From, StateName, Cluster) -
         {error,_}=Err ->
             {reply, Err, StateName, Cluster}
     end;
-handle_sync_event(delete, _From, _StateName,
+handle_sync_event(destroy, _From, _StateName,
                   #cluster{key = Key} = Cluster) ->
     case rms_node_manager:get_active_node_keys(Key) of
         [] ->
             {stop, normal, rms_metadata:delete_cluster(Key), Cluster};
         NodeKeys ->
-            Reply = do_delete(NodeKeys),
+            Reply = do_destroy(NodeKeys),
             {reply, Reply, shutdown, Cluster, ?SHUTDOWN_TIMEOUT}
     end;
 handle_sync_event(add_node, _From, StateName, Cluster) ->
@@ -418,14 +418,14 @@ do_leave(NodeKey, [ExistingNodeKey|Rest]) ->
             do_leave(NodeKey, Rest)
     end.
 
--spec do_delete([rms_node:key()]) ->
+-spec do_destroy([rms_node:key()]) ->
                        ok | {error, term()}.
-do_delete([]) ->
+do_destroy([]) ->
     ok;
-do_delete([ExistingNodeKey|Rest]) ->
-    case rms_node_manager:delete_node(ExistingNodeKey) of
+do_destroy([ExistingNodeKey|Rest]) ->
+    case rms_node_manager:destroy_node(ExistingNodeKey) of
         ok ->
-            do_delete(Rest);
+            do_destroy(Rest);
         {error, Reason} ->
             {error, Reason}
     end.
