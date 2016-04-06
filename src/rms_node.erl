@@ -199,7 +199,7 @@ set_agent_info(Pid,
                DisterlPort,
                AgentIdValue,
                ContainerPath) ->
-    gen_fsm:sync_send_all_state_event(
+    gen_fsm:sync_send_event(
       Pid, {set_agent_info,
             NodeName,
             Hostname,
@@ -330,6 +330,24 @@ requested(_Event, _From, Node) ->
 reserved(set_unreserve, _From, Node) ->
     lager:info("Removing reservation for node: ~p", [Node]),
     unreserve(reserved, requested, Node);
+reserved({set_agent_info,
+          NodeName,
+          Hostname,
+          HttpPort,
+          PbPort,
+          DisterlPort,
+          AgentIdValue,
+          ContainerPath},
+          _From, Node) ->
+    Node1 = Node#node{hostname = Hostname,
+                      node_name = NodeName,
+                      http_port = HttpPort,
+                      pb_port = PbPort,
+                      disterl_port = DisterlPort,
+                      agent_id_value = AgentIdValue,
+                      container_path = ContainerPath},
+    lager:info("Setting agent info for node to ~p", [Node1]),
+    sync_update_node(reserved, reserved, Node, Node1);
 reserved({status_update, StatusUpdate, _}, _From, Node) ->
     case StatusUpdate of
         'TASK_FAILED' -> {reply, ok, reserved, Node};
@@ -458,24 +476,6 @@ shutdown(_Event, _From, Node) ->
 
 -spec handle_sync_event(event(), from(), state(), node_state()) ->
                                state_cb_reply().
-handle_sync_event({set_agent_info,
-                   NodeName,
-                   Hostname,
-                   HttpPort,
-                   PbPort,
-                   DisterlPort,
-                   AgentIdValue,
-                   ContainerPath},
-                  _From, State, Node) ->
-    Node1 = Node#node{hostname = Hostname,
-                      node_name = NodeName,
-                      http_port = HttpPort,
-                      pb_port = PbPort,
-                      disterl_port = DisterlPort,
-                      agent_id_value = AgentIdValue,
-                      container_path = ContainerPath},
-    lager:info("Setting agent info for node to ~p", [Node1]),
-    sync_update_node(State, State, Node, Node1);
 handle_sync_event(set_reconciled, _From, State, Node) ->
     lager:info("Setting reconciliation for node: ~p", [Node]),
     Node1 = Node#node{reconciled = true},
