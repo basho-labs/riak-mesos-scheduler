@@ -427,7 +427,6 @@ started({status_update, StatusUpdate, _}, _From, Node) ->
             {reply, ok, started, Node}
     end;
 started(restart, _From, Node) ->
-    %% TODO Maybe there's a chance we don't have a reservation here?
     update_and_reply({started, Node}, {restarting, Node});
 started(can_be_scheduled, _From, Node) ->
     {reply, {ok, false}, started, Node};
