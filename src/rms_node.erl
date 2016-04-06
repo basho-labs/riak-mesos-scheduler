@@ -322,7 +322,7 @@ requested(can_be_scheduled, _From, Node) ->
 requested(can_be_shutdown, _From, Node) ->
     {reply, {ok, false}, requested, Node};
 requested({destroy, _}, _From, Node) ->
-    {reply, ok, shutting_down, Node};
+    update_and_reply({requested, Node}, {shutting_down, Node});
 requested(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, requested, Node}.
 
@@ -367,7 +367,7 @@ reserved(can_be_scheduled, _From, Node) ->
 reserved(can_be_shutdown, _From, Node) ->
     {reply, {ok, false}, reserved, Node};
 reserved({destroy, _}, _From, Node) ->
-    {reply, ok, shutting_down, Node};
+    update_and_reply({reserved, Node}, {shutting_down, Node});
 reserved(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, reserved, Node}.
 
