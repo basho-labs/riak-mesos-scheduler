@@ -418,15 +418,15 @@ shutdown_executors(SchedulerInfo, [{NodeKey, AgentIdValue}|Rest], State) ->
     AgentId = erl_mesos_utils:agent_id(AgentIdValue),
     ExecutorId = erl_mesos_utils:executor_id(NodeKey),
     _TaskId = erl_mesos_utils:task_id(NodeKey),
-    lager:info("Shutting down ~p.", [NodeKey]),
+    lager:info("Finishing ~p.", [NodeKey]),
     case call(message, 
               [SchedulerInfo, AgentId, 
                ExecutorId, <<"finish">>], State) of
         {ok, S1} ->
-            lager:info("Finished shutting down ~p.", [NodeKey]),
+            lager:info("Told ~p to finish.", [NodeKey]),
             shutdown_executors(SchedulerInfo, Rest, S1);
         R -> 
-            lager:info("Error shutting node down: ~p.", [R]),
+            lager:info("Error telling node to finish: ~p.", [R]),
             R
     end.
     %% case call(shutdown, [SchedulerInfo, ExecutorId, AgentId], State) of
