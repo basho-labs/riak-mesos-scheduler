@@ -100,6 +100,10 @@ get_field_value(Field, Key) ->
             {error, Reason}
     end.
 
+-spec leave(pid(), rms_node:key()) -> ok | {error, term()}.
+leave(Pid, NodeKey) ->
+    gen_fsm:send_all_state_event(Pid, {leave, NodeKey}).
+
 -spec set_riak_config(pid(), binary()) -> ok | {error, term()}.
 set_riak_config(Pid, RiakConfig) ->
     gen_fsm:sync_send_all_state_event(Pid, {set_riak_config, RiakConfig}).
@@ -111,10 +115,6 @@ set_advanced_config(Pid, AdvancedConfig) ->
 -spec maybe_join(pid(), rms_node:key()) -> ok | {error, term()}.
 maybe_join(Pid, NodeKey) ->
     gen_fsm:sync_send_all_state_event(Pid, {maybe_join, NodeKey}).
-
--spec leave(pid(), rms_node:key()) -> ok | {error, term()}.
-leave(Pid, NodeKey) ->
-    gen_fsm:sync_send_all_state_event(Pid, {leave, NodeKey}).
 
 -spec destroy(pid()) -> ok | {error, term()}.
 destroy(Pid) ->
@@ -249,6 +249,16 @@ shutdown(_Event, _From, Cluster) ->
 %%% gen_fsm callbacks
 -spec handle_event(event(), StateName :: atom(), cluster_state()) ->
                           state_cb_return().
+handle_event({leave, NodeKey}, StateName,
+                  #cluster{key=Key} = Cluster) ->
+    NodeKeys = rms_node_manager:get_running_node_keys(Key),
+    case do_leave(NodeKey, NodeKeys) of
+        ok ->
+            {next_state, StateName, Cluster};
+        {error, Reason} ->
+            lager:error("Node ~s failed to leave cluster: ~p", [NodeKey, Reason]),
+            {next_state, StateName, Cluster}
+    end;
 handle_event(_Event, StateName, State) ->
     {next_state, StateName, State}.
 
@@ -307,16 +317,6 @@ handle_sync_event({maybe_join, NodeKey}, _From, StateName,
     case maybe_do_join(NodeKey, NodeKeys) of
         ok ->
             {reply, ok, StateName, Cluster};
-        {error, Reason} ->
-            {reply, {error, Reason}, StateName, Cluster}
-    end;
-%% TODO This should probably move to be a strict transition
-handle_sync_event({leave, NodeKey}, _From, StateName,
-                  #cluster{key=Key} = Cluster) ->
-    NodeKeys = rms_node_manager:get_running_node_keys(Key),
-    case do_leave(NodeKey, NodeKeys) of
-        ok ->
-            {reply, ok, running, Cluster};
         {error, Reason} ->
             {reply, {error, Reason}, StateName, Cluster}
     end;
