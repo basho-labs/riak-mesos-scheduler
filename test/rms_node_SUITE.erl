@@ -57,6 +57,7 @@ t_normal_start_stop(_Config) ->
     meck:new(rms_cluster_manager),
     meck:expect(rms_cluster_manager, maybe_join, fun(_, _) -> ok end),
     meck:expect(rms_cluster_manager, node_started, fun(_, _) -> ok end),
+    meck:expect(rms_cluster_manager, leave, fun(_, _) -> ok end),
     NodeKey = "riak-default-1",
     ClusterKey = "default",
     {ok, Node} = rms_node:start_link(NodeKey, ClusterKey),
@@ -74,7 +75,11 @@ t_normal_start_stop(_Config) ->
     ok = rms_node:handle_status_update(Node, 'TASK_RUNNING', ''),
     {started, _} = sys:get_state(Node),
     % destroy
+    ok = rms_node:destroy(Node, false),
+    {leaving, _} = sys:get_state(Node),
+    % The FSM needs to figure out when the riak-node has left the cluster
     % FINISHED
+    ok = rms_node:handle_status_update(Node, 'TASK_FINISHED', ''),
+    
     meck:unload(rms_cluster_manager),
     meck:unload(rms_metadata).
-
