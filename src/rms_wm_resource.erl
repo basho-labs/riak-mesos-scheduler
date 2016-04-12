@@ -328,7 +328,7 @@ add_node(ReqData) ->
 delete_node(ReqData) ->
     NodeKey = wrq:path_info(node_key, ReqData),
     Force = list_to_atom(wrq:get_qs_value("force", "false", ReqData)),
-    Response = build_response(rms_node_manager:delete_node(NodeKey, Force)),
+    Response = build_response(rms_node_manager:destroy_node(NodeKey, Force)),
     {true, wrq:append_to_response_body(mochijson2:encode(Response), ReqData)}.
 
 restart_node(RD) ->
