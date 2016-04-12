@@ -70,11 +70,16 @@
          restarting/3,
          started/2,
          started/3,
+         leaving/2,
+         leaving/3,
          shutting_down/2,
          shutting_down/3,
          shutdown/2,
          shutdown/3
         ]).
+
+%% TODO Maybe we could use a backoff instead of this
+-define(LEAVING_TIMEOUT, 15000).
 
 -record(node, {key :: key(),
                cluster_key :: rms_cluster:key(),
@@ -100,7 +105,7 @@
 -spec start_link(key(), rms_cluster:key()) ->
                         {ok, pid()} | {error, Error :: term()}.
 start_link(Key, ClusterKey) ->
-    gen_fsm:start_link(?MODULE, {Key, ClusterKey}, []).
+    gen_fsm:start_link(?MODULE, {Key, ClusterKey}, [{debug, [log, trace, {log_to_file, "rms_node.log"}]}]).
 
 %% TODO The following API functions operate only on the rms_metadata, but
 %% it feels like we should be asking the running FSM/server for that node,
@@ -281,6 +286,16 @@ restarting(_Event, Node) ->
 started(_Event, Node) ->
     {stop, {unhandled_event, _Event}, Node}.
 
+-spec leaving(event(), node_state()) -> state_cb_return().
+leaving(timeout, Node) ->
+    %% check riak_explorer_client:status(NodeHost:NodePort, FullyQualifiedNodeName@Hostname)
+    %% if this node believes it's the only node in the cluster, drop into shutting_down
+    %% else stay in leaving, with timeout
+    lager:debug("Leaving timeout reached"),
+    {next_state, leaving, Node, ?LEAVING_TIMEOUT};
+leaving(_Event, Node) ->
+    {stop, {unhandled_event, _Event}, Node}.
+
 -spec shutting_down(event(), node_state()) -> state_cb_return().
 shutting_down(_Event, Node) ->
     {stop, {unhandled_event, _Event}, Node}.
@@ -432,10 +447,38 @@ started(can_be_scheduled, _From, Node) ->
     {reply, {ok, false}, started, Node};
 started(can_be_shutdown, _From, Node) ->
     {reply, {ok, false}, started, Node};
-started({destroy, _}, _From, Node) ->
+started({destroy, true}, _From, Node) ->
     update_and_reply({started, Node}, {shutting_down, Node});
+started({destroy, false}, _From, Node) ->
+    #node{key = NodeKey, cluster_key = ClusterKey} = Node,
+    ok = rms_cluster_manager:leave(ClusterKey, NodeKey),
+    update_and_reply({started, Node}, {leaving, Node}, ?LEAVING_TIMEOUT);
 started(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, started, Node}.
+
+-spec leaving(event(), from(), node_state()) -> state_cb_reply().
+leaving({status_update, StatusUpdate, _}, _From, Node) ->
+    case StatusUpdate of
+        'TASK_FINISHED' ->
+            update_and_reply({leaving, Node}, {shutdown, Node});
+        'TASK_FAILED' ->
+            update_and_reply({leaving, Node}, {shutdown, Node});
+        'TASK_KILLED' ->
+            update_and_reply({leaving, Node}, {shutdown, Node});
+        'TASK_LOST' ->
+            update_and_reply({leaving, Node}, {shutdown, Node});
+        'TASK_ERROR' ->
+            update_and_reply({leaving, Node}, {shutdown, Node});
+        _ ->
+            lager:debug("Unexpected status_update [~p]: ~p", [leaving, StatusUpdate]),
+            {reply, ok, leaving, Node}
+    end;
+leaving(can_be_shutdown, _From, Node) ->
+    {reply, {ok, false}, leaving, Node};
+leaving(can_be_scheduled, _From, Node) ->
+    {reply, {ok, false}, leaving, Node};
+leaving(_Event, _From, Node) ->
+    {reply, {error, unhandled_event}, leaving, Node}.
 
 -spec shutting_down(event(), from(), node_state()) -> state_cb_reply().
 shutting_down({status_update, StatusUpdate, _}, _From, Node) ->
@@ -455,8 +498,8 @@ shutting_down(can_be_scheduled, _From, Node) ->
     {reply, {ok, false}, shutting_down, Node};
 shutting_down({destroy, false}, _From, Node) ->
     {reply, ok, shutting_down, Node};
-shutting_down({destroy, true}, _From, Node) ->
-    leave(shutting_down, Node);
+%shutting_down({destroy, true}, _From, Node) ->
+%    leave(shutting_down, Node);
 shutting_down(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, shutting_down, Node}.
 
@@ -514,13 +557,16 @@ add_node({State, Node}) ->
     rms_metadata:add_node(to_list({State, Node})).
 
 -spec update_and_reply({state(), node_state()}, {state(), node_state()}) -> state_cb_reply().
-update_and_reply({State, #node{key = Key} = Node}, {NewState, Node1}) ->
+update_and_reply({_, _}=N0, {_, _}=N1) ->
+    update_and_reply(N0, N1, infinity).
+
+update_and_reply({State, #node{key = Key} = Node}, {NewState, Node1}, Timeout) ->
     case rms_metadata:update_node(Key, to_list({NewState, Node1})) of
         ok ->
-            {reply, ok, NewState, Node1};
+            {reply, ok, NewState, Node1, Timeout};
         {error, Reason} ->
             lager:error("Error updating state for node: ~p, new state: ~p, reason: ~p.", [Node, NewState, Reason]),
-            {reply, {error, Reason}, State, Node}
+            {reply, {error, Reason}, State, Node, Timeout}
     end.
 
 leave(State, NewState, #node{cluster_key = Cluster, key = Key} = Node) ->
