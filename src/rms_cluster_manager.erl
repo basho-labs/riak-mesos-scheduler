@@ -242,6 +242,9 @@ apply_offer([NodeKey | NodeKeys], OfferHelper) ->
             OfferHelper;
         false ->
             case rms_node_manager:node_can_be_scheduled(NodeKey) of
+                % TODO How do we clean up the node keys here?
+                {error, shutdown} ->
+                    apply_offer(NodeKeys, OfferHelper);
                 {ok, true} ->
                     schedule_node(NodeKey, NodeKeys,
                                   OfferHelper);
@@ -377,6 +380,9 @@ cluster_spec(Key) ->
 -spec get_cluster_pid(rms_cluster:key()) -> {ok, pid()} | {error, not_found}.
 get_cluster_pid(Key) ->
     case lists:keyfind(Key, 1, supervisor:which_children(?MODULE)) of
+        {_Key, undefined, _, _} ->
+            %% TODO Maybe we should supervisor:delete_child/2 here?
+            {error, shutdown};
         {_Key, Pid, _, _} ->
             {ok, Pid};
         false ->
