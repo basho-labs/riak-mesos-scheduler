@@ -449,6 +449,9 @@ node_spec(Key, ClusterKey) ->
 -spec get_node_pid(rms_node:key()) -> {ok, pid()} | {error, not_found}.
 get_node_pid(Key) ->
     case lists:keyfind(Key, 1, supervisor:which_children(?MODULE)) of
+        {_Key, undefined, _, _} ->
+            %% TODO Perhaps we should supervisor:delete_child/2 here?
+            {error, shutdown};
         {_Key, Pid, _, _} ->
             {ok, Pid};
         false ->
