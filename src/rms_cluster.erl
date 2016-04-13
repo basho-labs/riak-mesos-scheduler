@@ -223,7 +223,7 @@ shutdown(timeout, #cluster{}=Cluster) ->
             {stop, normal, Cluster};
         [_|_] = NodeKeys ->
             _ = do_destroy(NodeKeys),
-            {next_state, shutdown, Cluster}
+            {next_state, shutdown, Cluster, next_timeout(shutdown, Cluster)}
     end;
 shutdown(_Event, Cluster) ->
     {stop, {unhandled_event, _Event}, Cluster}.
@@ -282,12 +282,13 @@ handle_sync_event({set_advanced_config, AdvConfig}, _From, StateName, Cluster) -
     end;
 handle_sync_event(destroy, _From, _StateName,
                   #cluster{key = Key} = Cluster) ->
+    %% TODO Get rid of this clause in favour of an exponential backoff feeding shutdown(timeout, Cluster)
     case rms_node_manager:get_active_node_keys(Key) of
         [] ->
             {stop, normal, rms_metadata:delete_cluster(Key), Cluster};
         NodeKeys ->
             Reply = do_destroy(NodeKeys),
-            {reply, Reply, shutdown, Cluster, ?SHUTDOWN_TIMEOUT}
+            {reply, Reply, shutdown, Cluster, next_timeout(shutdown, Cluster)}
     end;
 handle_sync_event(add_node, _From, StateName, Cluster) ->
     #cluster{key = Key,
@@ -429,6 +430,9 @@ do_destroy([ExistingNodeKey|Rest]) ->
         {error, Reason} ->
             {error, Reason}
     end.
+
+next_timeout(shutdown, #cluster{}=_Cluster) ->
+    ?SHUTDOWN_TIMEOUT.
 
 -spec from_list(rms_metadata:cluster_state()) -> {atom(), cluster_state()}.
 from_list(ClusterList) ->
