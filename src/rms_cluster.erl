@@ -424,7 +424,7 @@ do_leave(NodeKey, [ExistingNodeKey|Rest]) ->
 do_destroy([]) ->
     ok;
 do_destroy([ExistingNodeKey|Rest]) ->
-    case rms_node_manager:destroy_node(ExistingNodeKey) of
+    case rms_node_manager:destroy_node(ExistingNodeKey, true) of
         ok ->
             do_destroy(Rest);
         {error, Reason} ->
