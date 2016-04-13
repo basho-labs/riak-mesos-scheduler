@@ -268,23 +268,23 @@ init({Key, ClusterKey}) ->
 
 -spec requested(event(), node_state()) -> state_cb_return().
 requested(_Event, Node) ->
-    {stop, {unhandled_event, _Event}, Node}.
+    delete_and_stop({requested, Node}, {error, {unhandled_event, _Event}}).
 
 -spec reserved(event(), node_state()) -> state_cb_return().
 reserved(_Event, Node) ->
-    {stop, {unhandled_event, _Event}, Node}.
+    delete_and_stop({reserved, Node}, {error, {unhandled_event, _Event}}).
 
 -spec starting(event(), node_state()) -> state_cb_return().
 starting(_Event, Node) ->
-    {stop, {unhandled_event, _Event}, Node}.
+    delete_and_stop({starting, Node}, {error, {unhandled_event, _Event}}).
 
 -spec restarting(event(), node_state()) -> state_cb_return().
 restarting(_Event, Node) ->
-    {stop, {unhandled_event, _Event}, Node}.
+    delete_and_stop({restarting, Node}, {error, {unhandled_event, _Event}}).
 
 -spec started(event(), node_state()) -> state_cb_return().
 started(_Event, Node) ->
-    {stop, {unhandled_event, _Event}, Node}.
+    delete_and_stop({started, Node}, {error, {unhandled_event, _Event}}).
 
 -spec leaving(event(), node_state()) -> state_cb_return().
 leaving(timeout, Node) ->
@@ -294,13 +294,16 @@ leaving(timeout, Node) ->
     lager:debug("Leaving timeout reached"),
     {next_state, leaving, Node, ?LEAVING_TIMEOUT};
 leaving(_Event, Node) ->
-    {stop, {unhandled_event, _Event}, Node}.
+    delete_and_stop({leaving, Node}, {error, {unhandled_event, _Event}}).
 
 -spec shutting_down(event(), node_state()) -> state_cb_return().
 shutting_down(_Event, Node) ->
-    {stop, {unhandled_event, _Event}, Node}.
+    delete_and_stop({shutting_down, Node}, {error, {unhandled_event, _Event}}).
 
 -spec shutdown(event(), node_state()) -> state_cb_return().
+%% TODO This state may no longer be required. Investigate.
+shutdown(timeout, Node) ->
+    delete_and_stop({shutdown, Node}, normal);
 shutdown(_Event, Node) ->
     {stop, {unhandled_event, _Event}, Node}.
 
@@ -460,15 +463,15 @@ started(_Event, _From, Node) ->
 leaving({status_update, StatusUpdate, _}, _From, Node) ->
     case StatusUpdate of
         'TASK_FINISHED' ->
-            update_and_reply({leaving, Node}, {shutdown, Node});
+            delete_reply_stop({leaving, Node}, ok, normal);
         'TASK_FAILED' ->
-            update_and_reply({leaving, Node}, {shutdown, Node});
+            delete_reply_stop({leaving, Node}, ok, normal);
         'TASK_KILLED' ->
-            update_and_reply({leaving, Node}, {shutdown, Node});
+            delete_reply_stop({leaving, Node}, ok, normal);
         'TASK_LOST' ->
-            update_and_reply({leaving, Node}, {shutdown, Node});
+            delete_reply_stop({leaving, Node}, ok, normal);
         'TASK_ERROR' ->
-            update_and_reply({leaving, Node}, {shutdown, Node});
+            delete_reply_stop({leaving, Node}, ok, normal);
         _ ->
             lager:debug("Unexpected status_update [~p]: ~p", [leaving, StatusUpdate]),
             {reply, ok, leaving, Node}
@@ -512,7 +515,8 @@ shutdown(can_be_shutdown, _From, Node) ->
 shutdown(can_be_scheduled, _From, Node) ->
     {reply, {ok, false}, shutdown, Node};
 shutdown({destroy, _}, _From, Node) ->
-    {reply, ok, shutdown, Node};
+    %% TODO Maybe this isn't quite right? I feel like this is side-effect-y
+    delete_reply_stop({shutdown, Node}, ok, normal);
 shutdown(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, shutdown, Node}.
 
@@ -567,6 +571,22 @@ update_and_reply({State, #node{key = Key} = Node}, {NewState, Node1}, Timeout) -
         {error, Reason} ->
             lager:error("Error updating state for node: ~p, new state: ~p, reason: ~p.", [Node, NewState, Reason]),
             {reply, {error, Reason}, State, Node, Timeout}
+    end.
+
+-spec delete_and_stop({state(), node_state()}, Reason :: term()) -> ok | {error, term()}.
+delete_and_stop({State, #node{key = Key} = Node}, Reason) ->
+    case rms_metadata:delete_node(Key) of
+        ok -> {stop, Reason, Node};
+        {error, _}=Error ->
+            {stop, Error, Node}
+    end.
+
+-spec delete_reply_stop({state(), node_state()}, reply(), Reason :: term()) -> ok | {error, term()}.
+delete_reply_stop({State, #node{key = Key} = Node}, Reply, Reason) ->
+    case rms_metadata:delete_node(Key) of
+        ok -> {stop, Reason, Reply, Node};
+        {error,_} = Error ->
+            {reply, Error, State, Node}
     end.
 
 leave(State, NewState, #node{cluster_key = Cluster, key = Key} = Node) ->
