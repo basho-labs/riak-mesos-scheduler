@@ -208,6 +208,10 @@ add_node(Key, ClusterKey) ->
                     ok;
                 {error, {already_started, _Pid}} ->
                     {error, exists};
+                {error, already_present} ->
+                    ok = supervisor:delete_child(?MODULE, Key),
+                    {ok, _Pid} = supervisor:start_child(?MODULE, NodeSpec),
+                    ok;
                 {error, Reason} ->
                     {error, Reason}
             end
