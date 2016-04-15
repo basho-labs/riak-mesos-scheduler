@@ -89,17 +89,26 @@ add_cluster(Key) ->
             ClusterSpec = cluster_spec(Key),
             case supervisor:start_child(?MODULE, ClusterSpec) of
                 {ok, _Pid} ->
-                    {ok, RiakConfig} = file:read_file(?RIAK_CONFIG),
-                    {ok, AdvancedConfig} = file:read_file(?ADVANCED_CONFIG),
-                    ok = set_cluster_riak_config(Key, RiakConfig),
-                    ok = set_cluster_advanced_config(Key, AdvancedConfig),
-                    ok;
+                    ok = set_cluster_config(Key);
+                {error, already_present} ->
+                    %% This happens when this cluster was already created then destroyed.
+                    %% No state is restored, so we can just restart it and use it.
+                    {ok, _Pid} = supervisor:restart_child(?MODULE, Key),
+                    ok = set_cluster_config(Key);
                 {error, {already_started, _Pid}} ->
                     {error, exists};
                 {error, Reason} ->
                     {error, Reason}
             end
     end.
+
+-spec set_cluster_config(rms_cluster:key()) ->
+    ok | {error, term()}.
+set_cluster_config(Key) ->
+    {ok, RiakConfig} = file:read_file(?RIAK_CONFIG),
+    {ok, AdvancedConfig} = file:read_file(?ADVANCED_CONFIG),
+    ok = set_cluster_riak_config(Key, RiakConfig),
+    ok = set_cluster_advanced_config(Key, AdvancedConfig).
 
 -spec set_cluster_riak_config(rms_cluster:key(), binary()) ->
     ok | {error, term()}.
