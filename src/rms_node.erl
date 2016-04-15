@@ -453,9 +453,7 @@ started(can_be_shutdown, _From, Node) ->
 started({destroy, true}, _From, Node) ->
     update_and_reply({started, Node}, {shutting_down, Node});
 started({destroy, false}, _From, Node) ->
-    #node{key = NodeKey, cluster_key = ClusterKey} = Node,
-    ok = rms_cluster_manager:leave(ClusterKey, NodeKey),
-    update_and_reply({started, Node}, {leaving, Node}, ?LEAVING_TIMEOUT);
+    leave(started, Node, ?LEAVING_TIMEOUT);
 started(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, started, Node}.
 
@@ -486,11 +484,12 @@ leaving(_Event, _From, Node) ->
 -spec shutting_down(event(), from(), node_state()) -> state_cb_reply().
 shutting_down({status_update, StatusUpdate, _}, _From, Node) ->
     case StatusUpdate of
-        'TASK_FINISHED' -> leave(shutting_down, Node);
-        'TASK_KILLED' -> leave(shutting_down, Node);
-        'TASK_FAILED' -> leave(shutting_down, Node);
-        'TASK_LOST' -> leave(shutting_down, Node);
-        'TASK_ERROR' -> leave(shutting_down, Node);
+        'TASK_FINISHED' -> delete_reply_stop({shutting_down, Node}, ok, normal);
+        %% TODO Perhaps the non-standard statuses should lead an abnormal stop?
+        'TASK_KILLED' -> delete_reply_stop({shutting_down, Node}, ok, normal);
+        'TASK_FAILED' -> delete_reply_stop({shutting_down, Node}, ok, normal);
+        'TASK_LOST' -> delete_reply_stop({shutting_down, Node}, ok, normal);
+        'TASK_ERROR' -> delete_reply_stop({shutting_down, Node}, ok, normal);
         _ ->
             lager:debug("Unexpected status_update [~p]: ~p", [shutting_down, StatusUpdate]),
             {reply, ok, shutting_down, Node}
@@ -589,20 +588,17 @@ delete_reply_stop({State, #node{key = Key} = Node}, Reply, Reason) ->
             {reply, Error, State, Node}
     end.
 
-leave(State, Node) ->
-    leave(State, shutdown, Node, 100).
-
-leave(State, NewState, #node{cluster_key = Cluster, key = Key} = Node, Timeout) ->
+leave(State, #node{cluster_key = Cluster, key = Key} = Node, Timeout) ->
     Node1 = Node#node{hostname = "",
                       agent_id_value = "",
                       persistence_id = ""},
     case rms_cluster_manager:leave(Cluster, Key) of
         ok ->
             lager:info("~p left cluster ~p successfully.", [Key, Cluster]),
-            update_and_reply({State, Node}, {NewState, Node1}, Timeout);
+            update_and_reply({State, Node}, {leaving, Node1}, Timeout);
         {error, no_suitable_nodes} ->
             lager:info("~p was unable to leave cluster ~p because no nodes were available to leave from.", [Key, Cluster]),
-            update_and_reply({State, Node}, {NewState, Node1}, Timeout);
+            update_and_reply({State, Node}, {shutting_down, Node1}, Timeout);
         {error, Reason} ->
             lager:warning("~p was unable to leave cluster ~p because ~p.", [Key, Cluster, Reason]),
             {reply, {error, Reason}, State, Node}
