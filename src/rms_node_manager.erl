@@ -32,6 +32,7 @@
          get_node_keys/0,
          get_unreconciled_node_keys/0,
          get_node_keys/1,
+         get_node_names/1,
          get_active_node_keys/1,
          get_running_node_keys/1,
          get_node/1,
@@ -84,6 +85,12 @@ get_unreconciled_node_keys() ->
 get_node_keys(ClusterKey) ->
     [Key || {Key, Node} <- rms_metadata:get_nodes(),
             ClusterKey =:= proplists:get_value(cluster_key, Node)].
+
+-spec get_node_names(rms_cluster:key()) -> [atom()].
+get_node_names(ClusterKey) ->
+    [ proplists:get_value(node_name, Node) || {_, Node} <- rms_metadata:get_nodes(),
+            ClusterKey =:= proplists:get_value(cluster_key, Node),
+            shutdown =/= proplists:get_value(status, Node)].
 
 -spec get_active_node_keys(rms_cluster:key()) -> [rms_node:key()].
 get_active_node_keys(ClusterKey) ->
