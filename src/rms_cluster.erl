@@ -33,7 +33,8 @@
          destroy/1,
          add_node/1,
          commence_restart/1,
-         node_started/2]).
+         node_started/2,
+         node_stopped/2]).
 
 %% gen_fsm callbacks
 -export([init/1,
@@ -132,6 +133,10 @@ commence_restart(Pid) ->
 node_started(Pid, NodeKey) ->
     gen_fsm:send_event(Pid, {node_started, NodeKey}).
 
+-spec node_stopped(pid(), rms_node:key()) -> ok.
+node_stopped(Pid, NodeKey) ->
+    gen_fsm:send_event(Pid, {node_stopped, NodeKey}).
+
 %%% gen_fsm callbacks
 -type state_timeout() :: non_neg_integer() | infinity.
 -type state() :: atom().
@@ -216,6 +221,16 @@ restarting(_Event, Cluster) ->
     {stop, {unhandled_event, _Event}, Cluster}.
 
 -spec shutdown(event(), cluster_state()) -> state_cb_return().
+shutdown({node_stopped, _NodeKey}, #cluster{key=Key}=Cluster) ->
+    case rms_node_manager:get_active_node_keys(Key) of
+        [] ->
+            ok = rms_metadata:delete_cluster(Key),
+            {stop, normal, Cluster};
+        [_|_] = NodeKeys ->
+            %% TODO FIXME We might not need this step? Or maybe we need to be more careful with it
+            _ = do_destroy(NodeKeys),
+            {next_state, shutdown, Cluster#cluster{node_keys=NodeKeys}, next_timeout(shutdown, Cluster)}
+    end;
 shutdown(timeout, #cluster{}=Cluster) ->
     #cluster{ key = Key } = Cluster,
     case rms_node_manager:get_active_node_keys(Key) of

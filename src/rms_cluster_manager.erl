@@ -33,6 +33,7 @@
          set_cluster_advanced_config/2,
          restart_cluster/1,
          node_started/2,
+         node_stopped/2,
          destroy_cluster/1]).
 
 -export([add_node/1]).
@@ -146,6 +147,15 @@ node_started(Key, NodeKey) ->
     case get_cluster_pid(Key) of
         {ok, Pid} ->
             rms_cluster:node_started(Pid, NodeKey);
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+-spec node_stopped(rms_cluster:key(), rms_node:key()) -> ok.
+node_stopped(Key, NodeKey) ->
+    case get_cluster_pid(Key) of
+        {ok, Pid} ->
+            rms_cluster:node_stopped(Pid, NodeKey);
         {error, Reason} ->
             {error, Reason}
     end.
