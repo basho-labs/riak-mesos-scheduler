@@ -574,18 +574,20 @@ update_and_reply({State, #node{key = Key} = Node}, {NewState, Node1}, Timeout) -
 
 -spec delete_and_stop({state(), node_state()}, Reason :: term()) -> ok | {error, term()}.
 delete_and_stop({State, #node{key = Key} = Node}, Reason) ->
-    ok = rms_cluster_manager:node_stopped(Node#node.cluster_key, Key),
     case rms_metadata:delete_node(Key) of
-        ok -> {stop, Reason, Node};
+        ok -> 
+            ok = rms_cluster_manager:node_stopped(Node#node.cluster_key, Key),
+            {stop, Reason, Node};
         {error, _}=Error ->
             {stop, Error, Node}
     end.
 
 -spec delete_reply_stop({state(), node_state()}, reply(), Reason :: term()) -> ok | {error, term()}.
 delete_reply_stop({State, #node{key = Key} = Node}, Reply, Reason) ->
-    ok = rms_cluster_manager:node_stopped(Node#node.cluster_key, Key),
     case rms_metadata:delete_node(Key) of
-        ok -> {stop, Reason, Reply, Node};
+        ok -> 
+            ok = rms_cluster_manager:node_stopped(Node#node.cluster_key, Key),
+            {stop, Reason, Reply, Node};
         {error,_} = Error ->
             {reply, Error, State, Node}
     end.
