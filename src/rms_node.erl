@@ -45,8 +45,8 @@
          set_reserve/5,
          set_unreserve/1,
          set_agent_info/8,
-         delete/1,
-         delete/2,
+         destroy/1,
+         destroy/2,
          restart/1,
          handle_status_update/3]).
 
@@ -70,11 +70,16 @@
          restarting/3,
          started/2,
          started/3,
+         leaving/2,
+         leaving/3,
          shutting_down/2,
          shutting_down/3,
          shutdown/2,
          shutdown/3
         ]).
+
+%% TODO Maybe we could use a backoff instead of this
+-define(LEAVING_TIMEOUT, 15000).
 
 -record(node, {key :: key(),
                cluster_key :: rms_cluster:key(),
@@ -181,12 +186,12 @@ set_reconciled(Pid) ->
 -spec set_reserve(pid(), string(), string(), string(), rms_offer_helper:attributes()) ->
                          ok | {error, term()}.
 set_reserve(Pid, Hostname, AgentIdValue, PersistenceId, Attributes) ->
-    gen_fsm:sync_send_all_state_event(
+    gen_fsm:sync_send_event(
       Pid, {set_reserve, Hostname, AgentIdValue, PersistenceId, Attributes}).
 
 -spec set_unreserve(pid()) -> ok | {error, term()}.
 set_unreserve(Pid) ->
-    gen_fsm:sync_send_all_state_event(Pid, set_unreserve).
+    gen_fsm:sync_send_event(Pid, set_unreserve).
 
 -spec set_agent_info(pid(), string(), string(), pos_integer(), pos_integer(),
                      pos_integer(), string(), string()) ->
@@ -199,7 +204,7 @@ set_agent_info(Pid,
                DisterlPort,
                AgentIdValue,
                ContainerPath) ->
-    gen_fsm:sync_send_all_state_event(
+    gen_fsm:sync_send_event(
       Pid, {set_agent_info,
             NodeName,
             Hostname,
@@ -209,13 +214,13 @@ set_agent_info(Pid,
             AgentIdValue,
             ContainerPath}).
 
--spec delete(pid()) -> ok | {error, term()}.
-delete(Pid) ->
-    delete(Pid, false).
+-spec destroy(pid()) -> ok | {error, term()}.
+destroy(Pid) ->
+    destroy(Pid, false).
 
--spec delete(pid(), boolean()) -> ok | {error, term()}.
-delete(Pid, Force) ->
-    gen_fsm:sync_send_event(Pid, {delete, Force}).
+-spec destroy(pid(), boolean()) -> ok | {error, term()}.
+destroy(Pid, Force) ->
+    gen_fsm:sync_send_event(Pid, {destroy, Force}).
 
 -spec restart(pid()) -> ok | {error, term()}.
 restart(Pid) ->
@@ -263,29 +268,42 @@ init({Key, ClusterKey}) ->
 
 -spec requested(event(), node_state()) -> state_cb_return().
 requested(_Event, Node) ->
-    {stop, {unhandled_event, _Event}, Node}.
+    delete_and_stop({requested, Node}, {error, {unhandled_event, _Event}}).
 
 -spec reserved(event(), node_state()) -> state_cb_return().
 reserved(_Event, Node) ->
-    {stop, {unhandled_event, _Event}, Node}.
+    delete_and_stop({reserved, Node}, {error, {unhandled_event, _Event}}).
 
 -spec starting(event(), node_state()) -> state_cb_return().
 starting(_Event, Node) ->
-    {stop, {unhandled_event, _Event}, Node}.
+    delete_and_stop({starting, Node}, {error, {unhandled_event, _Event}}).
 
 -spec restarting(event(), node_state()) -> state_cb_return().
 restarting(_Event, Node) ->
-    {stop, {unhandled_event, _Event}, Node}.
+    delete_and_stop({restarting, Node}, {error, {unhandled_event, _Event}}).
 
 -spec started(event(), node_state()) -> state_cb_return().
 started(_Event, Node) ->
-    {stop, {unhandled_event, _Event}, Node}.
+    delete_and_stop({started, Node}, {error, {unhandled_event, _Event}}).
+
+-spec leaving(event(), node_state()) -> state_cb_return().
+leaving(timeout, Node) ->
+    %% check riak_explorer_client:status(NodeHost:NodePort, FullyQualifiedNodeName@Hostname)
+    %% if this node believes it's the only node in the cluster, drop into shutting_down
+    %% else stay in leaving, with timeout
+    lager:debug("Leaving timeout reached"),
+    {next_state, leaving, Node, ?LEAVING_TIMEOUT};
+leaving(_Event, Node) ->
+    delete_and_stop({leaving, Node}, {error, {unhandled_event, _Event}}).
 
 -spec shutting_down(event(), node_state()) -> state_cb_return().
 shutting_down(_Event, Node) ->
-    {stop, {unhandled_event, _Event}, Node}.
+    delete_and_stop({shutting_down, Node}, {error, {unhandled_event, _Event}}).
 
 -spec shutdown(event(), node_state()) -> state_cb_return().
+%% TODO This state may no longer be required. Investigate.
+shutdown(timeout, Node) ->
+    delete_and_stop({shutdown, Node}, normal);
 shutdown(_Event, Node) ->
     {stop, {unhandled_event, _Event}, Node}.
 
@@ -302,6 +320,12 @@ handle_event(_Event, StateName, State) ->
       | {reply, reply(), Next::state(), New::node_state(), state_timeout()}.
 
 -spec requested(event(), from(), node_state()) -> state_cb_reply().
+requested({set_reserve, Hostname, AgentIdValue, PersistenceId, Attributes}, _From, Node) ->
+    Node1 = Node#node{hostname = Hostname,
+                      agent_id_value = AgentIdValue,
+                      persistence_id = PersistenceId,
+                      attributes = Attributes},
+    update_and_reply({requested, Node}, {reserved, Node1});
 requested({status_update, StatusUpdate, _}, _From, Node) ->
     case StatusUpdate of
         'TASK_FAILED' -> {reply, ok, requested, Node};
@@ -315,20 +339,41 @@ requested(can_be_scheduled, _From, Node) ->
     {reply, {ok, true}, requested, Node};
 requested(can_be_shutdown, _From, Node) ->
     {reply, {ok, false}, requested, Node};
-requested({delete, _}, _From, Node) ->
-    leave(requested, Node);
+requested({destroy, _}, _From, Node) ->
+    update_and_reply({requested, Node}, {shutting_down, Node});
 requested(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, requested, Node}.
 
 -spec reserved(event(), from(), node_state()) -> state_cb_reply().
+reserved(set_unreserve, _From, Node) ->
+    lager:info("Removing reservation for node: ~p", [Node]),
+    unreserve(reserved, requested, Node);
+reserved({set_agent_info,
+          NodeName,
+          Hostname,
+          HttpPort,
+          PbPort,
+          DisterlPort,
+          AgentIdValue,
+          ContainerPath},
+          _From, Node) ->
+    Node1 = Node#node{hostname = Hostname,
+                      node_name = NodeName,
+                      http_port = HttpPort,
+                      pb_port = PbPort,
+                      disterl_port = DisterlPort,
+                      agent_id_value = AgentIdValue,
+                      container_path = ContainerPath},
+    lager:info("Setting agent info for node to ~p", [Node1]),
+    update_and_reply({reserved, Node}, {reserved, Node1});
 reserved({status_update, StatusUpdate, _}, _From, Node) ->
     case StatusUpdate of
         'TASK_FAILED' -> {reply, ok, reserved, Node};
         %% TODO Maybe these should swing back to reserved?
         'TASK_LOST' -> unreserve(reserved, requested, Node);
         'TASK_ERROR' -> unreserve(reserved, requested, Node);
-        'TASK_STAGING' -> sync_update_node(reserved, starting, Node);
-        'TASK_STARTING' -> sync_update_node(reserved, starting, Node);
+        'TASK_STAGING' -> update_and_reply({reserved, Node}, {starting, Node});
+        'TASK_STARTING' -> update_and_reply({reserved, Node}, {starting, Node});
         %% TODO This seems wrong: shouldn't it be 'started'? Maybe this never happens?
         'TASK_RUNNING' -> join(starting, Node);
         _ ->
@@ -339,17 +384,17 @@ reserved(can_be_scheduled, _From, Node) ->
     {reply, {ok, true}, reserved, Node};
 reserved(can_be_shutdown, _From, Node) ->
     {reply, {ok, false}, reserved, Node};
-reserved({delete, _}, _From, Node) ->
-    leave(reserved, Node);
+reserved({destroy, _}, _From, Node) ->
+    update_and_reply({reserved, Node}, {shutting_down, Node});
 reserved(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, reserved, Node}.
 
 -spec starting(event(), from(), node_state()) -> state_cb_reply().
 starting({status_update, StatusUpdate, _}, _From, Node) ->
     case StatusUpdate of
-        'TASK_FAILED' -> sync_update_node(starting, reserved, Node);
-        'TASK_LOST' -> sync_update_node(starting, reserved, Node);
-        'TASK_ERROR' -> sync_update_node(starting, reserved, Node);
+        'TASK_FAILED' -> update_and_reply({starting, Node}, {reserved, Node});
+        'TASK_LOST' -> update_and_reply({starting, Node}, {reserved, Node});
+        'TASK_ERROR' -> update_and_reply({starting, Node}, {reserved, Node});
         'TASK_STARTING' -> {reply, ok, starting, Node};
         'TASK_RUNNING' -> join(starting, Node);
         _ ->
@@ -360,18 +405,18 @@ starting(can_be_scheduled, _From, Node) ->
     {reply, {ok, false}, starting, Node};
 starting(can_be_shutdown, _From, Node) ->
     {reply, {ok, false}, starting, Node};
-starting({delete, _}, _From, Node) ->
-    sync_update_node(restarting, shutting_down, Node);
+starting({destroy, _}, _From, Node) ->
+    update_and_reply({starting, Node}, {shutting_down, Node});
 starting(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, starting, Node}.
 
 -spec restarting(event(), from(), node_state()) -> state_cb_reply().
 restarting({status_update, StatusUpdate, _}, _From, Node) ->
     case StatusUpdate of
-        'TASK_FINISHED' -> sync_update_node(restarting, reserved, Node);
-        'TASK_FAILED' ->   sync_update_node(restarting, reserved, Node);
-        'TASK_LOST' ->     sync_update_node(restarting, reserved, Node);
-        'TASK_ERROR' ->    sync_update_node(restarting, reserved, Node);
+        'TASK_FINISHED' -> update_and_reply({restarting, Node}, {reserved, Node});
+        'TASK_FAILED' ->   update_and_reply({restarting, Node}, {reserved, Node});
+        'TASK_LOST' ->     update_and_reply({restarting, Node}, {reserved, Node});
+        'TASK_ERROR' ->    update_and_reply({restarting, Node}, {reserved, Node});
         %% TODO I'm not convinced this should be allowed.
         'TASK_RUNNING' -> join(restarting, Node);
         _ ->
@@ -382,43 +427,69 @@ restarting(can_be_shutdown, _From, Node) ->
     {reply, {ok, true}, restarting, Node};
 restarting(can_be_scheduled, _From, Node) ->
     {reply, {ok, false}, restarting, Node};
-restarting({delete, _}, _From, Node) ->
-    sync_update_node(restarting, shutting_down, Node);
+restarting({destroy, _}, _From, Node) ->
+    update_and_reply({restarting, Node}, {shutting_down, Node});
 restarting(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, restarting, Node}.
 
 -spec started(event(), from(), node_state()) -> state_cb_reply().
 started({status_update, StatusUpdate, _}, _From, Node) ->
     case StatusUpdate of
-        'TASK_FAILED' -> sync_update_node(started, reserved, Node);
-        'TASK_LOST' -> sync_update_node(started, reserved, Node);
-        'TASK_ERROR' -> sync_update_node(started, reserved, Node);
-        'TASK_KILLED' -> sync_update_node(started, reserved, Node);
-        'TASK_FINISHED' -> sync_update_node(started, reserved, Node);
+        'TASK_FAILED' -> update_and_reply({started, Node}, {reserved, Node});
+        'TASK_LOST' -> update_and_reply({started, Node}, {reserved, Node});
+        'TASK_ERROR' -> update_and_reply({started, Node}, {reserved, Node});
+        'TASK_KILLED' -> update_and_reply({started, Node}, {reserved, Node});
+        'TASK_FINISHED' -> update_and_reply({started, Node}, {reserved, Node});
         _ ->
             lager:debug("Unexpected status_update [~p]: ~p", [started, StatusUpdate]),
             {reply, ok, started, Node}
     end;
 started(restart, _From, Node) ->
-    %% TODO Maybe there's a chance we don't have a reservation here?
-    sync_update_node(started, restarting, Node);
+    update_and_reply({started, Node}, {restarting, Node});
 started(can_be_scheduled, _From, Node) ->
     {reply, {ok, false}, started, Node};
 started(can_be_shutdown, _From, Node) ->
     {reply, {ok, false}, started, Node};
-started({delete, _}, _From, Node) ->
-    sync_update_node(started, shutting_down, Node);
+started({destroy, true}, _From, Node) ->
+    update_and_reply({started, Node}, {shutting_down, Node});
+started({destroy, false}, _From, Node) ->
+    leave(started, Node, ?LEAVING_TIMEOUT);
 started(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, started, Node}.
+
+-spec leaving(event(), from(), node_state()) -> state_cb_reply().
+leaving({status_update, StatusUpdate, _}, _From, Node) ->
+    case StatusUpdate of
+        'TASK_FINISHED' ->
+            delete_reply_stop({leaving, Node}, ok, normal);
+        'TASK_FAILED' ->
+            delete_reply_stop({leaving, Node}, ok, normal);
+        'TASK_KILLED' ->
+            delete_reply_stop({leaving, Node}, ok, normal);
+        'TASK_LOST' ->
+            delete_reply_stop({leaving, Node}, ok, normal);
+        'TASK_ERROR' ->
+            delete_reply_stop({leaving, Node}, ok, normal);
+        _ ->
+            lager:debug("Unexpected status_update [~p]: ~p", [leaving, StatusUpdate]),
+            {reply, ok, leaving, Node}
+    end;
+leaving(can_be_shutdown, _From, Node) ->
+    {reply, {ok, false}, leaving, Node};
+leaving(can_be_scheduled, _From, Node) ->
+    {reply, {ok, false}, leaving, Node};
+leaving(_Event, _From, Node) ->
+    {reply, {error, unhandled_event}, leaving, Node}.
 
 -spec shutting_down(event(), from(), node_state()) -> state_cb_reply().
 shutting_down({status_update, StatusUpdate, _}, _From, Node) ->
     case StatusUpdate of
-        'TASK_FINISHED' -> leave(shutting_down, Node);
-        'TASK_KILLED' -> leave(shutting_down, Node);
-        'TASK_FAILED' -> leave(shutting_down, Node);
-        'TASK_LOST' -> leave(shutting_down, Node);
-        'TASK_ERROR' -> leave(shutting_down, Node);
+        'TASK_FINISHED' -> delete_reply_stop({shutting_down, Node}, ok, normal);
+        %% TODO Perhaps the non-standard statuses should lead an abnormal stop?
+        'TASK_KILLED' -> delete_reply_stop({shutting_down, Node}, ok, normal);
+        'TASK_FAILED' -> delete_reply_stop({shutting_down, Node}, ok, normal);
+        'TASK_LOST' -> delete_reply_stop({shutting_down, Node}, ok, normal);
+        'TASK_ERROR' -> delete_reply_stop({shutting_down, Node}, ok, normal);
         _ ->
             lager:debug("Unexpected status_update [~p]: ~p", [shutting_down, StatusUpdate]),
             {reply, ok, shutting_down, Node}
@@ -427,10 +498,10 @@ shutting_down(can_be_shutdown, _From, Node) ->
     {reply, {ok, true}, shutting_down, Node};
 shutting_down(can_be_scheduled, _From, Node) ->
     {reply, {ok, false}, shutting_down, Node};
-shutting_down({delete, false}, _From, Node) ->
+shutting_down({destroy, false}, _From, Node) ->
     {reply, ok, shutting_down, Node};
-shutting_down({delete, true}, _From, Node) ->
-    leave(shutting_down, Node);
+%shutting_down({destroy, true}, _From, Node) ->
+%    leave(shutting_down, Node);
 shutting_down(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, shutting_down, Node}.
 
@@ -442,47 +513,18 @@ shutdown(can_be_shutdown, _From, Node) ->
     {reply, {ok, false}, shutdown, Node};
 shutdown(can_be_scheduled, _From, Node) ->
     {reply, {ok, false}, shutdown, Node};
-shutdown({delete, _}, _From, Node) ->
-    {reply, ok, shutdown, Node};
+shutdown({destroy, _}, _From, Node) ->
+    %% TODO Maybe this isn't quite right? I feel like this is side-effect-y
+    delete_reply_stop({shutdown, Node}, ok, normal);
 shutdown(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, shutdown, Node}.
 
 -spec handle_sync_event(event(), from(), state(), node_state()) ->
                                state_cb_reply().
-
-handle_sync_event({set_reserve, Hostname, AgentIdValue, PersistenceId, Attributes},
-                  _From, State, Node) ->
-    lager:info("Setting reservation for node: ~p", [Node]),
-    Node1 = Node#node{hostname = Hostname,
-                      agent_id_value = AgentIdValue,
-                      persistence_id = PersistenceId,
-                      attributes = Attributes},
-    sync_update_node(State, reserved, Node, Node1);
-handle_sync_event({set_agent_info,
-                   NodeName,
-                   Hostname,
-                   HttpPort,
-                   PbPort,
-                   DisterlPort,
-                   AgentIdValue,
-                   ContainerPath},
-                  _From, State, Node) ->
-    Node1 = Node#node{hostname = Hostname,
-                      node_name = NodeName,
-                      http_port = HttpPort,
-                      pb_port = PbPort,
-                      disterl_port = DisterlPort,
-                      agent_id_value = AgentIdValue,
-                      container_path = ContainerPath},
-    lager:info("Setting agent info for node to ~p", [Node1]),
-    sync_update_node(State, State, Node, Node1);
 handle_sync_event(set_reconciled, _From, State, Node) ->
     lager:info("Setting reconciliation for node: ~p", [Node]),
     Node1 = Node#node{reconciled = true},
-    sync_update_node(State, State, Node, Node1);
-handle_sync_event(set_unreserve, _From, State, Node) ->
-    lager:info("Removing reservation for node: ~p", [Node]),
-    unreserve(State, requested, Node);
+    update_and_reply({State, Node}, {State, Node1});
 handle_sync_event(_Event, _From, StateName, State) ->
     {reply, {error, {unhandled_sync_event, _Event}}, StateName, State}.
 
@@ -517,47 +559,63 @@ get_node(Key) ->
 add_node({State, Node}) ->
     rms_metadata:add_node(to_list({State, Node})).
 
--spec sync_update_node(state(), state(), node_state()) -> state_cb_reply().
-sync_update_node(State, NewState, Node) ->
-    sync_update_node(State, NewState, Node, Node).
+-spec update_and_reply({state(), node_state()}, {state(), node_state()}) -> state_cb_reply().
+update_and_reply({_, _}=N0, {_, _}=N1) ->
+    update_and_reply(N0, N1, infinity).
 
--spec sync_update_node(state(), state(), node_state(), node_state()) -> state_cb_reply().
-sync_update_node(State, NewState, #node{key = Key} = Node, Node1) ->
+update_and_reply({State, #node{key = Key} = Node}, {NewState, Node1}, Timeout) ->
     case rms_metadata:update_node(Key, to_list({NewState, Node1})) of
         ok ->
-            {reply, ok, NewState, Node1};
+            {reply, ok, NewState, Node1, Timeout};
         {error, Reason} ->
             lager:error("Error updating state for node: ~p, new state: ~p, reason: ~p.", [Node, NewState, Reason]),
-            {reply, {error, Reason}, State, Node}
+            {reply, {error, Reason}, State, Node, Timeout}
     end.
 
-leave(State, NewState, #node{cluster_key = Cluster, key = Key} = Node) ->
+-spec delete_and_stop({state(), node_state()}, Reason :: term()) -> ok | {error, term()}.
+delete_and_stop({_State, #node{key = Key} = Node}, Reason) ->
+    case rms_metadata:delete_node(Key) of
+        ok -> 
+            ok = rms_cluster_manager:node_stopped(Node#node.cluster_key, Key),
+            {stop, Reason, Node};
+        {error, _}=Error ->
+            {stop, Error, Node}
+    end.
+
+-spec delete_reply_stop({state(), node_state()}, reply(), Reason :: term()) -> ok | {error, term()}.
+delete_reply_stop({State, #node{key = Key} = Node}, Reply, Reason) ->
+    case rms_metadata:delete_node(Key) of
+        ok -> 
+            ok = rms_cluster_manager:node_stopped(Node#node.cluster_key, Key),
+            {stop, Reason, Reply, Node};
+        {error,_} = Error ->
+            {reply, Error, State, Node}
+    end.
+
+leave(State, #node{cluster_key = Cluster, key = Key} = Node, Timeout) ->
     Node1 = Node#node{hostname = "",
                       agent_id_value = "",
                       persistence_id = ""},
     case rms_cluster_manager:leave(Cluster, Key) of
         ok ->
             lager:info("~p left cluster ~p successfully.", [Key, Cluster]),
-            sync_update_node(State, NewState, Node, Node1);
+            update_and_reply({State, Node}, {leaving, Node1}, Timeout);
         {error, no_suitable_nodes} ->
             lager:info("~p was unable to leave cluster ~p because no nodes were available to leave from.", [Key, Cluster]),
-            sync_update_node(State, NewState, Node, Node1);
+            update_and_reply({State, Node}, {shutting_down, Node1}, Timeout);
         {error, Reason} ->
             lager:warning("~p was unable to leave cluster ~p because ~p.", [Key, Cluster, Reason]),
             {reply, {error, Reason}, State, Node}
     end.
 
-leave(State, Node) ->
-    leave(State, shutdown, Node).
-
 join(State, #node{cluster_key = Cluster, key = Key} = Node) ->
     case rms_cluster_manager:maybe_join(Cluster, Key) of
         ok ->
             ok = rms_cluster_manager:node_started(Cluster, Key),
-            sync_update_node(State, started, Node);
+            update_and_reply({State, Node}, {started, Node});
         {error, no_suitable_nodes} ->
             ok = rms_cluster_manager:node_started(Cluster, Key),
-            sync_update_node(State, started, Node);
+            update_and_reply({State, Node}, {started, Node});
         {error, Reason} ->
             %% Maybe we should try to kill the node and restart task here?
             {reply, {error, Reason}, State, Node}
@@ -568,7 +626,7 @@ unreserve(State, NewState, Node) ->
                       agent_id_value = "",
                       persistence_id = "",
                       attributes = []},
-    sync_update_node(State, NewState, Node, Node1).
+    update_and_reply({State, Node}, {NewState, Node1}).
 
 -spec from_list(rms_metadata:node_state()) -> {state(), node_state()}.
 from_list(NodeList) ->
