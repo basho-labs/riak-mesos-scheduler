@@ -105,7 +105,7 @@
 -spec start_link(key(), rms_cluster:key()) ->
                         {ok, pid()} | {error, Error :: term()}.
 start_link(Key, ClusterKey) ->
-    gen_fsm:start_link(?MODULE, {Key, ClusterKey}, [{debug, [log, trace, {log_to_file, "rms_node.log"}]}]).
+    gen_fsm:start_link(?MODULE, {Key, ClusterKey}, []).
 
 %% TODO The following API functions operate only on the rms_metadata, but
 %% it feels like we should be asking the running FSM/server for that node,
@@ -573,7 +573,7 @@ update_and_reply({State, #node{key = Key} = Node}, {NewState, Node1}, Timeout) -
     end.
 
 -spec delete_and_stop({state(), node_state()}, Reason :: term()) -> ok | {error, term()}.
-delete_and_stop({State, #node{key = Key} = Node}, Reason) ->
+delete_and_stop({_State, #node{key = Key} = Node}, Reason) ->
     case rms_metadata:delete_node(Key) of
         ok -> 
             ok = rms_cluster_manager:node_stopped(Node#node.cluster_key, Key),

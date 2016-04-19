@@ -158,18 +158,22 @@ status_update(SchedulerInfo, #'Event.Update'{
     lager:info("Scheduler received status update event. "
                "Update: ~p~n", [EventUpdate]),
     {ok, NodeName} = node_name_from_task_id(TaskId),
-    {ok, ClusterName} = rms_node_manager:get_node_cluster_key(NodeName),
-    case rms_cluster_manager:handle_status_update(ClusterName, NodeName, NodeState, Reason) of
-        ok ->
-            case Uuid of 
-                undefined -> 
-                    {ok, State};
-                _ ->
-                    call(acknowledge, [SchedulerInfo, AgentId, TaskId, Uuid], State)
-            end;
-        {error, Reason} ->
-            lager:warning("Error while attempting to process status update: ~p.", [Reason]),
-            {ok, State}
+    case rms_node_manager:get_node_cluster_key(NodeName) of
+        {error, Reason1} ->
+            lager:warning("Error while attempting to process status update: ~p.", [Reason1]);
+        {ok, ClusterName} ->
+            case rms_cluster_manager:handle_status_update(ClusterName, NodeName, NodeState, Reason) of
+                {error, Reason2} ->
+                    lager:warning("Error while attempting to process status update: ~p.", [Reason2]);
+                ok ->
+                    ok
+            end
+    end,
+    case Uuid of 
+        undefined -> 
+            {ok, State};
+        _ ->
+            call(acknowledge, [SchedulerInfo, AgentId, TaskId, Uuid], State)
     end.
 
 -spec framework_message(erl_mesos_scheduler:scheduler_info(),
