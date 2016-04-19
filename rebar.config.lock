@@ -78,6 +78,24 @@
                                "918846336dcef0d7b484dac48597be598fb57878"}},
        {uuid,".*",
              {git,"https://github.com/avtobiff/erlang-uuid.git",
-                  "585c2474afb4a597ae8c8bf6d21e5a9c73f18e0b"}}]}.
+                  "585c2474afb4a597ae8c8bf6d21e5a9c73f18e0b"}},
+       {protobuffs,".*",
+                   {git,"git://github.com/basho/erlang_protobuffs.git",
+                        "f88fc3c6881687432ddd5546b3c7b08009dfb26f"}},
+       {riak_pb,".*",
+                {git,"git://github.com/basho/riak_pb.git",
+                     "341269c19c75fa0557d5aa5fd5ac1f0dfe18cfae"}},
+       {riakc,".*",
+              {git,"git://github.com/basho/riak-erlang-client",
+                   "802119823bc94459e1e4ac0d747b26e0ae1f14cc"}},
+       {ibrowse,".*",
+                {git,"git://github.com/cmullaparthi/ibrowse.git",
+                     "e8ae353c16d4f0897abb9f80025b52925b974dd1"}},
+       {eper,".*",
+             {git,"git://github.com/basho/eper.git",
+                  "7222ecaebceb5422e74a9c1503043bbc6036f6b7"}},
+       {riak_explorer,".*",
+                      {git,"git://github.com/basho-labs/riak_explorer",
+                           "2a4fe9c0ecf9a0131d4bb313c118a2a035b1d009"}}]}.
 {plugins,[rebar_lock_deps_plugin]}.
 

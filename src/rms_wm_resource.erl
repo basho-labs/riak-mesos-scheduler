@@ -1,6 +1,6 @@
 -module(rms_wm_resource).
 
--export([routes/0, dispatch/2]).
+-export([routes/0, dispatch/0]).
 
 -export([static_types/1,
          static_file_exists/1,
@@ -175,13 +175,9 @@ routes() ->
             path = ["healthcheck"],
             content = {?MODULE, healthcheck}}].
 
-dispatch(Ip, Port) ->
-    Resources = build_wm_routes(routes(), []),
-    [{ip, Ip},
-     {port, Port},
-     {nodelay, true},
-     {log_dir, "log"},
-     {dispatch, lists:flatten(Resources)}].
+dispatch() ->
+    Routes = lists:flatten(build_wm_routes(routes(), [])),
+    Routes ++ rms_wm_explorer:dispatch().
 
 %% Static.
 
@@ -362,7 +358,7 @@ set_node_bucket_type(ReqData) ->
 
 healthcheck(ReqData) ->
     {[{success, true}], ReqData}.
-
+    
 %% wm callback functions.
 
 init(_) ->
@@ -487,24 +483,15 @@ riak_explorer_command(ReqData, Command) ->
 
 riak_explorer_command(ReqData, Command, Args) ->
     NodeKey = wrq:path_info(node_key, ReqData),
-    case {rms_node_manager:get_node_http_url(NodeKey),
-          rms_node_manager:get_node_name(NodeKey)} of
-        {{ok,U},{ok,N}} when
-              is_list(U) and is_list(N) ->
-            riak_explorer_command(ReqData, Command, U, N, Args);
-        _ ->
+    case riak_explorer_client:apply_command(NodeKey, Command, Args) of
+        {error, not_found} ->
             {mochijson2:encode(
                [{error, <<"Unable to retrieve node key or node name">>}]
-              ), ReqData}
-    end.
-
-riak_explorer_command(ReqData, Command, Url, Node, Args) ->
-    Args1 = [list_to_binary(Url)|[list_to_binary(Node)|Args]],
-    case erlang:apply(riak_explorer_client, Command, Args1) of
-        {ok, Body} ->
-            {Body, ReqData};
+              ), ReqData};
         {error, Reason} ->
             {mochijson2:encode(
                [{error, list_to_binary(io_lib:format("~p", [Reason]))}]
-              ), ReqData}
+              ), ReqData};
+        {ok, Body} ->
+            {Body, ReqData}
     end.
