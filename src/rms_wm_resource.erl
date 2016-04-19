@@ -11,7 +11,7 @@
          cluster_exists/1,
          get_cluster/1,
          add_cluster/1,
-         delete_cluster/1,
+         destroy_cluster/1,
          restart_cluster/1,
          get_cluster_riak_config/1,
          set_cluster_riak_config/1,
@@ -106,7 +106,7 @@ routes() ->
             content = {?MODULE, get_cluster},
             accepts = ?ACCEPT_TEXT,
             accept = {?MODULE, add_cluster},
-            delete = {?MODULE, delete_cluster}},
+            delete = {?MODULE, destroy_cluster}},
      #route{path = ["clusters", key, "restart"],
             methods = ['POST'],
             exists = {?MODULE, cluster_exists},
@@ -240,9 +240,9 @@ add_cluster(ReqData) ->
     Response = build_response(rms_cluster_manager:add_cluster(Key)),
     {true, wrq:append_to_response_body(mochijson2:encode(Response), ReqData)}.
 
-delete_cluster(ReqData) ->
+destroy_cluster(ReqData) ->
     Key = wrq:path_info(key, ReqData),
-    Response = build_response(rms_cluster_manager:delete_cluster(Key)),
+    Response = build_response(rms_cluster_manager:destroy_cluster(Key)),
     {true, wrq:append_to_response_body(mochijson2:encode(Response),
      ReqData)}.
 
@@ -324,7 +324,7 @@ add_node(ReqData) ->
 delete_node(ReqData) ->
     NodeKey = wrq:path_info(node_key, ReqData),
     Force = list_to_atom(wrq:get_qs_value("force", "false", ReqData)),
-    Response = build_response(rms_node_manager:delete_node(NodeKey, Force)),
+    Response = build_response(rms_node_manager:destroy_node(NodeKey, Force)),
     {true, wrq:append_to_response_body(mochijson2:encode(Response), ReqData)}.
 
 restart_node(RD) ->

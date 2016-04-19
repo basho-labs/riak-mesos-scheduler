@@ -30,10 +30,11 @@
          set_advanced_config/2,
          maybe_join/2,
          leave/2,
-         delete/1,
+         destroy/1,
          add_node/1,
          commence_restart/1,
-         node_started/2]).
+         node_started/2,
+         node_stopped/2]).
 
 %% gen_fsm callbacks
 -export([init/1,
@@ -100,6 +101,10 @@ get_field_value(Field, Key) ->
             {error, Reason}
     end.
 
+-spec leave(pid(), rms_node:key()) -> ok | {error, term()}.
+leave(Pid, NodeKey) ->
+    gen_fsm:send_all_state_event(Pid, {leave, NodeKey}).
+
 -spec set_riak_config(pid(), binary()) -> ok | {error, term()}.
 set_riak_config(Pid, RiakConfig) ->
     gen_fsm:sync_send_all_state_event(Pid, {set_riak_config, RiakConfig}).
@@ -112,13 +117,9 @@ set_advanced_config(Pid, AdvancedConfig) ->
 maybe_join(Pid, NodeKey) ->
     gen_fsm:sync_send_all_state_event(Pid, {maybe_join, NodeKey}).
 
--spec leave(pid(), rms_node:key()) -> ok | {error, term()}.
-leave(Pid, NodeKey) ->
-    gen_fsm:sync_send_all_state_event(Pid, {leave, NodeKey}).
-
--spec delete(pid()) -> ok | {error, term()}.
-delete(Pid) ->
-    gen_fsm:sync_send_all_state_event(Pid, delete).
+-spec destroy(pid()) -> ok | {error, term()}.
+destroy(Pid) ->
+    gen_fsm:sync_send_all_state_event(Pid, destroy).
 
 -spec add_node(pid()) -> ok | {error, term()}.
 add_node(Pid) ->
@@ -131,6 +132,10 @@ commence_restart(Pid) ->
 -spec node_started(pid(), rms_node:key()) -> ok.
 node_started(Pid, NodeKey) ->
     gen_fsm:send_event(Pid, {node_started, NodeKey}).
+
+-spec node_stopped(pid(), rms_node:key()) -> ok.
+node_stopped(Pid, NodeKey) ->
+    gen_fsm:send_event(Pid, {node_stopped, NodeKey}).
 
 %%% gen_fsm callbacks
 -type state_timeout() :: non_neg_integer() | infinity.
@@ -178,7 +183,9 @@ requested({node_started, NodeKey}, #cluster{
             [] -> running;
             [_|_] -> requested
         end,
-    {next_state, NextState, Cluster#cluster{starting = Rest}};
+    Cluster1 = Cluster#cluster{starting = Rest},
+    ok = update_cluster(Cluster#cluster.key, {NextState, Cluster1}),
+    {next_state, NextState, Cluster1};
 requested(_Event, Cluster) ->
     {stop, {unhandled_event, _Event}, Cluster}.
 
@@ -208,22 +215,31 @@ restarting({node_started, NodeKey}, #cluster{
                                       }=Cluster) ->
     Cluster1 = Cluster#cluster{to_restart={Pending, [Next | Restarted]}},
     ok = rms_node_manager:restart_node(Next),
+    ok = update_cluster(Cluster#cluster.key, {restarting, Cluster1}),
     {next_state, restarting, Cluster1};
 restarting(_Event, Cluster) ->
     {stop, {unhandled_event, _Event}, Cluster}.
 
 -spec shutdown(event(), cluster_state()) -> state_cb_return().
+shutdown({node_stopped, _NodeKey}, #cluster{key=Key}=Cluster) ->
+    case rms_node_manager:get_active_node_keys(Key) of
+        [] ->
+            ok = rms_metadata:delete_cluster(Key),
+            {stop, normal, Cluster};
+        [_|_] = NodeKeys ->
+            %% TODO FIXME We might not need this step? Or maybe we need to be more careful with it
+            _ = do_destroy(NodeKeys),
+            {next_state, shutdown, Cluster#cluster{node_keys=NodeKeys}, next_timeout(shutdown, Cluster)}
+    end;
 shutdown(timeout, #cluster{}=Cluster) ->
     #cluster{ key = Key } = Cluster,
     case rms_node_manager:get_active_node_keys(Key) of
         [] ->
             ok = rms_metadata:delete_cluster(Key),
-            %% FIXME We either need to subsequently do supervisor:delete_child(rms_cluster_manager, Key)
-            %% Or if someone tries to re-create this cluster, do supervisor:restart_child(rms_cluster_manager, Key)
             {stop, normal, Cluster};
         [_|_] = NodeKeys ->
-            _ = do_delete(NodeKeys),
-            {next_state, shutdown, Cluster}
+            _ = do_destroy(NodeKeys),
+            {next_state, shutdown, Cluster, next_timeout(shutdown, Cluster)}
     end;
 shutdown(_Event, Cluster) ->
     {stop, {unhandled_event, _Event}, Cluster}.
@@ -249,6 +265,16 @@ shutdown(_Event, _From, Cluster) ->
 %%% gen_fsm callbacks
 -spec handle_event(event(), StateName :: atom(), cluster_state()) ->
                           state_cb_return().
+handle_event({leave, NodeKey}, StateName,
+                  #cluster{key=Key} = Cluster) ->
+    NodeKeys = rms_node_manager:get_running_node_keys(Key),
+    case do_leave(NodeKey, NodeKeys) of
+        ok ->
+            {next_state, StateName, Cluster};
+        {error, Reason} ->
+            lager:error("Node ~s failed to leave cluster: ~p", [NodeKey, Reason]),
+            {next_state, StateName, Cluster}
+    end;
 handle_event(_Event, StateName, State) ->
     {next_state, StateName, State}.
 
@@ -258,7 +284,7 @@ handle_sync_event({set_riak_config, RiakConfig}, _From, StateName, Cluster) ->
     Cluster1 = Cluster#cluster{riak_config = RiakConfig},
     case update_cluster(Cluster#cluster.key, {StateName, Cluster1}) of
         ok ->
-            {reply, ok, StateName, Cluster1};
+            update_and_reply({StateName, Cluster}, {StateName, Cluster1}, ok);
         {error, _}=Err ->
             {reply, Err, StateName, Cluster}
     end;
@@ -266,18 +292,19 @@ handle_sync_event({set_advanced_config, AdvConfig}, _From, StateName, Cluster) -
     Cluster1 = Cluster#cluster{advanced_config = AdvConfig},
     case update_cluster(Cluster#cluster.key, {StateName, Cluster1}) of
         ok ->
-            {reply, ok, StateName, Cluster1};
+            update_and_reply({StateName, Cluster}, {StateName, Cluster1}, ok);
         {error,_}=Err ->
             {reply, Err, StateName, Cluster}
     end;
-handle_sync_event(delete, _From, _StateName,
+handle_sync_event(destroy, _From, State0,
                   #cluster{key = Key} = Cluster) ->
+    %% TODO Get rid of this clause in favour of an exponential backoff feeding shutdown(timeout, Cluster)
     case rms_node_manager:get_active_node_keys(Key) of
         [] ->
             {stop, normal, rms_metadata:delete_cluster(Key), Cluster};
         NodeKeys ->
-            Reply = do_delete(NodeKeys),
-            {reply, Reply, shutdown, Cluster, ?SHUTDOWN_TIMEOUT}
+            Reply = do_destroy(NodeKeys),
+            update_and_reply({State0, Cluster}, {shutdown, Cluster}, Reply, next_timeout(shutdown, Cluster))
     end;
 handle_sync_event(add_node, _From, StateName, Cluster) ->
     #cluster{key = Key,
@@ -293,7 +320,7 @@ handle_sync_event(add_node, _From, StateName, Cluster) ->
                                        generation = (Generation + 1)},
             case update_cluster(Cluster#cluster.key, {StateName, Cluster1}) of
                 ok ->
-                    {reply, ok, requested, Cluster1};
+                    update_and_reply({StateName, Cluster}, {requested, Cluster1}, ok);
                 {error,_}=Err ->
                     {reply, Err, StateName, Cluster}
             end;
@@ -310,16 +337,6 @@ handle_sync_event({maybe_join, NodeKey}, _From, StateName,
         {error, Reason} ->
             {reply, {error, Reason}, StateName, Cluster}
     end;
-%% TODO This should probably move to be a strict transition
-handle_sync_event({leave, NodeKey}, _From, StateName,
-                  #cluster{key=Key} = Cluster) ->
-    NodeKeys = rms_node_manager:get_running_node_keys(Key),
-    case do_leave(NodeKey, NodeKeys) of
-        ok ->
-            {reply, ok, running, Cluster};
-        {error, Reason} ->
-            {reply, {error, Reason}, StateName, Cluster}
-    end;
 handle_sync_event(commence_restart, _From, StateName,
                   #cluster{key=Key} = Cluster) ->
     case rms_node_manager:get_running_node_keys(Key) of
@@ -330,7 +347,8 @@ handle_sync_event(commence_restart, _From, StateName,
             %% and stabilised
             Cluster1 = Cluster#cluster{ to_restart = { NodeKeys, [Node1] } },
             ok = rms_node_manager:restart_node(Node1),
-            {reply, ok, restarting, Cluster1, ?RESTART_TIMEOUT}
+            %% TODO Replace this macro with a function call
+            update_and_reply({StateName, Cluster}, {restarting, Cluster1}, ok, ?RESTART_TIMEOUT)
     end;
 handle_sync_event(_Event, _From, StateName, State) ->
     {reply, {error, {unhandled_event, _Event}}, StateName, State}.
@@ -365,6 +383,16 @@ add_cluster({State, Cluster}) ->
 -spec update_cluster(key(), {atom(), cluster_state()}) -> ok | {error, term()}.
 update_cluster(Key, {State, Cluster}) ->
     rms_metadata:update_cluster(Key, to_list({State, Cluster})).
+
+update_and_reply({_, _}=Cluster0, {_, _}=Cluster1, Reply) ->
+    update_and_reply(Cluster0, Cluster1, Reply, infinity).
+
+update_and_reply({State0, #cluster{key=Key}=Cluster0}, {State1, Cluster1}=New, Reply, Timeout) ->
+    case update_cluster(Key, New) of
+        ok -> {reply, Reply, State1, Cluster1, Timeout};
+        {error, _} = Error ->
+            {reply, Error, State0, Cluster0, Timeout}
+    end.
 
 -spec maybe_do_join(rms_node:key(), [rms_node:key()]) ->
                            ok | {error, term()}.
@@ -418,17 +446,20 @@ do_leave(NodeKey, [ExistingNodeKey|Rest]) ->
             do_leave(NodeKey, Rest)
     end.
 
--spec do_delete([rms_node:key()]) ->
+-spec do_destroy([rms_node:key()]) ->
                        ok | {error, term()}.
-do_delete([]) ->
+do_destroy([]) ->
     ok;
-do_delete([ExistingNodeKey|Rest]) ->
-    case rms_node_manager:delete_node(ExistingNodeKey) of
+do_destroy([ExistingNodeKey|Rest]) ->
+    case rms_node_manager:destroy_node(ExistingNodeKey, true) of
         ok ->
-            do_delete(Rest);
+            do_destroy(Rest);
         {error, Reason} ->
             {error, Reason}
     end.
+
+next_timeout(shutdown, #cluster{}=_Cluster) ->
+    ?SHUTDOWN_TIMEOUT.
 
 -spec from_list(rms_metadata:cluster_state()) -> {atom(), cluster_state()}.
 from_list(ClusterList) ->

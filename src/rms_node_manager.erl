@@ -49,8 +49,8 @@
          node_can_be_shutdown/1,
          add_node/2,
          restart_node/1,
-         delete_node/1,
-         delete_node/2]).
+         destroy_node/1,
+         destroy_node/2]).
 
 -export([apply_unreserved_offer/2, apply_reserved_offer/2]).
 
@@ -215,6 +215,10 @@ add_node(Key, ClusterKey) ->
                     ok;
                 {error, {already_started, _Pid}} ->
                     {error, exists};
+                {error, already_present} ->
+                    ok = supervisor:delete_child(?MODULE, Key),
+                    {ok, _Pid} = supervisor:start_child(?MODULE, NodeSpec),
+                    ok;
                 {error, Reason} ->
                     {error, Reason}
             end
@@ -229,15 +233,15 @@ restart_node(Key) ->
             {error, Reason}
     end.
 
--spec delete_node(rms_node:key()) -> ok | {error, term()}.
-delete_node(Key) ->
-    delete_node(Key, false).
+-spec destroy_node(rms_node:key()) -> ok | {error, term()}.
+destroy_node(Key) ->
+    destroy_node(Key, false).
 
--spec delete_node(rms_node:key(), boolean()) -> ok | {error, term()}.
-delete_node(Key, Force) ->
+-spec destroy_node(rms_node:key(), boolean()) -> ok | {error, term()}.
+destroy_node(Key, Force) ->
     case get_node_pid(Key) of
         {ok, Pid} ->
-            rms_node:delete(Pid, Force);
+            rms_node:destroy(Pid, Force);
         {error, Reason} ->
             {error, Reason}
     end.
@@ -456,6 +460,9 @@ node_spec(Key, ClusterKey) ->
 -spec get_node_pid(rms_node:key()) -> {ok, pid()} | {error, not_found}.
 get_node_pid(Key) ->
     case lists:keyfind(Key, 1, supervisor:which_children(?MODULE)) of
+        {_Key, undefined, _, _} ->
+            %% TODO Perhaps we should supervisor:delete_child/2 here?
+            {error, shutdown};
         {_Key, Pid, _, _} ->
             {ok, Pid};
         false ->

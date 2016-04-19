@@ -33,7 +33,8 @@
          set_cluster_advanced_config/2,
          restart_cluster/1,
          node_started/2,
-         delete_cluster/1]).
+         node_stopped/2,
+         destroy_cluster/1]).
 
 -export([add_node/1]).
 
@@ -89,17 +90,26 @@ add_cluster(Key) ->
             ClusterSpec = cluster_spec(Key),
             case supervisor:start_child(?MODULE, ClusterSpec) of
                 {ok, _Pid} ->
-                    {ok, RiakConfig} = file:read_file(?RIAK_CONFIG),
-                    {ok, AdvancedConfig} = file:read_file(?ADVANCED_CONFIG),
-                    ok = set_cluster_riak_config(Key, RiakConfig),
-                    ok = set_cluster_advanced_config(Key, AdvancedConfig),
-                    ok;
+                    ok = set_cluster_config(Key);
+                {error, already_present} ->
+                    %% This happens when this cluster was already created then destroyed.
+                    %% No state is restored, so we can just restart it and use it.
+                    {ok, _Pid} = supervisor:restart_child(?MODULE, Key),
+                    ok = set_cluster_config(Key);
                 {error, {already_started, _Pid}} ->
                     {error, exists};
                 {error, Reason} ->
                     {error, Reason}
             end
     end.
+
+-spec set_cluster_config(rms_cluster:key()) ->
+    ok | {error, term()}.
+set_cluster_config(Key) ->
+    {ok, RiakConfig} = file:read_file(?RIAK_CONFIG),
+    {ok, AdvancedConfig} = file:read_file(?ADVANCED_CONFIG),
+    ok = set_cluster_riak_config(Key, RiakConfig),
+    ok = set_cluster_advanced_config(Key, AdvancedConfig).
 
 -spec set_cluster_riak_config(rms_cluster:key(), binary()) ->
     ok | {error, term()}.
@@ -141,11 +151,20 @@ node_started(Key, NodeKey) ->
             {error, Reason}
     end.
 
--spec delete_cluster(rms_cluster:key()) -> ok | {error, term()}.
-delete_cluster(Key) ->
+-spec node_stopped(rms_cluster:key(), rms_node:key()) -> ok.
+node_stopped(Key, NodeKey) ->
     case get_cluster_pid(Key) of
         {ok, Pid} ->
-            rms_cluster:delete(Pid);
+            rms_cluster:node_stopped(Pid, NodeKey);
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+-spec destroy_cluster(rms_cluster:key()) -> ok | {error, term()}.
+destroy_cluster(Key) ->
+    case get_cluster_pid(Key) of
+        {ok, Pid} ->
+            rms_cluster:destroy(Pid);
         {error, Reason} ->
             {error, Reason}
     end.
@@ -242,6 +261,9 @@ apply_offer([NodeKey | NodeKeys], OfferHelper) ->
             OfferHelper;
         false ->
             case rms_node_manager:node_can_be_scheduled(NodeKey) of
+                % TODO How do we clean up the node keys here?
+                {error, shutdown} ->
+                    apply_offer(NodeKeys, OfferHelper);
                 {ok, true} ->
                     schedule_node(NodeKey, NodeKeys,
                                   OfferHelper);
@@ -377,6 +399,9 @@ cluster_spec(Key) ->
 -spec get_cluster_pid(rms_cluster:key()) -> {ok, pid()} | {error, not_found}.
 get_cluster_pid(Key) ->
     case lists:keyfind(Key, 1, supervisor:which_children(?MODULE)) of
+        {_Key, undefined, _, _} ->
+            %% TODO Maybe we should supervisor:delete_child/2 here?
+            {error, shutdown};
         {_Key, Pid, _, _} ->
             {ok, Pid};
         false ->
