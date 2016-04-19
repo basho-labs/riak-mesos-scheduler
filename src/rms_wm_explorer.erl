@@ -38,11 +38,11 @@ proxy_request(_, _, ReqData) ->
             Path = 
                 case ClusterKey of
                     undefined ->
-                        wrq:raw_path(ReqData);
+                        wrq:path(ReqData);
                     K ->
-                        re:replace(wrq:raw_path(ReqData), "/clusters/" ++ K, "/clusters/default", [{return, list}])
+                        re:replace(wrq:path(ReqData), "/clusters/" ++ K, "/clusters/default", [{return, list}])
                 end,
-            NewPath = wrq:raw_path(ReqData),
+            NewPath = wrq:path(ReqData),
             {forward, {location, Location ++ "/admin", Path, NewPath}}
     end.
 
