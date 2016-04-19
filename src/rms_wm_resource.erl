@@ -2,8 +2,6 @@
 
 -export([routes/0, dispatch/0]).
 
--export([proxy_request/3]).
-
 -export([static_types/1,
          static_file_exists/1,
          static_last_modified/1,
@@ -178,7 +176,8 @@ routes() ->
             content = {?MODULE, healthcheck}}].
 
 dispatch() ->
-    lists:flatten(build_wm_routes(routes(), [])).
+    Routes = lists:flatten(build_wm_routes(routes(), [])),
+    Routes ++ rms_wm_explorer:dispatch().
 
 %% Static.
 
@@ -359,46 +358,6 @@ set_node_bucket_type(ReqData) ->
 
 healthcheck(ReqData) ->
     {[{success, true}], ReqData}.
-
-
--spec proxy_request(module(), atom(), #wm_reqdata{}) ->
-                           {ok, term()} | {forward, term()}.
-proxy_request(re_wm_static, _, _) ->
-    {forward, local};
-proxy_request(re_wm_proxy, proxy_available, ReqData) ->
-    case get_explorer_node_location(ReqData) of
-        {error, not_found} ->
-            {ok, {{halt, 404}, ReqData}};
-        Location ->
-            ClusterKey = wrq:path_info(cluster, ReqData),
-            Path = "/" ++ wrq:disp_path(ReqData),
-            NewLocation = "/explore/clusters/" ++ ClusterKey,
-            {ok, re_wm_proxy:send_proxy_request(Location, Path, NewLocation, ReqData)}
-    end;
-proxy_request(re_wm_explore, clusters, ReqData) ->
-    Clusters = [ [{id, list_to_binary(C)},
-                  {development_mode, false}, 
-                  {riak_type, unavailable}, 
-                  {riak_version, unavailable},
-                  {available, false}] 
-                 || C <- rms_cluster_manager:get_cluster_keys() ],
-    {ok, re_wm:rd_content(Clusters, ReqData)};
-proxy_request(_, _, ReqData) ->
-    case get_explorer_node_location(ReqData) of
-        {error, _} ->
-            {ok, {{halt, 404}, ReqData}};
-        Location ->
-            ClusterKey = wrq:path_info(cluster, ReqData),
-            Path = 
-                case ClusterKey of
-                    undefined ->
-                        wrq:raw_path(ReqData);
-                    K ->
-                        re:replace(wrq:raw_path(ReqData), "/clusters/" ++ K, "/clusters/default", [{return, list}])
-                end,
-            NewPath = wrq:raw_path(ReqData),
-            {forward, {location, Location ++ "/admin", Path, NewPath}}
-    end.
     
 %% wm callback functions.
 
@@ -524,58 +483,15 @@ riak_explorer_command(ReqData, Command) ->
 
 riak_explorer_command(ReqData, Command, Args) ->
     NodeKey = wrq:path_info(node_key, ReqData),
-    case {rms_node_manager:get_node_http_url(NodeKey),
-          rms_node_manager:get_node_name(NodeKey)} of
-        {{ok,U},{ok,N}} when
-              is_list(U) and is_list(N) ->
-            riak_explorer_command(ReqData, Command, U, N, Args);
-        _ ->
+    case riak_explorer_client:apply_command(NodeKey, Command, Args) of
+        {error, not_found} ->
             {mochijson2:encode(
                [{error, <<"Unable to retrieve node key or node name">>}]
-              ), ReqData}
-    end.
-
-riak_explorer_command(ReqData, Command, Url, Node, Args) ->
-    Args1 = [list_to_binary(Url)|[list_to_binary(Node)|Args]],
-    case erlang:apply(riak_explorer_client, Command, Args1) of
-        {ok, Body} ->
-            {Body, ReqData};
+              ), ReqData};
         {error, Reason} ->
             {mochijson2:encode(
                [{error, list_to_binary(io_lib:format("~p", [Reason]))}]
-              ), ReqData}
-    end.
-
-get_explorer_node_location(ReqData) ->
-    ClusterKey = wrq:path_info(cluster, ReqData),
-    NodeName = wrq:path_info(node, ReqData),
-    NodeKey = 
-        case NodeName of
-            undefined ->
-                ClusterKey = wrq:path_info(cluster, ReqData),
-                case rms_node_manager:get_active_node_keys(ClusterKey) of
-                    [N|_] -> 
-                        N;
-                    _ -> 
-                        {error, not_found}
-                end;
-            Name ->
-                case string:tokens(Name, "@") of
-                    [N|_] ->
-                        N;
-                    _ ->
-                        {error, not_found}
-                end
-        end,
-    case NodeKey of
-        {error, not_found} ->
-            {error, not_found};
-        _ ->
-            case {rms_node_manager:get_node_hostname(NodeKey),
-                  rms_node_manager:get_node_http_port(NodeKey)} of
-                {{ok, Hostname}, {ok, HttpPort}} ->
-                    "http://" ++ Hostname ++ ":" ++ integer_to_list(HttpPort);
-                _ ->
-                    {error, not_found}
-            end
+              ), ReqData};
+        {ok, Body} ->
+            {Body, ReqData}
     end.

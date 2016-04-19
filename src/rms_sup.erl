@@ -39,16 +39,12 @@ start_link() ->
 init([]) ->
     Ip = rms_config:get_value(ip, "0.0.0.0"),
     Port = rms_config:get_value(port, 9090, integer),
-    SchedulerRoutes = rms_wm_resource:dispatch(),
-    ibrowse:start(),
-    ExplorerRoutes = re_wm:dispatch([{proxy, {rms_wm_resource, proxy_request}}]),
     WebConfig = 
-        [
-         {ip, Ip},
+        [{ip, Ip},
          {port, Port},
          {nodelay, true},
          {log_dir, "log"},
-         {dispatch, SchedulerRoutes ++ ExplorerRoutes}],
+         {dispatch, rms_wm_resource:dispatch()}],
 
     ZooKeeper = rms_config:zk(),
     [ZooKeeperHost,P] = string:tokens(ZooKeeper, ":"),
