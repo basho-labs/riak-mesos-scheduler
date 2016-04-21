@@ -493,5 +493,5 @@ riak_explorer_command(ReqData, Command, Args) ->
                [{error, list_to_binary(io_lib:format("~p", [Reason]))}]
               ), ReqData};
         {ok, Body} ->
-            {Body, ReqData}
+            {mochijson2:encode(Body), ReqData}
     end.
