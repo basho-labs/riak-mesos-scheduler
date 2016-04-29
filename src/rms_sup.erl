@@ -50,10 +50,6 @@ init([]) ->
     [ZooKeeperHost,P] = string:tokens(ZooKeeper, ":"),
     ZooKeeperPort = list_to_integer(P),
 
-    %% TODO: need to turn this into a list if it contains commas.
-    Master = rms_config:get_value(master, <<"localhost:5050">>, binary),
-
-    %% TODO: move all possible options init to rms:start/2.
     FrameworkUser = rms_config:get_value(user, "root"),
     FrameworkName = rms_config:framework_name(),
     FrameworkRole = rms_config:get_value(role, "riak", string),
@@ -94,7 +90,9 @@ init([]) ->
                         {executor_cpus, ExecutorCpus},
                         {executor_mem, ExecutorMem},
                         {artifact_urls, ArtifactUrls}],
-    Options = [{master_hosts, [Master]}],
+
+    MasterHosts = rms_config:master_hosts(),
+    Options = [{master_hosts, MasterHosts}],
 
     MetadataManagerSpec = {mesos_metadata_manager,
                                {mesos_metadata_manager, start_link,
