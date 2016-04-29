@@ -92,7 +92,10 @@ init([]) ->
                         {artifact_urls, ArtifactUrls}],
 
     MasterHosts = rms_config:master_hosts(),
-    Options = [{master_hosts, MasterHosts}],
+    ResubscribeInterval = rms_config:get_value(master_election_timeout, 60000,
+                                               integer),
+    Options = [{master_hosts, MasterHosts},
+               {resubscribe_interval, ResubscribeInterval}],
 
     MetadataManagerSpec = {mesos_metadata_manager,
                                {mesos_metadata_manager, start_link,
