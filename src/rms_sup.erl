@@ -50,10 +50,6 @@ init([]) ->
     [ZooKeeperHost,P] = string:tokens(ZooKeeper, ":"),
     ZooKeeperPort = list_to_integer(P),
 
-    %% TODO: need to turn this into a list if it contains commas.
-    Master = rms_config:get_value(master, <<"localhost:5050">>, binary),
-
-    %% TODO: move all possible options init to rms:start/2.
     FrameworkUser = rms_config:get_value(user, "root"),
     FrameworkName = rms_config:framework_name(),
     FrameworkRole = rms_config:get_value(role, "riak", string),
@@ -94,7 +90,12 @@ init([]) ->
                         {executor_cpus, ExecutorCpus},
                         {executor_mem, ExecutorMem},
                         {artifact_urls, ArtifactUrls}],
-    Options = [{master_hosts, [Master]}],
+
+    MasterHosts = rms_config:master_hosts(),
+    ResubscribeInterval = rms_config:get_value(master_election_timeout, 60000,
+                                               integer),
+    Options = [{master_hosts, MasterHosts},
+               {resubscribe_interval, ResubscribeInterval}],
 
     MetadataManagerSpec = {mesos_metadata_manager,
                                {mesos_metadata_manager, start_link,
@@ -123,4 +124,4 @@ init([]) ->
                       permanent, 5000, worker, [mochiweb_socket_server]},
     Specs = [MetadataManagerSpec, MetadataSpec, ClusterManagerSpec,
              NodeManagerSpec, SchedulerSpec, WebmachineSpec],
-    {ok, {{one_for_one, 1, 1}, Specs}}.
+    {ok, {{one_for_one, 1, 100}, Specs}}.

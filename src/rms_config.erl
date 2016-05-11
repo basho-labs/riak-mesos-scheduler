@@ -20,7 +20,7 @@
 
 -module(rms_config).
 
--export([
+-export([master_hosts/0,
          constraints/0,
          zk/0,
          framework_name/0,
@@ -32,10 +32,16 @@
 
 -define(DEFAULT_NAME, "riak").
 -define(DEFAULT_HOSTNAME, "riak.mesos").
+-define(DEFAULT_MASTER, "master.mesos:5050").
 -define(DEFAULT_ZK, "master.mesos:2181").
 -define(DEFAULT_CONSTRAINTS, "[]").
 
 %% Helper functions.
+
+-spec master_hosts() -> [string()].
+master_hosts() ->
+    {Hosts, _} = split_hosts(get_value(master, ?DEFAULT_MASTER, string)),
+    Hosts.
 
 -spec constraints() -> rms_offer_helper:constraints().
 constraints() ->
@@ -131,3 +137,10 @@ convert_value(Value, _Type) ->
 get_env_value(Key) ->
     Key1 = "RIAK_MESOS_" ++ string:to_upper(atom_to_list(Key)),
     os:getenv(Key1).
+
+-spec split_hosts(string()) -> {[string()], undefined | string()}.
+split_hosts("zk://" ++ Uri) ->
+    [Hosts | Path] = string:tokens(Uri, "/"),
+    {string:tokens(Hosts, ","), "/" ++ string:join(Path, "/")};
+split_hosts(Hosts) ->
+    {string:tokens(Hosts, ","), undefined}.
