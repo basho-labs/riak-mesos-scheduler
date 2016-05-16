@@ -66,7 +66,7 @@
                  "8495d7b3c2562988b80b326dc93343a946e715d6"}},
        {erl_mesos,".*",
                   {git,"git@github.com:basho-labs/mesos-erlang",
-                       "2534aa0e8c932591c627f4b468b2c3b669bb3c97"}},
+                       "29b8a9bfe2429377f1f8ff66eb464d21eea6e378"}},
        {erlzk,".*",
               {git,"git://github.com/huaban/erlzk.git",
                    "1fa486c7b65e96f5421d977b22df526dd47e87bc"}},
@@ -96,6 +96,6 @@
                   "7222ecaebceb5422e74a9c1503043bbc6036f6b7"}},
        {riak_explorer,".*",
                       {git,"git://github.com/basho-labs/riak_explorer",
-                           "ca4ddf6a95f2145c6a7ea654b8df0c4c57a5d159"}}]}.
+                           "fb0a9d9e88e0e49077d24a4770630624d13ddb5e"}}]}.
 {plugins,[rebar_lock_deps_plugin]}.
 
