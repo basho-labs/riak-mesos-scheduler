@@ -71,7 +71,8 @@ stage: rel
 ##
 ## Packaging targets
 ##
-tarball: clean-deps rel
+tarball: clean-deps retarball
+retarball: rel
 	echo "Creating packages/"$(PKGNAME)
 	mkdir -p packages
 	echo "$(GIT_REF)" > rel/version
