@@ -39,7 +39,7 @@ clean: cleantest relclean
 	$(REBAR) clean
 	-rm -rf packages
 clean-deps:
-	$(REBAR) -r clean
+	-rm -rf deps
 rebar.config.lock:
 	$(REBAR) get-deps compile
 	$(REBAR) lock-deps
@@ -71,8 +71,7 @@ stage: rel
 ##
 ## Packaging targets
 ##
-tarball: rel
-	-rm -rf deps
+tarball: clean-deps rel
 	echo "Creating packages/"$(PKGNAME)
 	mkdir -p packages
 	echo "$(GIT_REF)" > rel/version
