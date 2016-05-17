@@ -224,7 +224,7 @@ terminate(_SchedulerInfo, Reason, _State) ->
 %% Internal functions.
 
 -spec init_scheduler(scheduler_state()) ->
-    {ok, erl_mesos:'FrameworkInfo'(), true, state()} | {stop, term()}.
+    {ok, erl_mesos:'FrameworkInfo'(), state()} | {stop, term()}.
 init_scheduler(#scheduler{options = Options} = Scheduler) ->
     case set_scheduler(Scheduler) of
         ok ->
@@ -232,7 +232,7 @@ init_scheduler(#scheduler{options = Options} = Scheduler) ->
             lager:info("Start scheduler. Framework info: ~p.",
                        [framework_info_to_list(FrameworkInfo)]),
             CallsQueue = erl_mesos_calls_queue:new(),
-            {ok, FrameworkInfo, true, #state{scheduler = Scheduler,
+            {ok, FrameworkInfo, #state{scheduler = Scheduler,
                                              calls_queue = CallsQueue}};
         {error, Reason} ->
             lager:error("Error during saving scheduler state. Reason: ~p.",
