@@ -387,11 +387,13 @@ apply_offer(Offer, Constraints) ->
                 rms_offer_helper:get_constraints(OfferHelper1)]),
     Unreserved = proplists:get_value(unreserved, ResourcesList, []),
     NumUnreservedPorts = proplists:get_value(num_ports, Unreserved, 0),
-    OfferHelper2 = case NumUnreservedPorts of
-                       N when N > 0 ->
+    UnreservedCpus = proplists:get_value(cpus, Unreserved, 0),
+    UnreservedMem = proplists:get_value(mem, Unreserved, 0),
+    OfferHelper2 = case {UnreservedCpus, UnreservedMem, NumUnreservedPorts} of
+                       {C,M,P} when C > 0, M > 0, P > 0 ->
                            rms_cluster_manager:apply_offer(OfferHelper1);
                        _ -> 
-                           lager:info("Offer contained no unreserved ports, skipping.", []),
+                           lager:info("Offer contained insufficient unreserved resources, skipping.", []),
                            OfferHelper1
                    end,
     OfferId = rms_offer_helper:get_offer_id(OfferHelper2),
