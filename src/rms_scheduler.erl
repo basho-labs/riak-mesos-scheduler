@@ -377,6 +377,7 @@ apply_offers(SchedulerInfo, [Offer|Offers], #state{scheduler = #scheduler{option
 apply_offer(Offer, Constraints) ->
     OfferHelper = rms_offer_helper:new(Offer),
     OfferHelper1 = rms_offer_helper:set_constraints(Constraints, OfferHelper),
+    ResourcesList = rms_offer_helper:resources_to_list(OfferHelper1),
     lager:info("Scheduler recevied offer. "
                "Offer id: ~s. "
                "Resources: ~p. "
@@ -384,7 +385,15 @@ apply_offer(Offer, Constraints) ->
                [rms_offer_helper:get_offer_id_value(OfferHelper1),
                 rms_offer_helper:resources_to_list(OfferHelper1),
                 rms_offer_helper:get_constraints(OfferHelper1)]),
-    OfferHelper2 = rms_cluster_manager:apply_offer(OfferHelper1),
+    Unreserved = proplists:get_value(unreserved, ResourcesList, []),
+    NumUnreservedPorts = proplists:get_value(num_ports, Unreserved, 0),
+    OfferHelper2 = case NumUnreservedPorts of
+                       N when N > 0 ->
+                           rms_cluster_manager:apply_offer(OfferHelper1);
+                       _ -> 
+                           lager:info("Offer contained no unreserved ports, skipping.", []),
+                           OfferHelper1
+                   end,
     OfferId = rms_offer_helper:get_offer_id(OfferHelper2),
     Operations = rms_offer_helper:operations(OfferHelper2),
     {OfferId, Operations}.

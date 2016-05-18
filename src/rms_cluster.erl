@@ -410,8 +410,16 @@ maybe_do_join(NodeKey, [ExistingNodeKey|Rest]) ->
                    list_to_binary(U),
                    list_to_binary(N),
                    list_to_binary(E)) of
-                {ok, _} ->
+                {ok, [{<<"error">>,<<"node_still_starting">>}]} ->
+                    timer:sleep(1000),
+                    maybe_do_join(NodeKey, [ExistingNodeKey|Rest]);
+                {ok, [{<<"error">>,<<"not_single_node">>}]} ->
                     ok;
+                {ok, [{_,[{<<"success">>,true}]}]} ->
+                    ok;            
+                {ok, Json} ->
+                    lager:warning("Failed node join attempt from node ~s to node ~s. Reason: ~p", [N, E, Json]),
+                    maybe_do_join(NodeKey, Rest);
                 {error, Reason} ->
                     lager:warning("Failed node join attempt from node ~s to node ~s. Reason: ~p", [N, E, Reason]),
                     maybe_do_join(NodeKey, Rest)
