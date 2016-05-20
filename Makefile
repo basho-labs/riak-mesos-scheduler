@@ -77,7 +77,7 @@ retarball: rel
 	mkdir -p packages
 	echo "$(GIT_REF)" > rel/version
 	echo "$(GIT_TAG_VERSION)" >> rel/version
-	tar -C rel -czf $(PKGNAME) $(RELDIR)/
+	tar -C rel -czf $(PKGNAME) version $(RELDIR)/
 	rm rel/version
 	mv $(PKGNAME) packages/
 	cd packages && $(SHASUM) $(PKGNAME) > $(PKGNAME).sha
