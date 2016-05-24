@@ -18,16 +18,16 @@ main() {
     if [ -z "$RIAK_MESOS_PORT" ]; then
         export RIAK_MESOS_PORT=$PORT0
     fi
-    if [ -z "$RIAK_MESOS_SCHEDULER_PKG"]; then
+    if [ -z "$RIAK_MESOS_SCHEDULER_PKG" ]; then
         export RIAK_MESOS_SCHEDULER_PKG=riak_mesos_scheduler.tar.gz
     fi
-    if [ -z "$RIAK_MESOS_EXECUTOR_PKG"]; then
+    if [ -z "$RIAK_MESOS_EXECUTOR_PKG" ]; then
         export RIAK_MESOS_EXECUTOR_PKG=riak_mesos_executor.tar.gz
     fi
-    if [ -z "$RIAK_MESOS_EXPLORER_PKG"]; then
+    if [ -z "$RIAK_MESOS_EXPLORER_PKG" ]; then
         export RIAK_MESOS_EXPLORER_PKG=riak_explorer.tar.gz
     fi
-    if [ -z "$RIAK_MESOS_RIAK_PKG"]; then
+    if [ -z "$RIAK_MESOS_RIAK_PKG" ]; then
         export RIAK_MESOS_RIAK_PKG=riak.tar.gz
     fi
     if [ -z "$RIAK_MESOS_PATCHES_PKG" ]; then
