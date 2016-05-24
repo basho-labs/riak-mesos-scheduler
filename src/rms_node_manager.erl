@@ -368,15 +368,16 @@ apply_reserved_offer(NodeKey, OfferHelper) ->
 
                     AgentId = erl_mesos_utils:agent_id(AgentIdValue),
 
-                    [RiakUrlStr, RiakExplorerUrlStr, ExecutorUrlStr] =
+                    [RiakUrlStr, RiakExplorerUrlStr, RiakPatchesStr, ExecutorUrlStr] =
                         ArtifactUrls,
 
                     ExecutorUrl = erl_mesos_utils:command_info_uri(ExecutorUrlStr, false, true),
                     RiakExplorerUrl = erl_mesos_utils:command_info_uri(RiakExplorerUrlStr, false, true),
+                    RiakPatchesUrl = erl_mesos_utils:command_info_uri(RiakPatchesStr, false, true),
                     RiakUrl = erl_mesos_utils:command_info_uri(RiakUrlStr, false, true),
 
                     CommandInfoValue = "./riak_mesos_executor/bin/ermf-executor",
-                    UrlList = [ExecutorUrl, RiakExplorerUrl, RiakUrl],
+                    UrlList = [ExecutorUrl, RiakExplorerUrl, RiakPatchesUrl, RiakUrl],
                     CommandInfo = erl_mesos_utils:command_info(CommandInfoValue, UrlList),
 
                     TaskId = erl_mesos_utils:task_id(NodeKey),

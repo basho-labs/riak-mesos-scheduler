@@ -94,6 +94,7 @@ artifact_urls() ->
     [
      Base ++ get_value(riak_pkg, "riak.tar.gz", string),
      Base ++ get_value(explorer_pkg, "riak_explorer.tar.gz", string),
+     Base ++ get_value(patches_pkg, "riak_erlpmd_patches.tar.gz", string),
      Base ++ get_value(executor_pkg, "riak_mesos_executor.tar.gz", string)
     ].
 

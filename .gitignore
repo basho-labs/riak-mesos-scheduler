@@ -9,3 +9,4 @@ rel/riak_mesos_scheduler
 packages
 ct_log
 oauth.txt
+tags
