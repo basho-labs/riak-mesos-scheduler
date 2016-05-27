@@ -54,9 +54,11 @@ t_normal_start_stop(_Config) ->
     meck:expect(rms_metadata, get_node, fun("riak-default-1") ->
                                                 {error, not_found} end),
     meck:expect(rms_metadata, add_node, fun(_) -> ok end),
+    meck:expect(rms_metadata, delete_node, fun(_) -> ok end),
     meck:new(rms_cluster_manager),
     meck:expect(rms_cluster_manager, maybe_join, fun(_, _) -> ok end),
     meck:expect(rms_cluster_manager, node_started, fun(_, _) -> ok end),
+    meck:expect(rms_cluster_manager, node_stopped, fun(_, _) -> ok end),
     meck:expect(rms_cluster_manager, leave, fun(_, _) -> ok end),
     NodeKey = "riak-default-1",
     ClusterKey = "default",
