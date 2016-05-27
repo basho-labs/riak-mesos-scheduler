@@ -186,6 +186,8 @@ requested({node_started, NodeKey}, #cluster{
     Cluster1 = Cluster#cluster{starting = Rest},
     ok = update_cluster(Cluster#cluster.key, {NextState, Cluster1}),
     {next_state, NextState, Cluster1};
+requested({node_stopped, _NodeKey}, Cluster) ->
+    {next_state, requested, Cluster};
 requested(_Event, Cluster) ->
     {stop, {unhandled_event, _Event}, Cluster}.
 
@@ -193,6 +195,8 @@ requested(_Event, Cluster) ->
 running({node_started,_} = Event, #cluster{}=Cluster) ->
     %% NB Copy the transitions from requested
     requested(Event, Cluster);
+running({node_stopped, _NodeKey}, Cluster) ->
+    {next_state, running, Cluster};
 running(_Event, Cluster) ->
     {stop, {unhandled_event, _Event}, Cluster}.
 

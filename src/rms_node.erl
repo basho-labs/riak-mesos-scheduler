@@ -500,8 +500,9 @@ shutting_down(can_be_scheduled, _From, Node) ->
     {reply, {ok, false}, shutting_down, Node};
 shutting_down({destroy, false}, _From, Node) ->
     {reply, ok, shutting_down, Node};
-%shutting_down({destroy, true}, _From, Node) ->
-%    leave(shutting_down, Node);
+shutting_down({destroy, true}, _From, Node) ->
+    %% There are situations where a node is deleted before it ever gets launched
+    delete_reply_stop({shutdown, Node}, ok, normal);
 shutting_down(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, shutting_down, Node}.
 

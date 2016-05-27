@@ -48,6 +48,8 @@
          can_fit_unreserved/5,
          has_persistence_id/2,
          has_tasks_to_launch/1,
+         set_sufficient_resources/2,
+         should_unreserve_resources/1,
          unreserve_resources/1,
          unreserve_volumes/1,
          operations/1,
@@ -59,6 +61,7 @@
                        constraints = [] :: constraints(),
                        node_attributes = [] :: attributes_group(),
                        node_hostnames = [] :: hostnames(),
+                       sufficient_resources = true :: boolean(),
                        applied_reserved_resources = [] :: [erl_mesos:'Resource'()],
                        applied_unreserved_resources = [] :: [erl_mesos:'Resource'()],
                        reserved_resources :: erl_mesos_utils:resources(),
@@ -690,6 +693,21 @@ ports_slice(NumPorts, Ports) ->
 ports_slice(SliceStart, NumPorts, Ports) ->
     PortsSlice = lists:sublist(Ports, SliceStart, NumPorts),
     {PortsSlice, Ports -- PortsSlice}.
+
+-spec set_sufficient_resources(boolean(), offer_helper()) -> offer_helper().
+set_sufficient_resources(HasSufficientResources, OfferHelper) ->
+    OfferHelper#offer_helper{sufficient_resources=HasSufficientResources}.
+
+-spec should_unreserve_resources(offer_helper()) -> boolean().
+should_unreserve_resources(OfferHelper=
+                               #offer_helper{
+                                  sufficient_resources=HasSufficientResources}) ->
+    case has_tasks_to_launch(OfferHelper) of
+        true ->
+            false;
+        false ->
+            HasSufficientResources
+    end.
 
 -spec unreserve_resources([erl_mesos:'Resource'()], [erl_mesos:'Resource'()]) ->
     [erl_mesos:'Resource'()].

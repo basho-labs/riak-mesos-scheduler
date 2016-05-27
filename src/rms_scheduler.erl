@@ -322,6 +322,7 @@ call(Function, Args, #state{calls_queue = CallsQueue} = State) ->
                           "Args: ~p, "
                           "Call error reason: ~p.",
                           [Function, Args, Reason]),
+            handle_call_exec_error(Function, Args, Reason),
             State1 = State#state{calls_queue = CallsQueue1},
             {ok, State1};
         {error, Reason} ->
@@ -377,7 +378,6 @@ apply_offers(SchedulerInfo, [Offer|Offers], #state{scheduler = #scheduler{option
 apply_offer(Offer, Constraints) ->
     OfferHelper = rms_offer_helper:new(Offer),
     OfferHelper1 = rms_offer_helper:set_constraints(Constraints, OfferHelper),
-    ResourcesList = rms_offer_helper:resources_to_list(OfferHelper1),
     lager:info("Scheduler recevied offer. "
                "Offer id: ~s. "
                "Resources: ~p. "
@@ -385,17 +385,7 @@ apply_offer(Offer, Constraints) ->
                [rms_offer_helper:get_offer_id_value(OfferHelper1),
                 rms_offer_helper:resources_to_list(OfferHelper1),
                 rms_offer_helper:get_constraints(OfferHelper1)]),
-    Unreserved = proplists:get_value(unreserved, ResourcesList, []),
-    NumUnreservedPorts = proplists:get_value(num_ports, Unreserved, 0),
-    UnreservedCpus = proplists:get_value(cpus, Unreserved, 0),
-    UnreservedMem = proplists:get_value(mem, Unreserved, 0),
-    OfferHelper2 = case {UnreservedCpus, UnreservedMem, NumUnreservedPorts} of
-                       {C,M,P} when C > 0, M > 0, P > 0 ->
-                           rms_cluster_manager:apply_offer(OfferHelper1);
-                       _ -> 
-                           lager:info("Offer contained insufficient unreserved resources, skipping.", []),
-                           OfferHelper1
-                   end,
+    OfferHelper2 = rms_cluster_manager:apply_offer(OfferHelper1),
     OfferId = rms_offer_helper:get_offer_id(OfferHelper2),
     Operations = rms_offer_helper:operations(OfferHelper2),
     {OfferId, Operations}.
@@ -444,14 +434,23 @@ shutdown_executors(SchedulerInfo, [{NodeKey, AgentIdValue}|Rest], State) ->
             lager:info("Error telling node to finish: ~p.", [R]),
             R
     end.
-    %% case call(shutdown, [SchedulerInfo, ExecutorId, AgentId], State) of
-    %%     {ok, S1} ->
-    %%         case call(kill, [SchedulerInfo, TaskId, AgentId], S1) of
-    %%             {ok, S2} ->
-    %%                 shutdown_executors(SchedulerInfo, Rest, S2);
-    %%             R -> 
-    %%                 R
-    %%         end;
-    %%     R ->
-    %%         R
-    %% end.
+
+-spec handle_call_exec_error(atom(), [term()], term()) -> ok.
+handle_call_exec_error(message, [_, 
+                                 #'AgentID'{}, 
+                                 #'ExecutorID'{value = ExecutorID},
+                                 <<"finish">>], closed) ->
+    %% The node we're attempting to finish is no longer running
+    NodeID = ExecutorID,
+    case rms_node_manager:destroy_node(NodeID, true) of
+        ok ->
+            ok;
+        {error, Reason} ->
+            lager:warning("Attempted to force destroy node: ~p. "
+                          "Destroy failed with reason: ~p. "
+                          "Call error reason: ~p.",
+                          [NodeID, Reason]),
+            ok
+    end;
+handle_call_exec_error(_Function, _Args, _Reason) ->
+    ok.
