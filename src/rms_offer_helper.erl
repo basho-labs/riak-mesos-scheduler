@@ -695,8 +695,8 @@ ports_slice(SliceStart, NumPorts, Ports) ->
     {PortsSlice, Ports -- PortsSlice}.
 
 -spec set_sufficient_resources(boolean(), offer_helper()) -> offer_helper().
-set_sufficient_resources(HasSufficentResources, OfferHelper) ->
-    OfferHelper#offer_helper{sufficient_resources=HasSufficentResources}.
+set_sufficient_resources(HasSufficientResources, OfferHelper) ->
+    OfferHelper#offer_helper{sufficient_resources=HasSufficientResources}.
 
 -spec should_unreserve_resources(offer_helper()) -> boolean().
 should_unreserve_resources(OfferHelper=

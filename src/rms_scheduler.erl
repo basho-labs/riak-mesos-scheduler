@@ -322,27 +322,8 @@ call(Function, Args, #state{calls_queue = CallsQueue} = State) ->
                           "Args: ~p, "
                           "Call error reason: ~p.",
                           [Function, Args, Reason]),
+            handle_call_exec_error(Function, Args, Reason),
             State1 = State#state{calls_queue = CallsQueue1},
-
-            case {Function, Args, Reason} of
-                {message, [_, 
-                           #'AgentID'{}, 
-                           #'ExecutorID'{value = ExecutorID},
-                           <<"finish">>], closed} ->
-                    %% The node we're attempting to finish is no longer running
-                    NodeID = ExecutorID,
-                    case rms_node_manager:destroy_node(NodeID, true) of
-                        ok ->
-                            ok;
-                        {error, Reason1} ->
-                            lager:warning("Attempted to force destroy node: ~p. "
-                                          "Destroy failed with reason: ~p. "
-                                          "Call error reason: ~p.",
-                                          [NodeID, Reason1])
-                    end;
-                _ ->
-                    ok
-            end,
             {ok, State1};
         {error, Reason} ->
             lager:warning("Scheduler api call error. "
@@ -453,14 +434,23 @@ shutdown_executors(SchedulerInfo, [{NodeKey, AgentIdValue}|Rest], State) ->
             lager:info("Error telling node to finish: ~p.", [R]),
             R
     end.
-    %% case call(shutdown, [SchedulerInfo, ExecutorId, AgentId], State) of
-    %%     {ok, S1} ->
-    %%         case call(kill, [SchedulerInfo, TaskId, AgentId], S1) of
-    %%             {ok, S2} ->
-    %%                 shutdown_executors(SchedulerInfo, Rest, S2);
-    %%             R -> 
-    %%                 R
-    %%         end;
-    %%     R ->
-    %%         R
-    %% end.
+
+-spec handle_call_exec_error(atom(), [term()], term()) -> ok.
+handle_call_exec_error(message, [_, 
+                                 #'AgentID'{}, 
+                                 #'ExecutorID'{value = ExecutorID},
+                                 <<"finish">>], closed) ->
+    %% The node we're attempting to finish is no longer running
+    NodeID = ExecutorID,
+    case rms_node_manager:destroy_node(NodeID, true) of
+        ok ->
+            ok;
+        {error, Reason} ->
+            lager:warning("Attempted to force destroy node: ~p. "
+                          "Destroy failed with reason: ~p. "
+                          "Call error reason: ~p.",
+                          [NodeID, Reason]),
+            ok
+    end;
+handle_call_exec_error(_Function, _Args, _Reason) ->
+    ok.
