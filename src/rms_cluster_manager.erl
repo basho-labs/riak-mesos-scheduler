@@ -232,11 +232,11 @@ apply_offer(OfferHelper) ->
         _ ->
             NodeKeys = rms_node_manager:get_node_keys(),
             OfferHelper3 = apply_offer(NodeKeys, OfferHelper2),
-            case rms_offer_helper:has_tasks_to_launch(OfferHelper3) of
+            case rms_offer_helper:should_unreserve_resources(OfferHelper3) of
                 true ->
-                    OfferHelper3;
+                    unreserve_volumes(unreserve_resources(OfferHelper3));
                 false ->
-                    unreserve_volumes(unreserve_resources(OfferHelper3))
+                    OfferHelper3
             end
     end.
 
@@ -343,6 +343,18 @@ apply_reserved_offer(NodeKey, NodeKeys, OfferHelper) ->
                                [NodeKey, PersistenceId, OfferIdValue,
                                 ResourcesList]),
                     OfferHelper1;
+                {error, not_enough_resources} ->
+                    OfferHelper1 = 
+                        rms_offer_helper:set_sufficient_resources(false, OfferHelper),
+                    lager:warning("Adding node for scheduling error. "
+                                  "Node has persistence id. "
+                                  "Offer did not have sufficient resources for this node. "
+                                  "Trying other nodes. "
+                                  "Node key: ~s. "
+                                  "Persistence id: ~s. "
+                                  "Offer id: ~s. ",
+                                  [NodeKey, PersistenceId, OfferIdValue]),
+                    apply_offer(NodeKeys, OfferHelper1);
                 {error, Reason} ->
                     lager:warning("Adding node for scheduling error. "
                                   "Node has persistence id. "
