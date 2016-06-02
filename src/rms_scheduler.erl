@@ -442,9 +442,8 @@ handle_call_exec_error(message, [_,
                                  <<"finish">>], closed=Reason) ->
     %% The node we're attempting to finish is no longer running
     %% Instead of trying to force a destroy, simulate a TASK_FINISHED update since the executor didn't respond.
-    TaskId = ExecutorId,
+    NodeName = ExecutorId,
     NodeState = 'TASK_FINISHED',
-    {ok, NodeName} = node_name_from_task_id(TaskId),
     case rms_node_manager:get_node_cluster_key(NodeName) of
         {error, Reason1} ->
             lager:warning("Error while attempting to process finish exec error update: ~p.", [Reason1]);
