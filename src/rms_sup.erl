@@ -47,9 +47,12 @@ init([]) ->
          {dispatch, rms_wm_resource:dispatch()}],
 
     ZooKeeper = rms_config:zk(),
-    [ZooKeeperHost,P] = string:tokens(ZooKeeper, ":"),
-    ZooKeeperPort = list_to_integer(P),
-
+    %% TODO: may be use path
+    {ZkNodes, _ZkPath} = ZooKeeper,
+    ZkNodesList = [begin
+                      [NodeHost, NodePort] = string:tokens(Node, ":"),
+                      {NodeHost, list_to_integer(NodePort)}
+                   end || Node <- ZkNodes],
     FrameworkUser = rms_config:get_value(user, "root"),
     FrameworkName = rms_config:framework_name(),
     FrameworkRole = rms_config:get_value(role, "riak", string),
@@ -99,8 +102,7 @@ init([]) ->
 
     MetadataManagerSpec = {mesos_metadata_manager,
                                {mesos_metadata_manager, start_link,
-                               [[{ZooKeeperHost, ZooKeeperPort}],
-                                FrameworkName]},
+                               [ZkNodesList, FrameworkName]},
                                permanent, 5000, worker,
                                [mesos_metadata_manager]},
     MetadataSpec = {rms_metadata,
