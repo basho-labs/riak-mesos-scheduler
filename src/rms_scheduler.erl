@@ -438,19 +438,23 @@ shutdown_executors(SchedulerInfo, [{NodeKey, AgentIdValue}|Rest], State) ->
 -spec handle_call_exec_error(atom(), [term()], term()) -> ok.
 handle_call_exec_error(message, [_, 
                                  #'AgentID'{}, 
-                                 #'ExecutorID'{value = ExecutorID},
-                                 <<"finish">>], closed) ->
+                                 #'ExecutorID'{value = ExecutorId},
+                                 <<"finish">>], closed=Reason) ->
     %% The node we're attempting to finish is no longer running
-    NodeID = ExecutorID,
-    case rms_node_manager:destroy_node(NodeID, true) of
-        ok ->
-            ok;
-        {error, Reason} ->
-            lager:warning("Attempted to force destroy node: ~p. "
-                          "Destroy failed with reason: ~p. "
-                          "Call error reason: ~p.",
-                          [NodeID, Reason]),
-            ok
+    %% Instead of trying to force a destroy, simulate a TASK_FINISHED update since the executor didn't respond.
+    TaskId = ExecutorId,
+    NodeState = 'TASK_FINISHED',
+    {ok, NodeName} = node_name_from_task_id(TaskId),
+    case rms_node_manager:get_node_cluster_key(NodeName) of
+        {error, Reason1} ->
+            lager:warning("Error while attempting to process finish exec error update: ~p.", [Reason1]);
+        {ok, ClusterName} ->
+            case rms_cluster_manager:handle_status_update(ClusterName, NodeName, NodeState, Reason) of
+                {error, Reason2} ->
+                    lager:warning("Error while attempting to process finish exec error update: ~p.", [Reason2]);
+                ok ->
+                    ok
+            end
     end;
 handle_call_exec_error(_Function, _Args, _Reason) ->
     ok.
