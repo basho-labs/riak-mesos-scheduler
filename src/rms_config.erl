@@ -63,7 +63,7 @@ constraints() ->
 
 -spec zk() -> string().
 zk() ->
-    get_value(zk, ?DEFAULT_ZK, string).
+    split_hosts(get_value(zk, ?DEFAULT_ZK, string)).
 
 -spec framework_name() -> string().
 framework_name() ->

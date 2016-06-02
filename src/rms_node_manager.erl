@@ -388,10 +388,12 @@ apply_reserved_offer(NodeKey, OfferHelper) ->
                     [HTTPPort, PBPort, DisterlPort | _Ports] = TaskDataPorts,
 
                     NodeName = iolist_to_binary([NodeKey, "@", NodeHostname]),
+                    {ZkNodes, _} = rms_config:zk(),
+                    Zookeepers = [list_to_binary(I) || I <- ZkNodes],
                     TaskData = [{<<"FullyQualifiedNodeName">>, NodeName},
                                 {<<"Host">>,                   list_to_binary(NodeHostname)},
                                 %% TODO: read list of zookeepers with rms_metadata:get_option/1
-                                {<<"Zookeepers">>,             [list_to_binary(rms_config:zk())]},
+                                {<<"Zookeepers">>,             Zookeepers},
                                 {<<"FrameworkName">>,          list_to_binary(Name)},
                                 {<<"URI">>,                    list_to_binary(WebuiUrl)},
                                 {<<"ClusterName">>,            list_to_binary(ClusterKey)},
