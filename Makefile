@@ -7,7 +7,7 @@ MAJOR           ?= $(shell echo $(PKG_VERSION) | cut -d'.' -f1)
 MINOR           ?= $(shell echo $(PKG_VERSION) | cut -d'.' -f2)
 OS_FAMILY          ?= ubuntu
 OS_VERSION       ?= 14.04
-mesos           ?= 0.28
+mesos           ?= 0.28.1
 PKGNAME         ?= $(RELDIR)-$(PKG_VERSION)-mesos-$(mesos)-$(OS_FAMILY)-$(OS_VERSION).tar.gz
 OAUTH_TOKEN     ?= $(shell cat oauth.txt)
 GIT_TAG   	    ?= $(shell git describe --tags --abbrev=0)
