@@ -1,8 +1,8 @@
 REPO            ?= riak-mesos-scheduler
 RELDIR          ?= riak_mesos_scheduler
 GIT_REF         ?= $(shell git describe --all)
-GIT_TAG_VERSION ?= $(shell git describe --tags)
-PKG_VERSION	    ?= $(shell git describe --tags --abbrev=0 | tr - .)
+GIT_TAG_ISH     ?= $(shell git describe --tags)
+PKG_VERSION	    ?= $(GIT_TAG_ISH)
 MAJOR           ?= $(shell echo $(PKG_VERSION) | cut -d'.' -f1)
 MINOR           ?= $(shell echo $(PKG_VERSION) | cut -d'.' -f2)
 OS_FAMILY          ?= ubuntu
@@ -77,7 +77,7 @@ retarball: rel
 	echo "Creating packages/"$(PKGNAME)
 	mkdir -p packages
 	echo "$(GIT_REF)" > rel/version
-	echo "$(GIT_TAG_VERSION)" >> rel/version
+	echo "$(GIT_TAG_ISH)" >> rel/version
 	tar -C rel -czf $(PKGNAME) version $(RELDIR)/
 	rm rel/version
 	mv $(PKGNAME) packages/
