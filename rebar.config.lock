@@ -74,7 +74,7 @@
              {git,"git://github.com/basho/meck.git",
                   "dde759050eff19a1a80fd854d7375174b191665d"}},
        {riak_mesos_md_mgr,".*",
-                          {git,"https://github.com//basho-labs/riak-mesos-metadata-manager",
+                          {git,"https://github.com/basho-labs/riak-mesos-metadata-manager",
                                "918846336dcef0d7b484dac48597be598fb57878"}},
        {uuid,".*",
              {git,"https://github.com/avtobiff/erlang-uuid.git",
