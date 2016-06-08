@@ -92,6 +92,11 @@ retarball: rel
 	cd packages && echo "$(DOWNLOAD_BASE)" > remote.txt
 	cd packages && echo "$(BASE_DIR)/packages/$(PKGNAME)" > local.txt
 
+prball: GIT_SHA = $(shell git log -1 --format='%h')
+prball: PKG_VERSION = PR-$(PULL_REQ)-$(GIT_SHA)
+prball: PKGNAME = $(RELDIR)-$(PKG_VERSION)-mesos-$(mesos)-$(OS_FAMILY)-$(OS_VERSION).tar.gz
+prball: retarball
+
 sync-test:
 ifeq (yes,$(BUILDING_EXACT_TAG))
 	@echo $(RELEASE_ID)
