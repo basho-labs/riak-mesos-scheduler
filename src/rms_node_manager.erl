@@ -403,7 +403,7 @@ apply_reserved_offer(NodeKey, OfferHelper) ->
                                 {<<"DisterlPort">>,            DisterlPort}],
                     TaskDataBin = iolist_to_binary(mochijson2:encode(TaskData)),
 
-                    ExecutorId = erl_mesos_utils:executor_id(NodeKey),
+                    ExecutorId = erl_mesos_utils:executor_id(NodeKey ++ "-" ++ PersistenceId),
 
                     Source = Name,
                     ExecutorInfo =
