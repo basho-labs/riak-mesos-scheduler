@@ -44,7 +44,7 @@
          can_be_shutdown/1,
          set_reserve/5,
          set_unreserve/1,
-         set_agent_info/8,
+         set_agent_info/9,
          destroy/1,
          destroy/2,
          restart/1,
@@ -88,6 +88,7 @@
                http_port :: pos_integer(),
                pb_port :: pos_integer(),
                disterl_port :: pos_integer(),
+               executor_id_value = "" :: string(),
                agent_id_value = "" :: string(),
                container_path = "" :: string(),
                persistence_id = "" :: string(),
@@ -194,7 +195,7 @@ set_unreserve(Pid) ->
     gen_fsm:sync_send_event(Pid, set_unreserve).
 
 -spec set_agent_info(pid(), string(), string(), pos_integer(), pos_integer(),
-                     pos_integer(), string(), string()) ->
+                     pos_integer(), string(), string(), string()) ->
     ok | {error, term()}.
 set_agent_info(Pid, 
                NodeName,
@@ -203,6 +204,7 @@ set_agent_info(Pid,
                PbPort,
                DisterlPort,
                AgentIdValue,
+               ExecutorIdValue,
                ContainerPath) ->
     gen_fsm:sync_send_event(
       Pid, {set_agent_info,
@@ -212,6 +214,7 @@ set_agent_info(Pid,
             PbPort,
             DisterlPort,
             AgentIdValue,
+            ExecutorIdValue,
             ContainerPath}).
 
 -spec destroy(pid()) -> ok | {error, term()}.
@@ -355,6 +358,7 @@ reserved({set_agent_info,
           PbPort,
           DisterlPort,
           AgentIdValue,
+          ExecutorIdValue,
           ContainerPath},
           _From, Node) ->
     Node1 = Node#node{hostname = Hostname,
@@ -363,6 +367,7 @@ reserved({set_agent_info,
                       pb_port = PbPort,
                       disterl_port = DisterlPort,
                       agent_id_value = AgentIdValue,
+                      executor_id_value = ExecutorIdValue,
                       container_path = ContainerPath},
     lager:info("Setting agent info for node to ~p", [Node1]),
     update_and_reply({reserved, Node}, {reserved, Node1});
@@ -639,6 +644,7 @@ from_list(NodeList) ->
            http_port = proplists:get_value(http_port, NodeList),
            pb_port = proplists:get_value(pb_port, NodeList),
            disterl_port = proplists:get_value(disterl_port, NodeList),
+           executor_id_value = proplists:get_value(executor_id_value, NodeList),
            agent_id_value = proplists:get_value(agent_id_value, NodeList),
            container_path = proplists:get_value(container_path, NodeList),
            persistence_id = proplists:get_value(persistence_id, NodeList),
@@ -656,6 +662,7 @@ to_list(
          pb_port = PbPort,
          disterl_port = DisterlPort,
          agent_id_value = AgentIdValue,
+         executor_id_value = ExecutorIdValue,
          container_path = ContainerPath,
          persistence_id = PersistenceId,
          reconciled = Reconciled,
@@ -669,6 +676,7 @@ to_list(
      {pb_port, PbPort},
      {disterl_port, DisterlPort},
      {agent_id_value, AgentIdValue},
+     {executor_id_value, ExecutorIdValue},
      {container_path, ContainerPath},
      {persistence_id, PersistenceId},
      {reconciled, Reconciled},
