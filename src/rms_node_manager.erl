@@ -403,7 +403,10 @@ apply_reserved_offer(NodeKey, OfferHelper) ->
                                 {<<"DisterlPort">>,            DisterlPort}],
                     TaskDataBin = iolist_to_binary(mochijson2:encode(TaskData)),
 
-                    ExecutorId = erl_mesos_utils:executor_id(NodeKey ++ "-" ++ PersistenceId),
+                    % Tack a new UUID onto ExecutorId - this way we don't clash with previous instances of this same node
+                    % in places like mesos web-ui
+                    % NB This is used as the executor's nodename so must be a valid erlang nodename
+                    ExecutorId = erl_mesos_utils:executor_id(NodeKey ++ "-" ++ uuid:to_string(uuid:uuid4())),
 
                     Source = Name,
                     ExecutorInfo =
