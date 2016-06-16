@@ -83,10 +83,10 @@ tarball: clean-deps retarball
 retarball: rel
 	echo "Creating packages/"$(PKGNAME)
 	mkdir -p packages
-	echo "$(GIT_REF)" > rel/version
-	echo "$(GIT_TAG_ISH)" >> rel/version
-	tar -C rel -czf $(PKGNAME) version $(RELDIR)/
-	rm rel/version
+	echo "$(GIT_REF)" > rel/scheduler-version
+	echo "$(GIT_TAG_ISH)" >> rel/scheduler-version
+	tar -C rel -czf $(PKGNAME) scheduler-version $(RELDIR)/
+	rm rel/scheduler-version
 	mv $(PKGNAME) packages/
 	cd packages && $(SHASUM) $(PKGNAME) > $(PKGNAME).sha
 	cd packages && echo "$(DOWNLOAD_BASE)" > remote.txt
