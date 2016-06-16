@@ -42,6 +42,7 @@
          get_node_http_url/1,
          get_node_name/1,
          get_node_agent_id_value/1,
+         get_node_executor_id_value/1,
          get_node_persistence_id/1,
          node_needs_to_be_reconciled/1,
          node_can_be_scheduled/1,
@@ -163,6 +164,11 @@ get_node_http_url(Key) ->
                                      {ok, string()} | {error, term()}.
 get_node_agent_id_value(Key) ->
     rms_node:get_field_value(agent_id_value, Key).
+
+-spec get_node_executor_id_value(rms_node:key()) ->
+                                     {ok, string()} | {error, term()}.
+get_node_executor_id_value(Key) ->
+    rms_node:get_field_value(executor_id_value, Key).
 
 -spec get_node_persistence_id(rms_node:key()) ->
                                      {ok, string()} | {error, term()}.
@@ -406,7 +412,8 @@ apply_reserved_offer(NodeKey, OfferHelper) ->
                     % Tack a new UUID onto ExecutorId - this way we don't clash with previous instances of this same node
                     % in places like mesos web-ui
                     % NB This is used as the executor's nodename so must be a valid erlang nodename
-                    ExecutorId = erl_mesos_utils:executor_id(NodeKey ++ "-" ++ uuid:to_string(uuid:uuid4())),
+                    ExecutorIdValue = NodeKey ++ "-" ++ uuid:to_string(uuid:uuid4()),
+                    ExecutorId = erl_mesos_utils:executor_id(ExecutorIdValue),
 
                     Source = Name,
                     ExecutorInfo =
@@ -429,6 +436,7 @@ apply_reserved_offer(NodeKey, OfferHelper) ->
                                             PBPort,
                                             DisterlPort,
                                             AgentIdValue,
+                                            ExecutorIdValue,
                                             ContainerPath),
 
                     {ok, rms_offer_helper:add_task_to_launch(TaskInfo,
