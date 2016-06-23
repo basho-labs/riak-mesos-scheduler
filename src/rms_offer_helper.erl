@@ -469,6 +469,15 @@ get_persistence_ids([#'Resource'{name = "disk",
   Reservation =/= undefined ->
     #'Resource.DiskInfo.Persistence'{id = PersistenceId} = Persistence,
     get_persistence_ids(Resources, [PersistenceId | PersistenceIds]);
+get_persistence_ids([#'Resource'{name = "disk",
+                                 role = Role,
+                                 disk =
+                                     #'Resource.DiskInfo'{persistence =
+                                                              Persistence}} |
+                     Resources], PersistenceIds) when
+  Role =/= '*' ->
+    #'Resource.DiskInfo.Persistence'{id = PersistenceId} = Persistence,
+    get_persistence_ids(Resources, [PersistenceId | PersistenceIds]);
 get_persistence_ids([_Resource | Resources], PersistenceIds) ->
     get_persistence_ids(Resources, PersistenceIds);
 get_persistence_ids([], PersistenceIds) ->
@@ -490,13 +499,23 @@ get_scalar_resource_value(Name, true,
                                                                   ScalarValue},
                                        reservation = Reservation} |
                            Resources], Value)
-  when Reservation =/= undefined  ->
+  when Reservation =/= undefined ->
+    get_scalar_resource_value(Name, true, Resources, Value + ScalarValue);
+get_scalar_resource_value(Name, true,
+                          [#'Resource'{name = Name,
+                                       type = 'SCALAR',
+                                       scalar = #'Value.Scalar'{value =
+                                                                  ScalarValue},
+                                       role = Role} |
+                           Resources], Value)
+  when Role =/= '*' ->
     get_scalar_resource_value(Name, true, Resources, Value + ScalarValue);
 get_scalar_resource_value(Name, false,
                           [#'Resource'{name = Name,
                                        type = 'SCALAR',
                                        scalar = #'Value.Scalar'{value =
                                                                   ScalarValue},
+                                       role = '*',
                                        reservation = undefined} |
                            Resources], Value) ->
     get_scalar_resource_value(Name, false, Resources, Value + ScalarValue);
@@ -526,12 +545,23 @@ get_ranges_resource_values(Name, true,
   when Reservation =/= undefined  ->
     Values1 = add_ranges_values(Ranges, Values),
     get_ranges_resource_values(Name, true, Resources, Values1);
+get_ranges_resource_values(Name, true,
+                           [#'Resource'{name = Name,
+                                        type = 'RANGES',
+                                        ranges = #'Value.Ranges'{range =
+                                                                     Ranges},
+                                        role = Role} |
+                            Resources], Values)
+  when Role =/= '*'  ->
+    Values1 = add_ranges_values(Ranges, Values),
+    get_ranges_resource_values(Name, true, Resources, Values1);
 get_ranges_resource_values(Name, false,
                            [#'Resource'{name = Name,
                                         type = 'RANGES',
                                         ranges = #'Value.Ranges'{range =
                                                                      Ranges},
-                                        reservation = undefined} |
+                                        reservation = undefined,
+                                        role = '*'} |
                             Resources], Values) ->
     Values1 = add_ranges_values(Ranges, Values),
     get_ranges_resource_values(Name, false, Resources, Values1);
@@ -632,12 +662,14 @@ apply_disk(Disk, Role, Principal, PersistenceId, ContainerPath,
         _Disk when Role =/= undefined, Principal =/= undefined,
                    PersistenceId =/= undefined, ContainerPath =/= undefined ->
             Res1 = Res#resources{disk = ResDisk - Disk},
-            Resource =
-                erl_mesos_utils:volume_resource_reservation(Disk, PersistenceId,
-                                                            ContainerPath, 'RW',
-                                                            Role, Principal),
-            Resource1 = [Resource | Resources],
-            {Res1, Resource1};
+            %% Resource =
+            %%     erl_mesos_utils:volume_resource_reservation(Disk, PersistenceId,
+            %%                                                 ContainerPath, 'RW',
+            %%                                                 Role, Principal),
+            Resource = erl_mesos_utils:volume_resource(Disk, PersistenceId, ContainerPath, 'RW'),
+            Resource1 = Resource#'Resource'{role=Role},
+            Resource2 = [Resource1 | Resources],
+            {Res1, Resource2};
         _Disk when Role =/= undefined, Principal =/= undefined ->
             Res1 = Res#resources{disk = ResDisk - Disk},
             Resource = erl_mesos_utils:scalar_resource_reservation("disk", Disk,

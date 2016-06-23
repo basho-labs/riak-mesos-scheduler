@@ -12,6 +12,7 @@
          has_reservations/1,
          has_volumes/1,
          make_reservation/1,
+         make_reservation_with_role/1,
          make_volume/1,
          apply_resources/1]).
 
@@ -22,6 +23,7 @@ all() ->
      has_reservations,
      has_volumes,
      make_reservation,
+     make_reservation_with_role,
      make_volume,
      apply_resources].
 
@@ -173,6 +175,72 @@ make_reservation(_Config) ->
     PortsToReserveLength = length(PortsToReserve),
     UnreservedPortsLength = length(UnreservedPorts),
     PortsLength = PortsToReserveLength + UnreservedPortsLength.
+
+make_reservation_with_role(_Config) ->
+    Role = "data",
+    OfferResources1 = cpus_resources_reservation() ++
+                      mem_resources_reservation() ++
+                      ports_resources_reservation() ++
+                      volume_resources_reservation() ++
+                      cpus_resources(Role) ++
+                      mem_resources(Role) ++
+                      ports_resources(Role) ++
+                      volume_resources(Role),
+    Offer1 = offer("offer_1", OfferResources1),
+    OfferHelper1 = rms_offer_helper:new(Offer1),
+    Cpus = 0.1 + 0.2 + 0.3,
+    ReserveCpus = 0.4,
+    UnreservedCpus = Cpus - ReserveCpus,
+    Cpus = rms_offer_helper:get_unreserved_resources_cpus(OfferHelper1),
+    Mem = 128.0 + 256.0 + 512.0,
+    ReserveMem = 384.0,
+    UnreservedMem = Mem - ReserveMem,
+    Mem = rms_offer_helper:get_unreserved_resources_mem(OfferHelper1),
+    Disk = 2048.0 + 4096.0,
+    ReserveDisk = 512.0,
+    UnreservedDisk = Disk - ReserveDisk,
+    Disk = rms_offer_helper:get_unreserved_resources_disk(OfferHelper1),
+    Ports = lists:seq(7, 20),
+    ReservePorts = 5,
+    Ports = rms_offer_helper:get_unreserved_resources_ports(OfferHelper1),
+    OfferHelper2 = rms_offer_helper:make_reservation(ReserveCpus,
+                                                     ReserveMem,
+                                                     ReserveDisk,
+                                                     ReservePorts, Role,
+                                                     "principal",
+                                                     OfferHelper1),
+    UnreservedCpus =
+        rms_offer_helper:get_unreserved_resources_cpus(OfferHelper2),
+    UnreservedMem =
+        rms_offer_helper:get_unreserved_resources_mem(OfferHelper2),
+    UnreservedDisk =
+        rms_offer_helper:get_unreserved_resources_disk(OfferHelper2),
+    UnreservedPorts =
+        rms_offer_helper:get_unreserved_resources_ports(OfferHelper2),
+    CpusResourceToReserve =
+        erl_mesos_utils:scalar_resource_reservation("cpus", ReserveCpus, Role,
+                                                    "principal"),
+    MemResourceToReserve =
+        erl_mesos_utils:scalar_resource_reservation("mem", ReserveMem, Role,
+                                                    "principal"),
+    DiskResourceToReserve =
+        erl_mesos_utils:scalar_resource_reservation("disk", ReserveDisk, Role,
+                                                    "principal"),
+    [CpusResourceToReserve,
+     MemResourceToReserve,
+     DiskResourceToReserve,
+     PortsResourceToReserve] =
+        rms_offer_helper:get_resources_to_reserve(OfferHelper2),
+    #'Resource'{ranges = #'Value.Ranges'{range = PortsToReserveRanges}} =
+        PortsResourceToReserve,
+    [#'Value.Range'{'begin' = PortsToReserveBegin,
+                    'end' = PortsToReserveEnd}] = PortsToReserveRanges,
+    PortsToReserve = lists:seq(PortsToReserveBegin, PortsToReserveEnd),
+    PortsLength = length(Ports),
+    PortsToReserveLength = length(PortsToReserve),
+    UnreservedPortsLength = length(UnreservedPorts),
+    PortsLength = PortsToReserveLength + UnreservedPortsLength,
+    ok = rms_offer_helper:operations(OfferHelper2).
 
 make_volume(_Config) ->
     OfferResources1 = cpus_resources_reservation() ++
@@ -370,50 +438,66 @@ can_fit_attribute_constraints(_Config) ->
               [[{"rack_id", "1"}]]).
 
 cpus_resources_reservation() ->
-    [erl_mesos_utils:scalar_resource_reservation("cpus", 0.2, "*",
+    cpus_resources_reservation("*").
+cpus_resources_reservation(Role) ->
+    [erl_mesos_utils:scalar_resource_reservation("cpus", 0.2, Role,
                                                  "principal"),
-     erl_mesos_utils:scalar_resource_reservation("cpus", 0.3, "*",
+     erl_mesos_utils:scalar_resource_reservation("cpus", 0.3, Role,
                                                  "principal"),
-     erl_mesos_utils:scalar_resource_reservation("cpus", 0.4, "*",
+     erl_mesos_utils:scalar_resource_reservation("cpus", 0.4, Role,
                                                  "principal")].
 
 mem_resources_reservation() ->
-    [erl_mesos_utils:scalar_resource_reservation("mem", 256.0, "*",
+    mem_resources_reservation("*").
+mem_resources_reservation(Role) ->
+    [erl_mesos_utils:scalar_resource_reservation("mem", 256.0, Role,
                                                  "principal"),
-     erl_mesos_utils:scalar_resource_reservation("mem", 512.0, "*",
+     erl_mesos_utils:scalar_resource_reservation("mem", 512.0, Role,
                                                  "principal"),
-     erl_mesos_utils:scalar_resource_reservation("mem", 1024.0, "*",
+     erl_mesos_utils:scalar_resource_reservation("mem", 1024.0, Role,
                                                  "principal")].
 
 ports_resources_reservation() ->
-    [erl_mesos_utils:ranges_resource_reservation("ports", [{1, 3}], "*",
+    ports_resources_reservation("*").
+ports_resources_reservation(Role) ->
+    [erl_mesos_utils:ranges_resource_reservation("ports", [{1, 3}], Role,
                                                  "principal"),
-     erl_mesos_utils:ranges_resource_reservation("ports", [{4, 6}], "*",
+     erl_mesos_utils:ranges_resource_reservation("ports", [{4, 6}], Role,
                                                  "principal")].
 
 volume_resources_reservation() ->
+    volume_resources_reservation("*").
+volume_resources_reservation(Role) ->
     [erl_mesos_utils:volume_resource_reservation(1024.0, "id_1", "path_1", 'RW',
-                                                 "*", "principal"),
+                                                 Role, "principal"),
      erl_mesos_utils:volume_resource_reservation(2048.0, "id_2", "path_2", 'RW',
-                                                 "*", "principal")].
+                                                 Role, "principal")].
 
 cpus_resources() ->
-    [erl_mesos_utils:scalar_resource("cpus", 0.1),
+    cpus_resources("*").
+cpus_resources(Role) ->
+    [ R#'Resource'{role=Role} || R <- [erl_mesos_utils:scalar_resource("cpus", 0.1),
      erl_mesos_utils:scalar_resource("cpus", 0.2),
-     erl_mesos_utils:scalar_resource("cpus", 0.3)].
+     erl_mesos_utils:scalar_resource("cpus", 0.3)]].
 
 mem_resources() ->
-    [erl_mesos_utils:scalar_resource("mem", 128.0),
+    mem_resources("*").
+mem_resources(Role) ->
+    [ R#'Resource'{role=Role} || R <- [erl_mesos_utils:scalar_resource("mem", 128.0),
      erl_mesos_utils:scalar_resource("mem", 256.0),
-     erl_mesos_utils:scalar_resource("mem", 512.0)].
+     erl_mesos_utils:scalar_resource("mem", 512.0)]].
 
 ports_resources() ->
-    [erl_mesos_utils:ranges_resource("ports", [{7, 9}]),
-     erl_mesos_utils:ranges_resource("ports", [{10, 12}, {13, 20}])].
+    ports_resources("*").
+ports_resources(Role) ->
+    [ R#'Resource'{role=Role} || R <- [erl_mesos_utils:ranges_resource("ports", [{7, 9}]),
+     erl_mesos_utils:ranges_resource("ports", [{10, 12}, {13, 20}])]].
 
 volume_resources() ->
-    [erl_mesos_utils:volume_resource(2048.0, "id_1", "path_1", 'RW'),
-     erl_mesos_utils:volume_resource(4096.0, "id_2", "path_2", 'RW')].
+    volume_resources("*").
+volume_resources(Role) ->
+    [ R#'Resource'{role=Role} || R <- [erl_mesos_utils:volume_resource(2048.0, "id_1", "path_1", 'RW'),
+     erl_mesos_utils:volume_resource(4096.0, "id_2", "path_2", 'RW')]].
 
 offer(OfferIdValue, Resources, Hostname, Attributes) ->
     Offer1 = offer(OfferIdValue, Resources),

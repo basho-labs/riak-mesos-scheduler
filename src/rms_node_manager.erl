@@ -274,18 +274,20 @@ apply_unreserved_offer(NodeKey, OfferHelper) ->
                         rms_offer_helper:apply_unreserved_resources(
                           ?CPUS_PER_EXECUTOR, ?MEM_PER_EXECUTOR, undefined,
                           NodeNumPorts, OfferHelper),
-                    %% Reserve resources.
-                    OfferHelper2 =
-                        rms_offer_helper:make_reservation(NodeCpus, NodeMem,
-                                                          NodeDisk, undefined,
-                                                          Role, Principal,
-                                                          OfferHelper1),
+                    %% %% Reserve resources.                    
+                    %% OfferHelper2 =
+                    %%     case 
+                    %%     rms_offer_helper:make_reservation(NodeCpus, NodeMem,
+                    %%                                       NodeDisk, undefined,
+                    %%                                       Role, Principal,
+                    %%                                       OfferHelper1),
+                    
                     %% Make volume.
                     OfferHelper3 =
                         rms_offer_helper:make_volume(NodeDisk, Role, Principal,
                                                      PersistenceId,
                                                      ContainerPath,
-                                                     OfferHelper2),
+                                                     OfferHelper1),
 
                     Attributes =
                         rms_offer_helper:get_attributes(OfferHelper3),

@@ -234,7 +234,8 @@ apply_offer(OfferHelper) ->
             OfferHelper3 = apply_offer(NodeKeys, OfferHelper2),
             case rms_offer_helper:should_unreserve_resources(OfferHelper3) of
                 true ->
-                    unreserve_volumes(unreserve_resources(OfferHelper3));
+                    %% unreserve_volumes(unreserve_resources(OfferHelper3));
+                    unreserve_volumes(OfferHelper3);
                 false ->
                     OfferHelper3
             end
@@ -370,21 +371,21 @@ apply_reserved_offer(NodeKey, NodeKeys, OfferHelper) ->
             apply_offer(NodeKeys, OfferHelper)
     end.
 
--spec unreserve_resources(rms_offer_helper:offer_helper()) ->
-    rms_offer_helper:offer_helper().
-unreserve_resources(OfferHelper) ->
-    case rms_offer_helper:has_reservations(OfferHelper) of
-        true ->
-            lager:info("Offer has reserved resources, but no nodes can use it. "
-                       "Unreserve resources. "
-                       "Offer id: ~s. "
-                       "Resources: ~p.",
-                       [rms_offer_helper:get_offer_id_value(OfferHelper),
-                        rms_offer_helper:resources_to_list(OfferHelper)]),
-            rms_offer_helper:unreserve_resources(OfferHelper);
-        false ->
-            OfferHelper
-    end.
+%% -spec unreserve_resources(rms_offer_helper:offer_helper()) ->
+%%     rms_offer_helper:offer_helper().
+%% unreserve_resources(OfferHelper) ->
+%%     case rms_offer_helper:has_reservations(OfferHelper) of
+%%         true ->
+%%             lager:info("Offer has reserved resources, but no nodes can use it. "
+%%                        "Unreserve resources. "
+%%                        "Offer id: ~s. "
+%%                        "Resources: ~p.",
+%%                        [rms_offer_helper:get_offer_id_value(OfferHelper),
+%%                         rms_offer_helper:resources_to_list(OfferHelper)]),
+%%             rms_offer_helper:unreserve_resources(OfferHelper);
+%%         false ->
+%%             OfferHelper
+%%     end.
 
 -spec unreserve_volumes(rms_offer_helper:offer_helper()) ->
     rms_offer_helper:offer_helper().
