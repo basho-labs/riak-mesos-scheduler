@@ -1,19 +1,26 @@
 REPO            ?= riak-mesos-scheduler
 RELDIR          ?= riak_mesos_scheduler
 GIT_REF         ?= $(shell git describe --all)
-GIT_TAG_VERSION ?= $(shell git describe --tags)
-PKG_VERSION	    ?= $(shell git describe --tags --abbrev=0 | tr - .)
+GIT_TAG_ISH     ?= $(shell git describe --tags)
+PKG_VERSION	    ?= $(GIT_TAG_ISH)
 MAJOR           ?= $(shell echo $(PKG_VERSION) | cut -d'.' -f1)
 MINOR           ?= $(shell echo $(PKG_VERSION) | cut -d'.' -f2)
-OS_FAMILY          ?= ubuntu
-OS_VERSION       ?= 14.04
-mesos           ?= 0.28
+OS_FAMILY       ?= ubuntu
+OS_VERSION      ?= 14.04
+mesos           ?= 0.28.1
 PKGNAME         ?= $(RELDIR)-$(PKG_VERSION)-mesos-$(mesos)-$(OS_FAMILY)-$(OS_VERSION).tar.gz
 OAUTH_TOKEN     ?= $(shell cat oauth.txt)
 GIT_TAG   	    ?= $(shell git describe --tags --abbrev=0)
 RELEASE_ID      ?= $(shell curl -sS https://api.github.com/repos/basho-labs/$(REPO)/releases/tags/$(GIT_TAG)?access_token=$(OAUTH_TOKEN) | python -c 'import sys, json; print json.load(sys.stdin)["id"]')
 DEPLOY_BASE     ?= "https://uploads.github.com/repos/basho-labs/$(REPO)/releases/$(RELEASE_ID)/assets?access_token=$(OAUTH_TOKEN)&name=$(PKGNAME)"
 DOWNLOAD_BASE   ?= https://github.com/basho-labs/$(REPO)/releases/download/$(GIT_TAG)/$(PKGNAME)
+
+ifeq ($(GIT_TAG_ISH),$(GIT_TAG))
+# If these 2 are identical, there have been no commits since the last tag
+BUILDING_EXACT_TAG = yes
+else
+BUILDING_EXACT_TAG = no
+endif
 
 BASE_DIR         = $(shell pwd)
 ERLANG_BIN       = $(shell dirname $(shell which erl))
@@ -77,7 +84,7 @@ retarball: rel
 	echo "Creating packages/"$(PKGNAME)
 	mkdir -p packages
 	echo "$(GIT_REF)" > rel/version
-	echo "$(GIT_TAG_VERSION)" >> rel/version
+	echo "$(GIT_TAG_ISH)" >> rel/version
 	tar -C rel -czf $(PKGNAME) version $(RELDIR)/
 	rm rel/version
 	mv $(PKGNAME) packages/
@@ -85,14 +92,28 @@ retarball: rel
 	cd packages && echo "$(DOWNLOAD_BASE)" > remote.txt
 	cd packages && echo "$(BASE_DIR)/packages/$(PKGNAME)" > local.txt
 
+prball: GIT_SHA = $(shell git log -1 --format='%h')
+prball: PR_COMMIT_COUNT = $(shell git log --oneline master.. | wc -l)
+prball: PKG_VERSION = PR-$(PULL_REQ)-$(PR_COMMIT_COUNT)-$(GIT_SHA)
+prball: PKGNAME = $(RELDIR)-$(PKG_VERSION)-mesos-$(mesos)-$(OS_FAMILY)-$(OS_VERSION).tar.gz
+prball: retarball
+
 sync-test:
-	echo $(RELEASE_ID)
+ifeq (yes,$(BUILDING_EXACT_TAG))
+	@echo $(RELEASE_ID)
+else
+	@echo "Refusing to upload: not an exact tag: "$(GIT_TAG_ISH)
+endif
 
 sync:
-	echo "Uploading to "$(DOWNLOAD_BASE)
+ifeq (yes,$(BUILDING_EXACT_TAG))
+	@echo "Uploading to "$(DOWNLOAD_BASE)
 	@cd packages && \
 		curl -sS -XPOST -H 'Content-Type: application/gzip' $(DEPLOY_BASE) --data-binary @$(PKGNAME) && \
 		curl -sS -XPOST -H 'Content-Type: application/octet-stream' $(DEPLOY_BASE).sha --data-binary @$(PKGNAME).sha
+else
+	@echo "Refusing to upload: not an exact tag: "$(GIT_TAG_ISH)
+endif
 
 ASSET_ID        ?= $(shell curl -sS https://api.github.com/repos/basho-labs/$(REPO)/releases/$(RELEASE_ID)/assets?access_token=$(OAUTH_TOKEN) | python -c 'import sys, json; print "".join([str(asset["id"]) if asset["name"] == "$(PKGNAME)" else "" for asset in json.load(sys.stdin)])')
 ASSET_SHA_ID    ?= $(shell curl -sS https://api.github.com/repos/basho-labs/$(REPO)/releases/$(RELEASE_ID)/assets?access_token=$(OAUTH_TOKEN) | python -c 'import sys, json; print "".join([str(asset["id"]) if asset["name"] == "$(PKGNAME).sha" else "" for asset in json.load(sys.stdin)])')

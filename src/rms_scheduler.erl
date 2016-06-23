@@ -419,16 +419,15 @@ may_be_delete_scheduler(_Message) ->
     {ok, state()} | {stop, state()}.
 shutdown_executors(_, [], State) ->
     {ok, State};
-shutdown_executors(SchedulerInfo, [{NodeKey, AgentIdValue}|Rest], State) ->
+shutdown_executors(SchedulerInfo, [{ExecutorValue, AgentIdValue}|Rest], State) ->
     AgentId = erl_mesos_utils:agent_id(AgentIdValue),
-    ExecutorId = erl_mesos_utils:executor_id(NodeKey),
-    _TaskId = erl_mesos_utils:task_id(NodeKey),
-    lager:info("Finishing ~p.", [NodeKey]),
+    ExecutorId = erl_mesos_utils:executor_id(ExecutorValue),
+    lager:info("Finishing ~p.", [ExecutorValue]),
     case call(message, 
               [SchedulerInfo, AgentId, 
                ExecutorId, <<"finish">>], State) of
         {ok, S1} ->
-            lager:info("Told ~p to finish.", [NodeKey]),
+            lager:info("Told ~p to finish.", [ExecutorValue]),
             shutdown_executors(SchedulerInfo, Rest, S1);
         R -> 
             lager:info("Error telling node to finish: ~p.", [R]),

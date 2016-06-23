@@ -59,7 +59,7 @@ init([]) ->
     FrameworkHostname = rms_config:framework_hostname(),
     FrameworkPrincipal = rms_config:get_value(principal, "riak", string),
     FrameworkFailoverTimeout =
-        rms_config:get_value(failover_timeout, 10000.0, float),
+        rms_config:get_value(failover_timeout, 10000.0, number),
     FrameworkWebUIURL = rms_config:webui_url(),
     Constraints = rms_config:constraints(),
 
@@ -67,12 +67,12 @@ init([]) ->
     _FrameworkAuthProvider = rms_config:get_value(provider, "", string),
     _FrameworkAuthSecret = rms_config:get_value(secret_file, "", string),
 
-    NodeCpus = rms_config:get_value(node_cpus, 0.5, float),
-    NodeMem = rms_config:get_value(node_mem, 1024.0, float),
-    NodeDisk = rms_config:get_value(node_disk, 4000.0, float),
+    NodeCpus = rms_config:get_value(node_cpus, 0.5, number),
+    NodeMem = rms_config:get_value(node_mem, 1024.0, number),
+    NodeDisk = rms_config:get_value(node_disk, 4000.0, number),
 
-    ExecutorCpus = rms_config:get_value(executor_cpus, 0.1, float),
-    ExecutorMem = rms_config:get_value(executor_mem, 512.0, float),
+    ExecutorCpus = rms_config:get_value(executor_cpus, 0.1, number),
+    ExecutorMem = rms_config:get_value(executor_mem, 512.0, number),
 
     ArtifactUrls = rms_config:artifact_urls(),
 

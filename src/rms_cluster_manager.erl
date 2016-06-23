@@ -191,7 +191,8 @@ executors_to_shutdown([NodeKey|Rest], Accum) ->
   case rms_node_manager:node_can_be_shutdown(NodeKey) of
       {ok, true} ->
           {ok, AgentIdValue} = rms_node_manager:get_node_agent_id_value(NodeKey),
-          executors_to_shutdown(Rest, [{NodeKey, AgentIdValue}|Accum]);
+          {ok, ExecutorIdValue} = rms_node_manager:get_node_executor_id_value(NodeKey),
+          executors_to_shutdown(Rest, [{ExecutorIdValue, AgentIdValue}|Accum]);
       {ok, false} ->
           executors_to_shutdown(Rest, Accum)
   end.

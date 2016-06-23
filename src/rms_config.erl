@@ -121,6 +121,12 @@ get_value(Key, Default, Type) ->
 %% Internal functions.
 
 -spec convert_value(term(), atom()) -> term().
+convert_value(Value, number) when is_list(Value) ->
+    try
+        list_to_float(Value)
+    catch 
+        error:badarg -> list_to_integer(Value)
+    end;
 convert_value(Value, integer) when is_list(Value) ->
     list_to_integer(Value);
 convert_value(Value, float) when is_list(Value) ->
