@@ -86,7 +86,7 @@ framework_hostname() ->
 webui_url() ->
     Hostname = framework_hostname(),
     Port = rms_config:get_value(port, 9090, integer),
-    "http://" ++ Hostname ++ ":" ++ integer_to_list(Port).
+    "http://" ++ Hostname ++ ":" ++ integer_to_list(Port) ++ "/".
 
 -spec artifact_urls() -> [string()].
 artifact_urls() ->
