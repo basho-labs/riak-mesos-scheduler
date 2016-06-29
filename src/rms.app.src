@@ -1,6 +1,6 @@
 {application, rms,
     [{description, "Riak Mesos Scheduler"},
-     {vsn, "0.0.1"},
+     {vsn, git},
      {registered, []},
      {modules, []},
      {applications, [kernel,
