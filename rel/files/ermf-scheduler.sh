@@ -44,7 +44,7 @@ main() {
     rm -rf riak_mesos_executor
 
     echo "Starting riak_mesos_scheduler..."
-    riak_mesos_scheduler/bin/riak_mesos_scheduler console -noinput
+    riak_mesos_scheduler/bin/riak_mesos_scheduler -noinput
 }
 
 main "$@"
