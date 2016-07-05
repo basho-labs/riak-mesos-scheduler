@@ -36,7 +36,7 @@ else
 SHASUM = shasum -a 256
 endif
 
-.PHONY: all compile recompile deps cleantest test rel clean relclean stage tarball
+.PHONY: all compile recompile deps cleantest test rel relx clean relclean stage tarball
 
 all: compile
 compile: deps
@@ -81,7 +81,9 @@ stage: rel
 ## Packaging targets
 ##
 #tarball: clean-deps retarball
-tarball: rel
+newtarball: relclean retarball
+tarball: rel retarball
+retarball: relx
 	echo "Creating packages/"$(PKGNAME)
 	mkdir -p packages
 	echo "$(GIT_REF)" > _rel/version
