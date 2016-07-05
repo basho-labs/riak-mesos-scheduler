@@ -3,13 +3,21 @@
      {vsn, git},
      {registered, []},
      {modules, []},
-     {applications, [kernel,
-                     stdlib,
-                     inets,
-                     crypto,
-                     lager,
-                     erlzk,
-                     webmachine,
-                     erl_mesos]},
+     {included_applications,
+      [
+       riak_explorer
+      ]},
+     {applications,
+      [
+       kernel,
+       stdlib,
+       inets,
+       crypto,
+       lager,
+       uuid,
+       erlzk,
+       webmachine,
+       erl_mesos
+      ]},
      {mod, {rms, []}},
      {env, []}]}.
