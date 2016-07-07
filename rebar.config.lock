@@ -96,6 +96,6 @@
                   "7222ecaebceb5422e74a9c1503043bbc6036f6b7"}},
        {riak_explorer,".*",
                       {git,"git://github.com/basho-labs/riak_explorer",
-                           "fb0a9d9e88e0e49077d24a4770630624d13ddb5e"}}]}.
+                           "bb224dd9f1c0bdbc2f2d54049037da87801ce9c7"}}]}.
 {plugins,[rebar_lock_deps_plugin]}.
 
