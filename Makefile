@@ -1,6 +1,5 @@
 REPO            ?= riak-mesos-scheduler
 RELDIR          ?= riak_mesos_scheduler
-GIT_REF         ?= $(shell git describe --all)
 GIT_TAG_ISH     ?= $(shell git describe --tags)
 PKG_VERSION	    ?= $(GIT_TAG_ISH)
 MAJOR           ?= $(shell echo $(PKG_VERSION) | cut -d'.' -f1)
@@ -36,7 +35,7 @@ else
 SHASUM = shasum -a 256
 endif
 
-.PHONY: all compile recompile deps cleantest test rel clean relclean stage tarball
+.PHONY: all compile recompile deps cleantest test rel relx clean relclean stage tarball
 
 all: compile
 compile: deps
@@ -66,10 +65,11 @@ test-case: cleantest recompile
 	$(REBAR) skip_deps=true ct suites=$(PWD)/test/$(CT_SUITE) cases=$(CT_CASE)
 test-suite: cleantest recompile
 	$(REBAR) skip_deps=true ct suites=$(PWD)/test/$(CT_SUITE)
-rel: relclean compile
-	$(REBAR) skip_deps=true generate $(OVERLAY_VARS)
+rel: relclean compile relx
+relx:
+	./relx release
 relclean:
-	-rm -rf rel/riak_mesos_scheduler
+	-rm -rf _rel/riak_mesos_scheduler
 distclean: clean
 	$(REBAR) delete-deps
 stage: rel
@@ -79,14 +79,13 @@ stage: rel
 ##
 ## Packaging targets
 ##
-tarball: clean-deps retarball
-retarball: rel
+#tarball: clean-deps retarball
+newtarball: relclean retarball
+tarball: rel retarball
+retarball: relx
 	echo "Creating packages/"$(PKGNAME)
 	mkdir -p packages
-	echo "$(GIT_REF)" > rel/version
-	echo "$(GIT_TAG_ISH)" >> rel/version
-	tar -C rel -czf $(PKGNAME) version $(RELDIR)/
-	rm rel/version
+	tar -C _rel -czf $(PKGNAME) $(RELDIR)/
 	mv $(PKGNAME) packages/
 	cd packages && $(SHASUM) $(PKGNAME) > $(PKGNAME).sha
 	cd packages && echo "$(DOWNLOAD_BASE)" > remote.txt
@@ -96,7 +95,7 @@ prball: GIT_SHA = $(shell git log -1 --format='%h')
 prball: PR_COMMIT_COUNT = $(shell git log --oneline master.. | wc -l)
 prball: PKG_VERSION = PR-$(PULL_REQ)-$(PR_COMMIT_COUNT)-$(GIT_SHA)
 prball: PKGNAME = $(RELDIR)-$(PKG_VERSION)-mesos-$(mesos)-$(OS_FAMILY)-$(OS_VERSION).tar.gz
-prball: retarball
+prball: tarball
 
 sync-test:
 ifeq (yes,$(BUILDING_EXACT_TAG))
