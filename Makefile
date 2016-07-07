@@ -1,6 +1,5 @@
 REPO            ?= riak-mesos-scheduler
 RELDIR          ?= riak_mesos_scheduler
-GIT_REF         ?= $(shell git describe --all)
 GIT_TAG_ISH     ?= $(shell git describe --tags)
 PKG_VERSION	    ?= $(GIT_TAG_ISH)
 MAJOR           ?= $(shell echo $(PKG_VERSION) | cut -d'.' -f1)
@@ -86,10 +85,7 @@ tarball: rel retarball
 retarball: relx
 	echo "Creating packages/"$(PKGNAME)
 	mkdir -p packages
-	echo "$(GIT_REF)" > _rel/version
-	echo "$(GIT_TAG_ISH)" >> _rel/version
-	tar -C _rel -czf $(PKGNAME) version $(RELDIR)/
-	rm _rel/version
+	tar -C _rel -czf $(PKGNAME) $(RELDIR)/
 	mv $(PKGNAME) packages/
 	cd packages && $(SHASUM) $(PKGNAME) > $(PKGNAME).sha
 	cd packages && echo "$(DOWNLOAD_BASE)" > remote.txt
