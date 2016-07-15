@@ -29,7 +29,7 @@
          set_riak_config/2,
          set_advanced_config/2,
          maybe_join/2,
-         leave/2,
+         leave/3,
          destroy/1,
          add_node/1,
          commence_restart/1,
@@ -101,9 +101,9 @@ get_field_value(Field, Key) ->
             {error, Reason}
     end.
 
--spec leave(pid(), rms_node:key()) -> ok | {error, term()}.
-leave(Pid, NodeKey) ->
-    gen_fsm:send_all_state_event(Pid, {leave, NodeKey}).
+-spec leave(pid(), rms_node:key(), list(rms_node:key())) -> ok | {error, term()}.
+leave(Pid, NodeKey, NodeKeys) ->
+    gen_fsm:send_all_state_event(Pid, {leave, NodeKey, NodeKeys}).
 
 -spec set_riak_config(pid(), binary()) -> ok | {error, term()}.
 set_riak_config(Pid, RiakConfig) ->
@@ -269,16 +269,14 @@ shutdown(_Event, _From, Cluster) ->
 %%% gen_fsm callbacks
 -spec handle_event(event(), StateName :: atom(), cluster_state()) ->
                           state_cb_return().
-handle_event({leave, NodeKey}, StateName,
-                  #cluster{key=Key} = Cluster) ->
-    NodeKeys = rms_node_manager:get_running_node_keys(Key),
+handle_event({leave, NodeKey, NodeKeys}, StateName,
+                  #cluster{} = Cluster) ->
     case do_leave(NodeKey, NodeKeys) of
-        ok ->
-            {next_state, StateName, Cluster};
+        ok -> ok;
         {error, Reason} ->
-            lager:error("Node ~s failed to leave cluster: ~p", [NodeKey, Reason]),
-            {next_state, StateName, Cluster}
-    end;
+            lager:error("Node ~s failed to leave cluster: ~p", [NodeKey, Reason])
+    end,
+    {next_state, StateName, Cluster};
 handle_event(_Event, StateName, State) ->
     {next_state, StateName, State}.
 

@@ -208,11 +208,18 @@ maybe_join(Key, NodeKey) ->
 
 -spec leave(rms_cluster:key(), rms_node:key()) -> ok | {error, term()}.
 leave(Key, NodeKey) ->
-    case get_cluster_pid(Key) of
-        {ok, Pid} ->
-            rms_cluster:leave(Pid, NodeKey);
-        {error, Reason} ->
-            {error, Reason}
+    case rms_node_manager:get_node_keys(Key) of
+        %% If this is the only node in the cluster, there's no point
+        %% talking to riak-explorer: just signal that there are no other
+        %% nodes to leave from
+        [NodeKey] -> {error, no_suitable_nodes};
+        NodeKeys ->
+            case get_cluster_pid(Key) of
+                {ok, Pid} ->
+                    rms_cluster:leave(Pid, NodeKey, NodeKeys);
+                {error, Reason} ->
+                    {error, Reason}
+            end
     end.
 
 -spec handle_status_update(rms_cluster:key(), rms_node:key(), atom(), atom()) ->
