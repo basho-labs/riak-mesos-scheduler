@@ -483,6 +483,10 @@ leaving(can_be_shutdown, _From, Node) ->
     {reply, {ok, false}, leaving, Node};
 leaving(can_be_scheduled, _From, Node) ->
     {reply, {ok, false}, leaving, Node};
+leaving({destroy, false}, _From, Node) ->
+    {reply, ok, leaving, Node};
+leaving({destroy, true}, _From, Node) ->
+    update_and_reply({leaving, Node}, {shutting_down, Node});
 leaving(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, leaving, Node}.
 
