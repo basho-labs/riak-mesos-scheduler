@@ -599,16 +599,13 @@ delete_reply_stop({State, #node{key = Key} = Node}, Reply, Reason) ->
     end.
 
 leave(State, #node{cluster_key = Cluster, key = Key} = Node, Timeout) ->
-    Node1 = Node#node{hostname = "",
-                      agent_id_value = "",
-                      persistence_id = ""},
     case rms_cluster_manager:leave(Cluster, Key) of
         ok ->
             lager:info("~p left cluster ~p successfully.", [Key, Cluster]),
-            update_and_reply({State, Node}, {leaving, Node1}, Timeout);
+            update_and_reply({State, Node}, {leaving, Node}, Timeout);
         {error, no_suitable_nodes} ->
             lager:info("~p was unable to leave cluster ~p because no nodes were available to leave from.", [Key, Cluster]),
-            update_and_reply({State, Node}, {shutting_down, Node1}, Timeout);
+            update_and_reply({State, Node}, {shutting_down, Node}, Timeout);
         {error, Reason} ->
             lager:warning("~p was unable to leave cluster ~p because ~p.", [Key, Cluster, Reason]),
             {reply, {error, Reason}, State, Node}
