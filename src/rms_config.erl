@@ -45,7 +45,15 @@ master_hosts() ->
 
 -spec constraints() -> rms_offer_helper:constraints().
 constraints() ->
-    ConstraintsStr = get_value(constraints, ?DEFAULT_CONSTRAINTS, string),
+    ConstraintsRaw = get_value(constraints, ?DEFAULT_CONSTRAINTS),
+    %% constraints might be double-string-encoded
+    ConstraintsStr =
+        case re:run(ConstraintsRaw, "\\\\") of
+            nomatch -> % plain JSON-as-a-string
+                convert_value(ConstraintsRaw, binary);
+            {match, _}-> % double-string encoded: unencode once
+                mochijson2:decode(convert_value(ConstraintsRaw, string))
+        end,
     ConstraintsBin = case mochijson2:decode(ConstraintsStr) of
         [] -> [];
         [[]] -> [];
