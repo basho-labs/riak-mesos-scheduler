@@ -48,10 +48,10 @@ constraints() ->
     ConstraintsRaw = get_value(constraints, ?DEFAULT_CONSTRAINTS),
     %% constraints might be double-string-encoded
     ConstraintsStr =
-        case re:run(ConstraintsRaw, "\\\\") of
+        case re:run(ConstraintsRaw, "&quot;") of
             nomatch -> % plain JSON-as-a-string
                 convert_value(ConstraintsRaw, string);
-            {match, _}-> % double-string encoded: unencode once
+            {match, _}-> % html-encoded string
                 convert_value(ConstraintsRaw, html_string)
         end,
     ConstraintsBin = case mochijson2:decode(ConstraintsStr) of
