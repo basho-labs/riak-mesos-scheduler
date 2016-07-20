@@ -145,6 +145,8 @@ convert_value(Value, atom) when is_list(Value) ->
     list_to_atom(Value);
 convert_value(Value, binary) when is_list(Value) ->
     list_to_binary(Value);
+convert_value(Value, html_string) when is_binary(Value) ->
+    unescape_html(binary_to_list(Value));
 convert_value(Value, html_string) when is_list(Value) ->
     unescape_html(Value);
 convert_value(Value, _Type) ->
