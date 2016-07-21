@@ -48,11 +48,13 @@ constraints() ->
     ConstraintsRaw = get_value(constraints, ?DEFAULT_CONSTRAINTS),
     %% constraints might be double-string-encoded
     ConstraintsStr =
-        case re:run(ConstraintsRaw, "&quot;") of
-            nomatch -> % plain JSON-as-a-string
+        case {re:run(ConstraintsRaw, "\\\\"), re:run(ConstraintsRaw, "&quot;")} of
+            {nomatch, nomatch} -> % plain JSON-as-a-string "[[ \"hostname\", \"UNIQUE\" ]]"
                 convert_value(ConstraintsRaw, string);
-            {match, _}-> % html-encoded string
-                convert_value(ConstraintsRaw, html_string)
+            {nomatch, {match, _}} -> % plain JSON as an html-encoded string e.g. "[[&quot;hostname&quot;, &quot;UNIQUE&quot;]]"
+                convert_value(ConstraintsRaw, html_string);
+            {{match, _}, nomatch} -> % double-encoded string e.g. "\"[[\\\"hostname\\\", \\\"UNIQUE\\\"]]\""
+                mochijson2:decode(convert_value(ConstraintsRaw, string))
         end,
     ConstraintsBin = case mochijson2:decode(ConstraintsStr) of
         [] -> [];
