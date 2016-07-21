@@ -48,10 +48,12 @@ constraints() ->
     ConstraintsRaw = get_value(constraints, ?DEFAULT_CONSTRAINTS),
     %% constraints might be double-string-encoded
     ConstraintsStr =
-        case re:run(ConstraintsRaw, "\\\\") of
-            nomatch -> % plain JSON-as-a-string
-                convert_value(ConstraintsRaw, binary);
-            {match, _}-> % double-string encoded: unencode once
+        case {re:run(ConstraintsRaw, "\\\\"), re:run(ConstraintsRaw, "&quot;")} of
+            {nomatch, nomatch} -> % plain JSON-as-a-string "[[ \"hostname\", \"UNIQUE\" ]]"
+                convert_value(ConstraintsRaw, string);
+            {nomatch, {match, _}} -> % plain JSON as an html-encoded string e.g. "[[&quot;hostname&quot;, &quot;UNIQUE&quot;]]"
+                convert_value(ConstraintsRaw, html_string);
+            {{match, _}, nomatch} -> % double-encoded string e.g. "\"[[\\\"hostname\\\", \\\"UNIQUE\\\"]]\""
                 mochijson2:decode(convert_value(ConstraintsRaw, string))
         end,
     ConstraintsBin = case mochijson2:decode(ConstraintsStr) of
@@ -145,8 +147,20 @@ convert_value(Value, atom) when is_list(Value) ->
     list_to_atom(Value);
 convert_value(Value, binary) when is_list(Value) ->
     list_to_binary(Value);
+convert_value(Value, html_string) when is_binary(Value) ->
+    unescape_html(binary_to_list(Value));
+convert_value(Value, html_string) when is_list(Value) ->
+    unescape_html(Value);
 convert_value(Value, _Type) ->
     Value.
+
+-spec unescape_html(string()) -> string().
+unescape_html([]) -> [];
+unescape_html("&quot;"++Rest) -> "\"" ++ unescape_html(Rest);
+unescape_html("&lt;" ++ Rest) -> "<" ++ unescape_html(Rest);
+unescape_html("&gt;" ++ Rest) -> ">" ++ unescape_html(Rest);
+unescape_html("&amp;"++ Rest) -> "&" ++ unescape_html(Rest);
+unescape_html([C | Rest]) -> [ C | unescape_html(Rest) ].
 
 -spec get_env_value(atom()) -> string() | false.
 get_env_value(Key) ->
