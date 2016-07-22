@@ -132,17 +132,15 @@ can_fit_constraints(#offer_helper{
     can_fit_constraints(Constraints, NodeHostnames, NodeAttributes, OfferHelper).
 
 -spec can_fit_constraints(constraints(), hostnames(), attributes_group(), 
-                          offer_helper()) -> boolean().
+                          offer_helper()) -> ok | {error, Reason :: term()}.
 can_fit_constraints([], _, _, _) ->
-    true;
+    ok;
 can_fit_constraints([["hostname"|Constraint]|Rest], NodeHosts, NodeAttributes, 
                     OfferHelper) ->
     OfferHostname = get_hostname(OfferHelper),
-    case can_fit_constraint(Constraint, OfferHostname, NodeHosts) of
-        true ->
-            can_fit_constraints(Rest, NodeHosts, NodeAttributes, OfferHelper);
-        false -> 
-            false
+    case fit_constraint(Constraint, OfferHostname, NodeHosts) of
+        ok -> can_fit_constraints(Rest, NodeHosts, NodeAttributes, OfferHelper);
+        {error, Constraint} -> {error, ["hostname" | Constraint]}
     end;
 can_fit_constraints([[Name|Constraint]|Rest], NodeHosts, NodeAttributes, OfferHelper) ->
     Attributes = get_attributes(OfferHelper),
@@ -151,11 +149,9 @@ can_fit_constraints([[Name|Constraint]|Rest], NodeHosts, NodeAttributes, OfferHe
            fun(X, Accum) -> 
                    [proplists:get_value(Name, X)|Accum]
            end, [], NodeAttributes),
-    case can_fit_constraint(Constraint, A, As) of
-        true ->
-            can_fit_constraints(Rest, NodeHosts, NodeAttributes, OfferHelper);
-        false -> 
-            false
+    case fit_constraint(Constraint, A, As) of
+        ok -> can_fit_constraints(Rest, NodeHosts, NodeAttributes, OfferHelper);
+        {error, Constraint} -> {error, [Name | Constraint]}
     end.
 
 -spec get_offer_id(offer_helper()|erl_mesos:'Offer'()) -> erl_mesos:'OfferID'().
@@ -794,6 +790,14 @@ attributes_to_list([#'Attribute'{
     attributes_to_list(Rest, [{Name, Value}|Accum]);
 attributes_to_list([_|Rest], Accum) ->
     attributes_to_list(Rest, Accum).
+
+-spec fit_constraint(constraint(), string(), [string()]) ->
+    ok | {error, constraint()}.
+fit_constraint(Constraint, V, Vs) ->
+    case can_fit_constraint(Constraint, V, Vs) of
+        true -> ok;
+        false -> {error, Constraint}
+    end.
 
 -spec can_fit_constraint(constraint(), string(), [string()]) -> boolean().
 can_fit_constraint(["UNIQUE"], V, Vs) -> 

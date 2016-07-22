@@ -270,101 +270,111 @@ apply_resources(_Config) ->
     AfterApplyPortsLength = length(AfterApplyPorts).
 
 can_fit_hostname_constraints(_Config) ->
-    false = test_hostname_constraint(
+    {error, ["hostname", "UNIQUE"]} =
+        test_hostname_constraint(
               [["hostname", "UNIQUE"]],
               "ubuntu1.local",
               ["ubuntu1.local"]),
-    true = test_hostname_constraint(
+    ok = test_hostname_constraint(
               [["hostname", "UNIQUE"]],
               "ubuntu2.local",
               ["ubuntu1.local"]),
-    true = test_hostname_constraint(
+    ok = test_hostname_constraint(
               [["hostname", "GROUP_BY"]],
               "ubuntu1.local",
               ["ubuntu1.local"]),
-    true = test_hostname_constraint(
+    ok = test_hostname_constraint(
               [["hostname", "GROUP_BY"]],
               "ubuntu2.local",
               ["ubuntu1.local"]),
-    false = test_hostname_constraint(
+    {error, ["hostname", "GROUP_BY", "2"]} =
+        test_hostname_constraint(
               [["hostname", "GROUP_BY", "2"]],
               "ubuntu1.local",
               ["ubuntu1.local"]),
-    true = test_hostname_constraint(
+    ok = test_hostname_constraint(
               [["hostname", "GROUP_BY", "1"]],
               "ubuntu2.local",
               ["ubuntu1.local"]),
-    true = test_hostname_constraint(
+    ok = test_hostname_constraint(
               [["hostname", "CLUSTER", "ubuntu1.local"]],
               "ubuntu1.local",
               ["ubuntu1.local"]),
-    false = test_hostname_constraint(
+    {error, ["hostname", "CLUSTER", "ubuntu1.local"]} =
+        test_hostname_constraint(
               [["hostname", "CLUSTER", "ubuntu1.local"]],
               "ubuntu2.local",
               ["ubuntu1.local"]),
-    false = test_hostname_constraint(
+    {error, ["hostname", "LIKE", "ubuntu[1-2].local"]} =
+        test_hostname_constraint(
               [["hostname", "LIKE", "ubuntu[1-2].local"]],
               "ubuntu3.local",
               ["ubuntu1.local"]),
-    true = test_hostname_constraint(
+    ok = test_hostname_constraint(
               [["hostname", "LIKE", "ubuntu[1-2].local"]],
               "ubuntu1.local",
               ["ubuntu1.local"]),
-    true = test_hostname_constraint(
+    ok = test_hostname_constraint(
               [["hostname", "UNLIKE", "ubuntu[1-2].local"]],
               "ubuntu3.local",
               ["ubuntu1.local"]),
-    false = test_hostname_constraint(
+    {error, ["hostname", "UNLIKE", "ubuntu[1-2].local"]} =
+        test_hostname_constraint(
               [["hostname", "UNLIKE", "ubuntu[1-2].local"]],
               "ubuntu1.local",
               ["ubuntu1.local"]).
 
 can_fit_attribute_constraints(_Config) ->
-    false = test_attribute_constraint(
+    {error, ["rack_id", "UNIQUE"]} =
+        test_attribute_constraint(
               [["rack_id", "UNIQUE"]],
               [{"rack_id", "1"}],
               [[{"rack_id", "1"}]]),
-    true = test_attribute_constraint(
+    ok = test_attribute_constraint(
               [["rack_id", "UNIQUE"]],
               [{"rack_id", "2"}],
               [[{"rack_id", "1"}]]),
-    true = test_attribute_constraint(
+    ok = test_attribute_constraint(
               [["rack_id", "GROUP_BY"]],
               [{"rack_id", "1"}],
               [[{"rack_id", "1"}]]),
-    true = test_attribute_constraint(
+    ok = test_attribute_constraint(
               [["rack_id", "GROUP_BY"]],
               [{"rack_id", "2"}],
               [[{"rack_id", "1"}]]),
-    false = test_attribute_constraint(
+    {error, ["rack_id", "GROUP_BY", "2"]} =
+        test_attribute_constraint(
               [["rack_id", "GROUP_BY", "2"]],
               [{"rack_id", "1"}],
               [[{"rack_id", "1"}]]),
-    true = test_attribute_constraint(
+    ok = test_attribute_constraint(
               [["rack_id", "GROUP_BY", "1"]],
               [{"rack_id", "1"}],
               [[{"rack_id", "1"}]]),
-    true = test_attribute_constraint(
+    ok = test_attribute_constraint(
               [["rack_id", "CLUSTER", "1"]],
               [{"rack_id", "1"}],
               [[{"rack_id", "1"}]]),
-    false = test_attribute_constraint(
+    {error, ["rack_id", "CLUSTER", "2"]} =
+        test_attribute_constraint(
               [["rack_id", "CLUSTER", "2"]],
               [{"rack_id", "1"}],
               [[{"rack_id", "1"}]]),
-    false = test_attribute_constraint(
+    {error, ["rack_id", "LIKE", "[1-2]"]} =
+        test_attribute_constraint(
               [["rack_id", "LIKE", "[1-2]"]],
               [{"rack_id", "3"}],
               [[{"rack_id", "1"}]]),
-    true = test_attribute_constraint(
+    ok = test_attribute_constraint(
               [["rack_id", "LIKE", "[1-2]"]],
               [{"rack_id", "1"}],
               [[{"rack_id", "1"}]]),
-    true = test_attribute_constraint(
+    ok = test_attribute_constraint(
               [["rack_id", "UNLIKE", "[1-2]"]],
               [{"rack_id", "3"}],
               [[{"rack_id", "1"}]]),
-    false = test_attribute_constraint(
+    {error, ["rack_id", "UNLIKE", "[1-2]"]} =
+        test_attribute_constraint(
               [["rack_id", "UNLIKE", "[1-2]"]],
               [{"rack_id", "1"}],
               [[{"rack_id", "1"}]]).

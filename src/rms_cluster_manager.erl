@@ -294,10 +294,11 @@ schedule_node(NodeKey, NodeKeys, OfferHelper) ->
         false ->
             %% New Node
             case rms_offer_helper:can_fit_constraints(OfferHelper) of
-                true ->
+                ok ->
                     apply_unreserved_offer(NodeKey, NodeKeys,
                                            OfferHelper);
-                false ->
+                {error, Reason} ->
+                    lager:warning("Node (~s) unscheduled, constraint violated: ~p", [NodeKey, Reason]),
                     apply_offer(NodeKeys, OfferHelper)
             end
     end.
