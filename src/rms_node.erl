@@ -343,7 +343,8 @@ requested(can_be_scheduled, _From, Node) ->
 requested(can_be_shutdown, _From, Node) ->
     {reply, {ok, false}, requested, Node};
 requested({destroy, _}, _From, Node) ->
-    update_and_reply({requested, Node}, {shutting_down, Node});
+% We can simply go away because nothing has happened yet
+    delete_reply_stop({requested, Node}, ok, normal);
 requested(_Event, _From, Node) ->
     {reply, {error, unhandled_event}, requested, Node}.
 
