@@ -31,6 +31,7 @@
          get_node_attributes/0,
          get_node_keys/0,
          get_unreconciled_node_keys/0,
+         get_unscheduled_node_keys/0,
          get_node_keys/1,
          get_node_keys/2,
          get_node_names/1,
@@ -83,6 +84,10 @@ get_node_keys() ->
 get_unreconciled_node_keys() ->
     [Key || Key <- get_node_keys(),
             true =:= node_needs_to_be_reconciled(Key)].
+
+-spec get_unscheduled_node_keys() -> [rms_node:key()].
+get_unscheduled_node_keys() ->
+    [Key || Key <- get_node_keys(), {ok, true} =:= node_can_be_scheduled(Key)].
 
 -spec get_node_keys(rms_cluster:key()) -> [rms_node:key()].
 get_node_keys(ClusterKey) ->
