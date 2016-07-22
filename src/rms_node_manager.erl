@@ -37,6 +37,7 @@
          get_active_node_keys/1,
          get_running_node_keys/1,
          get_node/1,
+         get_node_state/1,
          get_node_cluster_key/1,
          get_node_hostname/1,
          get_node_http_port/1,
@@ -117,6 +118,11 @@ get_running_node_keys(ClusterKey) ->
                       {ok, rms_metadata:node_state()} | {error, term()}.
 get_node(Key) ->
     rms_node:get(Key).
+
+-spec get_node_state(rms_node:key()) ->
+    {ok, rms_node:node_state()} | {error, term()}.
+get_node_state(Key) ->
+    rms_node:get_field_value(status, Key).
 
 -spec get_node_cluster_key(rms_node:key()) ->
                                   {ok, rms_cluster:key()} | {error, term()}.
