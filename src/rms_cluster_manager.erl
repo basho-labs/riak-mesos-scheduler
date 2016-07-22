@@ -353,7 +353,7 @@ apply_reserved_offer(NodeKey, NodeKeys, OfferHelper) ->
                                 ResourcesList]),
                     OfferHelper1;
                 {error, not_enough_resources} ->
-                    OfferHelper1 = 
+                    OfferHelper1 =
                         rms_offer_helper:set_sufficient_resources(false, OfferHelper),
                     lager:warning("Adding node for scheduling error. "
                                   "Node has persistence id. "

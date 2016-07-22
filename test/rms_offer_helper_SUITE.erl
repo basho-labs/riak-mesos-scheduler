@@ -440,11 +440,11 @@ test_hostname_constraint(Constraints, Hostname, NodeHosts) ->
                       ports_resources() ++
                       volume_resources(),
     rms_offer_helper:can_fit_constraints(
-            rms_offer_helper:set_constraints(Constraints, 
+            rms_offer_helper:set_constraints(Constraints,
             rms_offer_helper:set_node_hostnames(NodeHosts,
             rms_offer_helper:set_node_attributes([[]],
-            rms_offer_helper:new(offer("offer_1", OfferResources1, 
-              Hostname, 
+            rms_offer_helper:new(offer("offer_1", OfferResources1,
+              Hostname,
               []
             )))))).
 
@@ -454,10 +454,10 @@ test_attribute_constraint(Constraints, [{Attr,AttrVal}], NodeAttrs) ->
                       ports_resources() ++
                       volume_resources(),
     rms_offer_helper:can_fit_constraints(
-            rms_offer_helper:set_constraints(Constraints, 
+            rms_offer_helper:set_constraints(Constraints,
             rms_offer_helper:set_node_hostnames([],
             rms_offer_helper:set_node_attributes(NodeAttrs,
-            rms_offer_helper:new(offer("offer_1", OfferResources1, 
-              "ubuntu.local", 
+            rms_offer_helper:new(offer("offer_1", OfferResources1,
+              "ubuntu.local",
               [#'Attribute'{name=Attr,type='TEXT',scalar=#'Value.Text'{value=AttrVal}}]
             )))))).

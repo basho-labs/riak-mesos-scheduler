@@ -24,9 +24,9 @@
 -spec node_key_from_cluster(string()) -> {error, not_found} | string().
 node_key_from_cluster(ClusterKey) ->
     case rms_node_manager:get_running_node_keys(ClusterKey) of
-        [N|_] -> 
+        [N|_] ->
             N;
-        _ -> 
+        _ ->
             {error, not_found}
     end.
 
