@@ -201,7 +201,7 @@ get_reserved_resources(#offer_helper{reserved_resources = ReservedResources}) ->
 %% Returns true iff any reserved resource > 0
 -spec has_reserved_resources(offer_helper()) -> boolean().
 has_reserved_resources(OfferHelper) ->
-    Rsrcs = [ cpus, mem, disk, ports ],
+    Rsrcs = [ cpus, mem, disk, num_ports ],
     lists:sum([ get_reserved_resources(R, OfferHelper) || R <- Rsrcs ]) > 0.
 
 -spec get_reserved_resources(cpus | mem | disk | ports, offer_helper()) -> float() | [non_neg_integer()].
@@ -211,6 +211,8 @@ get_reserved_resources(mem, OfferHelper) ->
     get_reserved_resources_mem(OfferHelper);
 get_reserved_resources(disk, OfferHelper) ->
     get_reserved_resources_disk(OfferHelper);
+get_reserved_resources(num_ports, OfferHelper) ->
+    length(get_reserved_resources_ports(OfferHelper));
 get_reserved_resources(ports, OfferHelper) ->
     get_reserved_resources_ports(OfferHelper).
 
@@ -237,7 +239,7 @@ get_unreserved_resources(#offer_helper{unreserved_resources =
 
 -spec has_unreserved_resources(offer_helper()) -> boolean().
 has_unreserved_resources(OfferHelper) ->
-    Rsrcs = [ cpus, mem, disk, ports ],
+    Rsrcs = [ cpus, mem, disk, num_ports ],
     lists:sum([ get_unreserved_resources(R, OfferHelper) || R <- Rsrcs ]) > 0.
 
 -spec get_unreserved_resources(cpus | mem | disk | ports, offer_helper()) -> float() | [non_neg_integer()].
@@ -247,6 +249,8 @@ get_unreserved_resources(mem, OfferHelper) ->
     get_unreserved_resources_mem(OfferHelper);
 get_unreserved_resources(disk, OfferHelper) ->
     get_unreserved_resources_disk(OfferHelper);
+get_unreserved_resources(num_ports, OfferHelper) ->
+    length(get_unreserved_resources_ports(OfferHelper));
 get_unreserved_resources(ports, OfferHelper) ->
     get_unreserved_resources_ports(OfferHelper).
 
