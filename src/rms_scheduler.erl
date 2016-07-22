@@ -127,11 +127,11 @@ resource_offers(SchedulerInfo, #'Event.Offers'{offers = Offers}, State) ->
         {ok, State1} ->
             ExecsToShutdown = rms_cluster_manager:executors_to_shutdown(),
             case shutdown_executors(SchedulerInfo, ExecsToShutdown, State1) of
-                {ok, State2} -> 
+                {ok, State2} ->
                     %% Attempt to drain queue
                     exec_calls(State2);
                 Response2 -> Response2
-            end;            
+            end;
         Response1 ->
             Response1
     end.
@@ -151,9 +151,9 @@ offer_rescinded(_SchedulerInfo, #'Event.Rescind'{} = EventRescind, State) ->
 status_update(SchedulerInfo, #'Event.Update'{
                                  status=#'TaskStatus'{
                                            reason=Reason,
-                                           task_id=TaskId, 
-                                           agent_id=AgentId, 
-                                           state=NodeState, 
+                                           task_id=TaskId,
+                                           agent_id=AgentId,
+                                           state=NodeState,
                                            uuid=Uuid}} = EventUpdate, State)->
     lager:info("Scheduler received status update event. "
                "Update: ~p~n", [EventUpdate]),
@@ -169,8 +169,8 @@ status_update(SchedulerInfo, #'Event.Update'{
                     ok
             end
     end,
-    case Uuid of 
-        undefined -> 
+    case Uuid of
+        undefined ->
             {ok, State};
         _ ->
             call(acknowledge, [SchedulerInfo, AgentId, TaskId, Uuid], State)
@@ -353,7 +353,7 @@ exec_calls(#state{calls_queue = CallsQueue} = State) ->
             {ok, State1}
     end.
 
--spec apply_offers(erl_mesos_scheduler:scheduler_info(), [erl_mesos:'Offer'()], state()) -> 
+-spec apply_offers(erl_mesos_scheduler:scheduler_info(), [erl_mesos:'Offer'()], state()) ->
                           {ok, state()} | {stop, state()}.
 apply_offers(_, [], State) ->
     {ok, State};
@@ -368,7 +368,7 @@ apply_offers(SchedulerInfo, [Offer|Offers], #state{scheduler = #scheduler{option
             lager:info("Scheduler accept operations: ~p.", [Operations])
     end,
     case call(accept, [SchedulerInfo, [OfferId], Operations, Filters], State) of
-        {ok, State1} -> 
+        {ok, State1} ->
             apply_offers(SchedulerInfo, Offers, State1);
         _ -> {stop, State}
     end.
@@ -423,20 +423,20 @@ shutdown_executors(SchedulerInfo, [{ExecutorValue, AgentIdValue}|Rest], State) -
     AgentId = erl_mesos_utils:agent_id(AgentIdValue),
     ExecutorId = erl_mesos_utils:executor_id(ExecutorValue),
     lager:info("Finishing ~p.", [ExecutorValue]),
-    case call(message, 
-              [SchedulerInfo, AgentId, 
+    case call(message,
+              [SchedulerInfo, AgentId,
                ExecutorId, <<"finish">>], State) of
         {ok, S1} ->
             lager:info("Told ~p to finish.", [ExecutorValue]),
             shutdown_executors(SchedulerInfo, Rest, S1);
-        R -> 
+        R ->
             lager:info("Error telling node to finish: ~p.", [R]),
             R
     end.
 
 -spec handle_call_exec_error(atom(), [term()], term()) -> ok.
-handle_call_exec_error(message, [_, 
-                                 #'AgentID'{}, 
+handle_call_exec_error(message, [_,
+                                 #'AgentID'{},
                                  #'ExecutorID'{value = ExecutorId},
                                  <<"finish">>], closed=Reason) ->
     %% The node we're attempting to finish is no longer running

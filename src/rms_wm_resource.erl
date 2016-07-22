@@ -333,10 +333,10 @@ restart_node(RD) ->
 
 get_node_aae(ReqData) ->
     riak_explorer_command(ReqData, aae_status).
-     
+
 get_node_status(ReqData) ->
     riak_explorer_command(ReqData, status).
-     
+
 get_node_ringready(ReqData) ->
     riak_explorer_command(ReqData, ringready).
 
@@ -358,7 +358,7 @@ set_node_bucket_type(ReqData) ->
 
 healthcheck(ReqData) ->
     {[{success, true}], ReqData}.
-    
+
 %% wm callback functions.
 
 init(_) ->
