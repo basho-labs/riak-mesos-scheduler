@@ -208,7 +208,7 @@ maybe_join(Key, NodeKey) ->
 
 -spec leave(rms_cluster:key(), rms_node:key()) -> ok | {error, term()}.
 leave(Key, NodeKey) ->
-    case rms_node_manager:get_node_keys(Key) of
+    case rms_node_manager:get_node_keys(Key, started) of
         %% If this is the only node in the cluster, there's no point
         %% talking to riak-explorer: just signal that there are no other
         %% nodes to leave from
@@ -358,6 +358,7 @@ apply_reserved_offer(NodeKey, NodeKeys, OfferHelper) ->
                     lager:warning("Adding node for scheduling error. "
                                   "Node has persistence id. "
                                   "Offer did not have sufficient resources for this node. "
+                                  %% TODO Do we really need to try other nodes? Do we not guarantee that all nodes in all our clusters require the same resources?
                                   "Trying other nodes. "
                                   "Node key: ~s. "
                                   "Persistence id: ~s. "
