@@ -14,11 +14,13 @@
          get_constraints/1,
          get_persistence_ids/1,
          get_reserved_resources/1,
+         get_reserved_resources/2,
          get_reserved_resources_cpus/1,
          get_reserved_resources_mem/1,
          get_reserved_resources_disk/1,
          get_reserved_resources_ports/1,
          get_unreserved_resources/1,
+         get_unreserved_resources/2,
          get_unreserved_resources_cpus/1,
          get_unreserved_resources_mem/1,
          get_unreserved_resources_disk/1,
@@ -44,8 +46,8 @@
          get_reserved_applied_resources/1,
          get_unreserved_applied_resources/1,
          clean_applied_resources/1,
-         can_fit_reserved/5,
-         can_fit_unreserved/5,
+         unfit_for_reserved/2,
+         unfit_for_unreserved/2,
          has_persistence_id/2,
          has_tasks_to_launch/1,
          set_sufficient_resources/2,
@@ -194,6 +196,16 @@ get_persistence_ids(#offer_helper{persistence_ids = PersistenceIds}) ->
 get_reserved_resources(#offer_helper{reserved_resources = ReservedResources}) ->
     ReservedResources.
 
+-spec get_reserved_resources(cpus | mem | disk | ports, offer_helper()) -> float() | [non_neg_integer()].
+get_reserved_resources(cpus, OfferHelper) ->
+    get_reserved_resources_cpus(OfferHelper);
+get_reserved_resources(mem, OfferHelper) ->
+    get_reserved_resources_mem(OfferHelper);
+get_reserved_resources(disk, OfferHelper) ->
+    get_reserved_resources_disk(OfferHelper);
+get_reserved_resources(ports, OfferHelper) ->
+    get_reserved_resources_ports(OfferHelper).
+
 -spec get_reserved_resources_cpus(offer_helper()) -> float().
 get_reserved_resources_cpus(OfferHelper) ->
     erl_mesos_utils:resources_cpus(get_reserved_resources(OfferHelper)).
@@ -214,6 +226,16 @@ get_reserved_resources_ports(OfferHelper) ->
 get_unreserved_resources(#offer_helper{unreserved_resources =
                                        UnreservedResources}) ->
     UnreservedResources.
+
+-spec get_unreserved_resources(cpus | mem | disk | ports, offer_helper()) -> float() | [non_neg_integer()].
+get_unreserved_resources(cpus, OfferHelper) ->
+    get_unreserved_resources_cpus(OfferHelper);
+get_unreserved_resources(mem, OfferHelper) ->
+    get_unreserved_resources_mem(OfferHelper);
+get_unreserved_resources(disk, OfferHelper) ->
+    get_unreserved_resources_disk(OfferHelper);
+get_unreserved_resources(ports, OfferHelper) ->
+    get_unreserved_resources_ports(OfferHelper).
 
 -spec get_unreserved_resources_cpus(offer_helper()) -> float().
 get_unreserved_resources_cpus(OfferHelper) ->
@@ -361,25 +383,40 @@ get_unreserved_applied_resources(#offer_helper{applied_unreserved_resources =
                                                  AppliedUnreservedResources}) ->
     AppliedUnreservedResources.
 
--spec can_fit_reserved(undefined | float(), undefined | float(),
-                       undefined | float(), undefined | non_neg_integer(),
-                       offer_helper()) ->
-    boolean().
-can_fit_reserved(Cpus, Mem, Disk, NumPorts, OfferHelper) ->
-    get_reserved_resources_cpus(OfferHelper) >= Cpus andalso
-    get_reserved_resources_mem(OfferHelper) >= Mem andalso
-    get_reserved_resources_disk(OfferHelper) >= Disk andalso
-    length(get_reserved_resources_ports(OfferHelper)) >= NumPorts.
+-spec unfit_for_reserved(list({cpus, float()} | {mem, float()} | {disk, float()} | {ports, non_neg_integer()}),
+                     offer_helper()) ->
+    list(cpus | mem | disk | ports).
+unfit_for_reserved(Wanted, OfferHelper) ->
+    lists:filtermap(
+      fun({Rsrc, Need}) ->
+              not unfit_for_reserved(Rsrc, Need, OfferHelper) andalso {true, Rsrc}
+      end,
+      Wanted).
 
--spec can_fit_unreserved(undefined | float(), undefined | float(),
-                         undefined | float(), undefined | non_neg_integer(),
-                         offer_helper()) ->
+-spec unfit_for_reserved(cpus | mem | disk | ports, float() | non_neg_integer(), offer_helper()) ->
     boolean().
-can_fit_unreserved(Cpus, Mem, Disk, NumPorts, OfferHelper) ->
-    get_unreserved_resources_cpus(OfferHelper) >= Cpus andalso
-    get_unreserved_resources_mem(OfferHelper) >= Mem andalso
-    get_unreserved_resources_disk(OfferHelper) >= Disk andalso
-    length(get_unreserved_resources_ports(OfferHelper)) >= NumPorts.
+unfit_for_reserved(ports, NumPorts, OfferHelper) ->
+    length(get_reserved_resources(ports, OfferHelper)) >= NumPorts;
+unfit_for_reserved(Rsrc, Count, OfferHelper) ->
+    get_reserved_resources(Rsrc, OfferHelper) >= Count.
+
+-spec unfit_for_unreserved(list({cpus, float()} | {mem, float()} | {disk, float()} | {ports, non_neg_integer()}),
+                     offer_helper()) ->
+    list(cpus | mem | disk | ports).
+unfit_for_unreserved(Wanted, OfferHelper) ->
+    lists:filtermap(
+      fun({Rsrc, Need}) ->
+              %% andalso doesn't care what the RHS is, just returns it iff LHS
+              not unfit_for_unreserved(Rsrc, Need, OfferHelper) andalso {true, Rsrc}
+      end,
+      Wanted).
+
+-spec unfit_for_unreserved(cpus | mem | disk | ports, float() | non_neg_integer(), offer_helper()) ->
+    boolean().
+unfit_for_unreserved(ports, NumPorts, OfferHelper) ->
+    length(get_unreserved_resources(ports, OfferHelper)) >= NumPorts;
+unfit_for_unreserved(Rsrc, Count, OfferHelper) ->
+    get_unreserved_resources(Rsrc, OfferHelper) >= Count.
 
 -spec has_persistence_id(string(), offer_helper()) -> boolean().
 has_persistence_id(PersistenceId,

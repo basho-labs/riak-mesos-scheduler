@@ -309,19 +309,19 @@ schedule_node(NodeKey, NodeKeys, OfferHelper) ->
 apply_unreserved_offer(NodeKey, NodeKeys, OfferHelper) ->
     case rms_node_manager:apply_unreserved_offer(NodeKey, OfferHelper) of
         {ok, OfferHelper1} ->
-            lager:info("Found new offer for node. "
-                       "Node key: ~s. "
-                       "Offer id: ~s. "
-                       "Offer resources: ~p.",
+            lager:info("Found new offer for node."
+                       " Node key: ~s."
+                       " Offer id: ~s."
+                       " Offer resources: ~p.",
                        [NodeKey,
                         rms_offer_helper:get_offer_id_value(OfferHelper1),
                         rms_offer_helper:resources_to_list(OfferHelper1)]),
             OfferHelper1;
         {error, Reason} ->
-            lager:warning("Applying of unreserved resources error. "
-                          "Node key: ~s. "
-                          "Offer id: ~s. "
-                          "Error reason: ~p.",
+            lager:warning("Unable to apply unreserved resources."
+                          " Node key: ~s."
+                          " Offer id: ~s."
+                          " Error reason: ~p.",
                           [NodeKey,
                            rms_offer_helper:get_offer_id_value(OfferHelper),
                            Reason]),
