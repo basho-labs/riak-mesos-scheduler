@@ -115,15 +115,15 @@ new(#'Offer'{resources = Resources, attributes = OfferAttributes} = Offer) ->
                   attributes = Attributes}.
 
 -spec set_node_hostnames(hostnames(), offer_helper()) -> offer_helper().
-set_node_hostnames(NodeHostnames, OfferHelper) -> 
+set_node_hostnames(NodeHostnames, OfferHelper) ->
     OfferHelper#offer_helper{node_hostnames=NodeHostnames}.
 
 -spec set_node_attributes(attributes_group(), offer_helper()) -> offer_helper().
-set_node_attributes(NodeAttributes, OfferHelper) -> 
+set_node_attributes(NodeAttributes, OfferHelper) ->
     OfferHelper#offer_helper{node_attributes=NodeAttributes}.
 
 -spec set_constraints(constraints(), offer_helper()) -> offer_helper().
-set_constraints(Constraints, OfferHelper) -> 
+set_constraints(Constraints, OfferHelper) ->
     OfferHelper#offer_helper{constraints=Constraints}.
 
 -spec can_fit_constraints(offer_helper()) -> boolean().
@@ -133,11 +133,11 @@ can_fit_constraints(#offer_helper{
                        node_attributes=NodeAttributes}=OfferHelper) ->
     can_fit_constraints(Constraints, NodeHostnames, NodeAttributes, OfferHelper).
 
--spec can_fit_constraints(constraints(), hostnames(), attributes_group(), 
+-spec can_fit_constraints(constraints(), hostnames(), attributes_group(),
                           offer_helper()) -> ok | {error, Reason :: term()}.
 can_fit_constraints([], _, _, _) ->
     ok;
-can_fit_constraints([["hostname"|Constraint]|Rest], NodeHosts, NodeAttributes, 
+can_fit_constraints([["hostname"|Constraint]|Rest], NodeHosts, NodeAttributes,
                     OfferHelper) ->
     OfferHostname = get_hostname(OfferHelper),
     case fit_constraint(Constraint, OfferHostname, NodeHosts) of
@@ -148,7 +148,7 @@ can_fit_constraints([[Name|Constraint]|Rest], NodeHosts, NodeAttributes, OfferHe
     Attributes = get_attributes(OfferHelper),
     A = proplists:get_value(Name, Attributes),
     As = lists:foldl(
-           fun(X, Accum) -> 
+           fun(X, Accum) ->
                    [proplists:get_value(Name, X)|Accum]
            end, [], NodeAttributes),
     case fit_constraint(Constraint, A, As) of
@@ -256,7 +256,7 @@ get_unreserved_resources_ports(OfferHelper) ->
 -spec get_unreserved_applied_resources_ports(offer_helper()) ->
     [non_neg_integer()].
 get_unreserved_applied_resources_ports(OfferHelper) ->
-    UnreservedPorts = get_ranges_resource_values("ports", false, 
+    UnreservedPorts = get_ranges_resource_values("ports", false,
                           get_unreserved_applied_resources(OfferHelper)),
     UnreservedResources = resources(0.0, 0.0, 0.0, UnreservedPorts),
     erl_mesos_utils:resources_ports(UnreservedResources).
@@ -344,14 +344,14 @@ make_volume(Disk, Role, Principal, PersistenceId, ContainerPath,
 apply_reserved_resources(Cpus, Mem, Disk, NumPorts, Role, Principal,
                          PersistenceId, ContainerPath,
                          #offer_helper{reserved_resources = ReservedResources,
-                                       applied_reserved_resources = 
+                                       applied_reserved_resources =
                                            AppliedReservedResources} =
                          OfferHelper) ->
     {ReservedResources1, AppliedReservedResources1} =
         apply(Cpus, Mem, Disk, NumPorts, Role, Principal, PersistenceId,
               ContainerPath, ReservedResources),
     OfferHelper#offer_helper{reserved_resources = ReservedResources1,
-                             applied_reserved_resources = 
+                             applied_reserved_resources =
                                  AppliedReservedResources ++ AppliedReservedResources1}.
 
 -spec apply_unreserved_resources(undefined | float(), undefined | float(),
@@ -360,15 +360,15 @@ apply_reserved_resources(Cpus, Mem, Disk, NumPorts, Role, Principal,
     offer_helper().
 apply_unreserved_resources(Cpus, Mem, Disk, NumPorts,
                            #offer_helper{unreserved_resources =
-                                             UnreservedResources, 
-                                         applied_unreserved_resources = 
+                                             UnreservedResources,
+                                         applied_unreserved_resources =
                                              AppliedUnreservedResources} =
                            OfferHelper) ->
     {UnreservedResources1, AppliedUnreservedResources1} =
         apply(Cpus, Mem, Disk, NumPorts, undefined, undefined, undefined,
               undefined, UnreservedResources),
     OfferHelper#offer_helper{unreserved_resources = UnreservedResources1,
-                             applied_unreserved_resources = 
+                             applied_unreserved_resources =
                                  AppliedUnreservedResources ++ AppliedUnreservedResources1}.
 
 -spec get_reserved_applied_resources(offer_helper()) ->
@@ -791,38 +791,38 @@ unreserve_volumes([], VolumesToDestroy) ->
 -spec attributes_to_list([erl_mesos:'Attribute'()]) -> attributes().
 attributes_to_list(RawAttributes) ->
     attributes_to_list(RawAttributes, []).
-    
+
 -spec attributes_to_list([erl_mesos:'Attribute'()],
                          attributes()) -> attributes().
 attributes_to_list([], Accum) ->
     Accum;
 attributes_to_list([#'Attribute'{
-                     name=Name, 
-                     type='SCALAR', 
-                     scalar=#'Value.Scalar'{value=Value}}|Rest], 
+                     name=Name,
+                     type='SCALAR',
+                     scalar=#'Value.Scalar'{value=Value}}|Rest],
                    Accum) when is_float(Value) ->
     attributes_to_list(Rest, [{Name, float_to_list(Value)}|Accum]);
 attributes_to_list([#'Attribute'{
-                     type='RANGES', 
+                     type='RANGES',
                      ranges=#'Value.Scalar'{}}|Rest], Accum) ->
     %% TODO: Deal with range attributes
     attributes_to_list(Rest, Accum);
 attributes_to_list([#'Attribute'{
-                     type='SET', 
-                     scalar=#'Value.Set'{item=[]}}|Rest], 
+                     type='SET',
+                     scalar=#'Value.Set'{item=[]}}|Rest],
                    Accum) ->
     attributes_to_list(Rest, Accum);
 attributes_to_list([#'Attribute'{
-                     name=Name, 
-                     type='SET', 
-                     scalar=#'Value.Set'{item=[V1|_]=Value}}|Rest], 
+                     name=Name,
+                     type='SET',
+                     scalar=#'Value.Set'{item=[V1|_]=Value}}|Rest],
                    Accum) when is_list(V1) ->
     NewValues = lists:map(fun(X) -> {Name, X} end, Value),
     attributes_to_list(Rest, Accum ++ NewValues);
 attributes_to_list([#'Attribute'{
-                     name=Name, 
-                     type='TEXT', 
-                     scalar=#'Value.Text'{value=Value}}|Rest], 
+                     name=Name,
+                     type='TEXT',
+                     scalar=#'Value.Text'{value=Value}}|Rest],
                    Accum) when is_list(Value) ->
     attributes_to_list(Rest, [{Name, Value}|Accum]);
 attributes_to_list([_|Rest], Accum) ->
@@ -837,7 +837,7 @@ fit_constraint(Constraint, V, Vs) ->
     end.
 
 -spec can_fit_constraint(constraint(), string(), [string()]) -> boolean().
-can_fit_constraint(["UNIQUE"], V, Vs) -> 
+can_fit_constraint(["UNIQUE"], V, Vs) ->
     %% Unique Value
     not lists:member(V, Vs);
 can_fit_constraint(["GROUP_BY"], V, Vs) ->
@@ -863,10 +863,10 @@ can_fit_constraint(["GROUP_BY", Param], V, Vs) ->
             %% nodes evenly, because we already know how many nodes there are
             true
     end;
-can_fit_constraint(["CLUSTER", V], V, _) -> 
+can_fit_constraint(["CLUSTER", V], V, _) ->
     %% Cluster on value, values match
     true;
-can_fit_constraint(["CLUSTER", _], _, _) -> 
+can_fit_constraint(["CLUSTER", _], _, _) ->
     %% Cluster on value, hosts do not match
     false;
 can_fit_constraint(["LIKE", Param], V, _) ->
@@ -875,9 +875,9 @@ can_fit_constraint(["LIKE", Param], V, _) ->
         {match, _} -> true;
         nomatch -> false
     end;
-can_fit_constraint(["UNLIKE", Param], V, Vs) -> 
+can_fit_constraint(["UNLIKE", Param], V, Vs) ->
     %% Value is not like regex
     not can_fit_constraint(["LIKE", Param], V, Vs);
-can_fit_constraint(_, _, _) -> 
+can_fit_constraint(_, _, _) ->
     %% Undefined constraint, just schedule it
     true.
