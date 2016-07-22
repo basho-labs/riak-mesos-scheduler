@@ -378,7 +378,7 @@ apply_offers(SchedulerInfo, [Offer|Offers], #state{scheduler = #scheduler{option
 apply_offer(Offer, Constraints) ->
     OfferHelper = rms_offer_helper:new(Offer),
     OfferHelper1 = rms_offer_helper:set_constraints(Constraints, OfferHelper),
-    lager:info("Scheduler recevied offer. "
+    lager:info("Scheduler received offer. "
                "Offer id: ~s. "
                "Resources: ~p. "
                "Constraints: ~p. ",
