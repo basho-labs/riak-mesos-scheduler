@@ -13,12 +13,14 @@
          get_hostname/1,
          get_constraints/1,
          get_persistence_ids/1,
+         has_reserved_resources/1,
          get_reserved_resources/1,
          get_reserved_resources/2,
          get_reserved_resources_cpus/1,
          get_reserved_resources_mem/1,
          get_reserved_resources_disk/1,
          get_reserved_resources_ports/1,
+         has_unreserved_resources/1,
          get_unreserved_resources/1,
          get_unreserved_resources/2,
          get_unreserved_resources_cpus/1,
@@ -196,6 +198,12 @@ get_persistence_ids(#offer_helper{persistence_ids = PersistenceIds}) ->
 get_reserved_resources(#offer_helper{reserved_resources = ReservedResources}) ->
     ReservedResources.
 
+%% Returns true iff any reserved resource > 0
+-spec has_reserved_resources(offer_helper()) -> boolean().
+has_reserved_resources(OfferHelper) ->
+    Rsrcs = [ cpus, mem, disk, ports ],
+    lists:sum([ get_reserved_resources(R, OfferHelper) || R <- Rsrcs ]) > 0.
+
 -spec get_reserved_resources(cpus | mem | disk | ports, offer_helper()) -> float() | [non_neg_integer()].
 get_reserved_resources(cpus, OfferHelper) ->
     get_reserved_resources_cpus(OfferHelper);
@@ -226,6 +234,11 @@ get_reserved_resources_ports(OfferHelper) ->
 get_unreserved_resources(#offer_helper{unreserved_resources =
                                        UnreservedResources}) ->
     UnreservedResources.
+
+-spec has_unreserved_resources(offer_helper()) -> boolean().
+has_unreserved_resources(OfferHelper) ->
+    Rsrcs = [ cpus, mem, disk, ports ],
+    lists:sum([ get_unreserved_resources(R, OfferHelper) || R <- Rsrcs ]) > 0.
 
 -spec get_unreserved_resources(cpus | mem | disk | ports, offer_helper()) -> float() | [non_neg_integer()].
 get_unreserved_resources(cpus, OfferHelper) ->
