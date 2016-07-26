@@ -31,11 +31,14 @@
          get_node_attributes/0,
          get_node_keys/0,
          get_unreconciled_node_keys/0,
+         get_unscheduled_node_keys/0,
          get_node_keys/1,
+         get_node_keys/2,
          get_node_names/1,
          get_active_node_keys/1,
          get_running_node_keys/1,
          get_node/1,
+         get_node_state/1,
          get_node_cluster_key/1,
          get_node_hostname/1,
          get_node_http_port/1,
@@ -82,10 +85,21 @@ get_unreconciled_node_keys() ->
     [Key || Key <- get_node_keys(),
             true =:= node_needs_to_be_reconciled(Key)].
 
+-spec get_unscheduled_node_keys() -> [rms_node:key()].
+get_unscheduled_node_keys() ->
+    [Key || Key <- get_node_keys(), {ok, true} =:= node_can_be_scheduled(Key)].
+
 -spec get_node_keys(rms_cluster:key()) -> [rms_node:key()].
 get_node_keys(ClusterKey) ->
     [Key || {Key, Node} <- rms_metadata:get_nodes(),
             ClusterKey =:= proplists:get_value(cluster_key, Node)].
+
+-spec get_node_keys(rms_cluster:key(), State :: atom()) ->
+    [rms_node:key()].
+get_node_keys(ClusterKey, State) when is_atom(State) ->
+    [ Key || {Key, Node} <- rms_metadata:get_nodes(),
+             ClusterKey =:= proplists:get_value(cluster_key, Node),
+             State =:= proplists:get_value(status, Node)].
 
 -spec get_node_names(rms_cluster:key()) -> [atom()].
 get_node_names(ClusterKey) ->
@@ -109,6 +123,11 @@ get_running_node_keys(ClusterKey) ->
                       {ok, rms_metadata:node_state()} | {error, term()}.
 get_node(Key) ->
     rms_node:get(Key).
+
+-spec get_node_state(rms_node:key()) ->
+    {ok, rms_node:node_state()} | {error, term()}.
+get_node_state(Key) ->
+    rms_node:get_field_value(status, Key).
 
 -spec get_node_cluster_key(rms_node:key()) ->
                                   {ok, rms_cluster:key()} | {error, term()}.
@@ -268,13 +287,12 @@ apply_unreserved_offer(NodeKey, OfferHelper) ->
             Hostname = rms_offer_helper:get_hostname(OfferHelper),
             AgentIdValue = rms_offer_helper:get_agent_id_value(OfferHelper),
             PersistenceId = node_persistence_id(),
-            case rms_offer_helper:can_fit_unreserved(NodeCpus +
-                                                         ?CPUS_PER_EXECUTOR,
-                                                     NodeMem +
-                                                         ?MEM_PER_EXECUTOR,
-                                                     NodeDisk, NodeNumPorts,
-                                                     OfferHelper) of
-                true ->
+            case rms_offer_helper:unfit_for_unreserved(
+                   [{cpus, NodeCpus + ?CPUS_PER_EXECUTOR},
+                    {mem, NodeMem + ?MEM_PER_EXECUTOR},
+                    {disk, NodeDisk}, {ports, NodeNumPorts}],
+                   OfferHelper) of
+                [] ->
                     %% Remove requirements from offer helper.
                     OfferHelper1 =
                         rms_offer_helper:apply_unreserved_resources(
@@ -299,8 +317,8 @@ apply_unreserved_offer(NodeKey, OfferHelper) ->
                     ok = rms_node:set_reserve(Pid, Hostname, AgentIdValue,
                                       PersistenceId, Attributes),
                     {ok, OfferHelper3};
-                false ->
-                    {error, not_enough_resources}
+                [_|_]=Unfit->
+                    {error, {not_enough_resources, Unfit}}
             end;
         {error, Reason} ->
             {error, Reason}
@@ -323,16 +341,18 @@ apply_reserved_offer(NodeKey, OfferHelper) ->
             {ok, ArtifactUrls} = rms_metadata:get_option(artifact_urls),
             NodeNumPorts = ?NODE_NUM_PORTS,
             ContainerPath = ?NODE_CONTAINER_PATH,
-            CanFitReserved =
-                rms_offer_helper:can_fit_reserved(NodeCpus, NodeMem, NodeDisk,
-                                                  0, OfferHelper),
-            CanFitUnreserved =
-                rms_offer_helper:can_fit_unreserved(?CPUS_PER_EXECUTOR,
-                                                    ?MEM_PER_EXECUTOR,
-                                                    0.0, NodeNumPorts,
-                                                    OfferHelper),
-            case CanFitReserved and CanFitUnreserved of
-                true ->
+            UnfitForReserved =
+                rms_offer_helper:unfit_for_reserved(
+                  [{cpus, NodeCpus}, {mem, NodeMem},
+                   {disk, NodeDisk}, {ports, 0}],
+                  OfferHelper),
+            UnfitForUnreserved =
+                rms_offer_helper:unfit_for_unreserved(
+                  [{cpus, ?CPUS_PER_EXECUTOR}, {mem, ?MEM_PER_EXECUTOR},
+                   {disk, 0.0}, {ports, NodeNumPorts}],
+                  OfferHelper),
+            case {UnfitForReserved, UnfitForUnreserved} of
+                {[], []} ->
                     {ok, ClusterKey} = get_node_cluster_key(NodeKey),
                     {ok, PersistenceId} = get_node_persistence_id(NodeKey),
                     {ok, NodeHostname} = get_node_hostname(NodeKey),
@@ -441,8 +461,8 @@ apply_reserved_offer(NodeKey, OfferHelper) ->
 
                     {ok, rms_offer_helper:add_task_to_launch(TaskInfo,
                                                              OfferHelper3)};
-                false ->
-                    {error, not_enough_resources}
+                {Unfit, Unfit2} ->
+                    {error, {not_enough_resources, lists:usort(Unfit ++ Unfit2)}}
             end;
         {error, Reason} ->
             {error, Reason}

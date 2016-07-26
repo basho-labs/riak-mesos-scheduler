@@ -58,9 +58,7 @@
 -record(cluster, {key :: rms_cluster:key(),
                   riak_config = <<>> :: binary(),
                   advanced_config = <<>> :: binary(),
-                  node_keys = [] :: [rms_node:key()],
                   generation = 1 :: pos_integer(),
-                  starting = [] :: list(rms_node:key()),
                   to_restart = {[], []} :: {list(rms_node:key()), list(rms_node:key())}}).
 
 %% TODO Validate this timeout length - also move it somewhere more configurable
@@ -172,22 +170,27 @@ init(Key) ->
     end.
 
 %%% Async per-state handling
-%%% Note that there is none.
 -spec requested(event(), cluster_state()) -> state_cb_return().
-requested({node_started, NodeKey}, #cluster{
-                                    starting = Starting
-                                   }=Cluster) ->
-    Rest = lists:delete(NodeKey, Starting),
+requested({NodeAction, _}, #cluster{ key = Key } = Cluster)
+  when NodeAction == node_started; NodeAction == node_stopped ->
+    %% A node can be stopped from any number of states; our state should be
+    %% updated accordingly regardless.
+    %% TODO Multiple states
+    NKeys = rms_node_manager:get_node_keys(Key),
+    Starting =
+        lists:filter(fun(Node) ->
+                                case rms_node_manager:get_node_state(Node) of
+                                    {ok, started} -> false;
+                                    {error, _} -> false;
+                                    {ok, _} -> true
+                                end end,
+                     NKeys),
     NextState =
-        case Rest of
+        case Starting of
             [] -> running;
             [_|_] -> requested
         end,
-    Cluster1 = Cluster#cluster{starting = Rest},
-    ok = update_cluster(Cluster#cluster.key, {NextState, Cluster1}),
-    {next_state, NextState, Cluster1};
-requested({node_stopped, _NodeKey}, Cluster) ->
-    {next_state, requested, Cluster};
+    {next_state, NextState, Cluster#cluster{}};
 requested(_Event, Cluster) ->
     {stop, {unhandled_event, _Event}, Cluster}.
 
@@ -233,7 +236,7 @@ shutdown({node_stopped, _NodeKey}, #cluster{key=Key}=Cluster) ->
         [_|_] = NodeKeys ->
             %% TODO FIXME We might not need this step? Or maybe we need to be more careful with it
             _ = do_destroy(NodeKeys),
-            {next_state, shutdown, Cluster#cluster{node_keys=NodeKeys}, next_timeout(shutdown, Cluster)}
+            {next_state, shutdown, Cluster#cluster{}, next_timeout(shutdown, Cluster)}
     end;
 shutdown(timeout, #cluster{}=Cluster) ->
     #cluster{ key = Key } = Cluster,
@@ -310,16 +313,12 @@ handle_sync_event(destroy, _From, State0,
     end;
 handle_sync_event(add_node, _From, StateName, Cluster) ->
     #cluster{key = Key,
-             starting = Starting,
-             node_keys = NodeKeys,
              generation = Generation} = Cluster,
     FrameworkName = rms_config:framework_name(),
     NodeKey = FrameworkName ++ "-" ++ Key ++ "-" ++ integer_to_list(Generation),
     case rms_node_manager:add_node(NodeKey, Key) of
         ok ->
-            Cluster1 = Cluster#cluster{node_keys = [NodeKey | NodeKeys],
-                                       starting = [NodeKey | Starting],
-                                       generation = (Generation + 1)},
+            Cluster1 = Cluster#cluster{generation = (Generation + 1)},
             case update_cluster(Cluster#cluster.key, {StateName, Cluster1}) of
                 ok ->
                     update_and_reply({StateName, Cluster}, {requested, Cluster1}, ok);
@@ -478,8 +477,6 @@ from_list(ClusterList) ->
               riak_config = proplists:get_value(riak_config, ClusterList),
               advanced_config = proplists:get_value(advanced_config,
                                                     ClusterList),
-              node_keys = proplists:get_value(node_keys, ClusterList),
-              starting = proplists:get_value(starting, ClusterList, []),
               to_restart = proplists:get_value(to_restart, ClusterList, {[], []}),
               generation = proplists:get_value(generation, ClusterList)}}.
 
@@ -488,15 +485,11 @@ to_list({State,
          #cluster{key = Key,
                   riak_config = RiakConf,
                   advanced_config = AdvancedConfig,
-                  node_keys = NodeKeys,
-                  starting = Starting,
                   to_restart = ToRestart,
                   generation = Generation}}) ->
     [{key, Key},
      {status, State},
      {riak_config, RiakConf},
      {advanced_config, AdvancedConfig},
-     {starting, Starting},
      {to_restart, ToRestart},
-     {node_keys, NodeKeys},
      {generation, Generation}].

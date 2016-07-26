@@ -13,12 +13,16 @@
          get_hostname/1,
          get_constraints/1,
          get_persistence_ids/1,
+         has_reserved_resources/1,
          get_reserved_resources/1,
+         get_reserved_resources/2,
          get_reserved_resources_cpus/1,
          get_reserved_resources_mem/1,
          get_reserved_resources_disk/1,
          get_reserved_resources_ports/1,
+         has_unreserved_resources/1,
          get_unreserved_resources/1,
+         get_unreserved_resources/2,
          get_unreserved_resources_cpus/1,
          get_unreserved_resources_mem/1,
          get_unreserved_resources_disk/1,
@@ -44,8 +48,8 @@
          get_reserved_applied_resources/1,
          get_unreserved_applied_resources/1,
          clean_applied_resources/1,
-         can_fit_reserved/5,
-         can_fit_unreserved/5,
+         unfit_for_reserved/2,
+         unfit_for_unreserved/2,
          has_persistence_id/2,
          has_tasks_to_launch/1,
          set_sufficient_resources/2,
@@ -113,15 +117,15 @@ new(#'Offer'{resources = Resources, attributes = OfferAttributes} = Offer) ->
                   attributes = Attributes}.
 
 -spec set_node_hostnames(hostnames(), offer_helper()) -> offer_helper().
-set_node_hostnames(NodeHostnames, OfferHelper) -> 
+set_node_hostnames(NodeHostnames, OfferHelper) ->
     OfferHelper#offer_helper{node_hostnames=NodeHostnames}.
 
 -spec set_node_attributes(attributes_group(), offer_helper()) -> offer_helper().
-set_node_attributes(NodeAttributes, OfferHelper) -> 
+set_node_attributes(NodeAttributes, OfferHelper) ->
     OfferHelper#offer_helper{node_attributes=NodeAttributes}.
 
 -spec set_constraints(constraints(), offer_helper()) -> offer_helper().
-set_constraints(Constraints, OfferHelper) -> 
+set_constraints(Constraints, OfferHelper) ->
     OfferHelper#offer_helper{constraints=Constraints}.
 
 -spec can_fit_constraints(offer_helper()) -> boolean().
@@ -131,31 +135,27 @@ can_fit_constraints(#offer_helper{
                        node_attributes=NodeAttributes}=OfferHelper) ->
     can_fit_constraints(Constraints, NodeHostnames, NodeAttributes, OfferHelper).
 
--spec can_fit_constraints(constraints(), hostnames(), attributes_group(), 
-                          offer_helper()) -> boolean().
+-spec can_fit_constraints(constraints(), hostnames(), attributes_group(),
+                          offer_helper()) -> ok | {error, Reason :: term()}.
 can_fit_constraints([], _, _, _) ->
-    true;
-can_fit_constraints([["hostname"|Constraint]|Rest], NodeHosts, NodeAttributes, 
+    ok;
+can_fit_constraints([["hostname"|Constraint]|Rest], NodeHosts, NodeAttributes,
                     OfferHelper) ->
     OfferHostname = get_hostname(OfferHelper),
-    case can_fit_constraint(Constraint, OfferHostname, NodeHosts) of
-        true ->
-            can_fit_constraints(Rest, NodeHosts, NodeAttributes, OfferHelper);
-        false -> 
-            false
+    case fit_constraint(Constraint, OfferHostname, NodeHosts) of
+        ok -> can_fit_constraints(Rest, NodeHosts, NodeAttributes, OfferHelper);
+        {error, Constraint} -> {error, ["hostname" | Constraint]}
     end;
 can_fit_constraints([[Name|Constraint]|Rest], NodeHosts, NodeAttributes, OfferHelper) ->
     Attributes = get_attributes(OfferHelper),
     A = proplists:get_value(Name, Attributes),
     As = lists:foldl(
-           fun(X, Accum) -> 
+           fun(X, Accum) ->
                    [proplists:get_value(Name, X)|Accum]
            end, [], NodeAttributes),
-    case can_fit_constraint(Constraint, A, As) of
-        true ->
-            can_fit_constraints(Rest, NodeHosts, NodeAttributes, OfferHelper);
-        false -> 
-            false
+    case fit_constraint(Constraint, A, As) of
+        ok -> can_fit_constraints(Rest, NodeHosts, NodeAttributes, OfferHelper);
+        {error, Constraint} -> {error, [Name | Constraint]}
     end.
 
 -spec get_offer_id(offer_helper()|erl_mesos:'Offer'()) -> erl_mesos:'OfferID'().
@@ -198,6 +198,24 @@ get_persistence_ids(#offer_helper{persistence_ids = PersistenceIds}) ->
 get_reserved_resources(#offer_helper{reserved_resources = ReservedResources}) ->
     ReservedResources.
 
+%% Returns true iff any reserved resource > 0
+-spec has_reserved_resources(offer_helper()) -> boolean().
+has_reserved_resources(OfferHelper) ->
+    Rsrcs = [ cpus, mem, disk, num_ports ],
+    lists:sum([ get_reserved_resources(R, OfferHelper) || R <- Rsrcs ]) > 0.
+
+-spec get_reserved_resources(cpus | mem | disk | ports, offer_helper()) -> float() | [non_neg_integer()].
+get_reserved_resources(cpus, OfferHelper) ->
+    get_reserved_resources_cpus(OfferHelper);
+get_reserved_resources(mem, OfferHelper) ->
+    get_reserved_resources_mem(OfferHelper);
+get_reserved_resources(disk, OfferHelper) ->
+    get_reserved_resources_disk(OfferHelper);
+get_reserved_resources(num_ports, OfferHelper) ->
+    length(get_reserved_resources_ports(OfferHelper));
+get_reserved_resources(ports, OfferHelper) ->
+    get_reserved_resources_ports(OfferHelper).
+
 -spec get_reserved_resources_cpus(offer_helper()) -> float().
 get_reserved_resources_cpus(OfferHelper) ->
     erl_mesos_utils:resources_cpus(get_reserved_resources(OfferHelper)).
@@ -219,6 +237,23 @@ get_unreserved_resources(#offer_helper{unreserved_resources =
                                        UnreservedResources}) ->
     UnreservedResources.
 
+-spec has_unreserved_resources(offer_helper()) -> boolean().
+has_unreserved_resources(OfferHelper) ->
+    Rsrcs = [ cpus, mem, disk, num_ports ],
+    lists:sum([ get_unreserved_resources(R, OfferHelper) || R <- Rsrcs ]) > 0.
+
+-spec get_unreserved_resources(cpus | mem | disk | ports, offer_helper()) -> float() | [non_neg_integer()].
+get_unreserved_resources(cpus, OfferHelper) ->
+    get_unreserved_resources_cpus(OfferHelper);
+get_unreserved_resources(mem, OfferHelper) ->
+    get_unreserved_resources_mem(OfferHelper);
+get_unreserved_resources(disk, OfferHelper) ->
+    get_unreserved_resources_disk(OfferHelper);
+get_unreserved_resources(num_ports, OfferHelper) ->
+    length(get_unreserved_resources_ports(OfferHelper));
+get_unreserved_resources(ports, OfferHelper) ->
+    get_unreserved_resources_ports(OfferHelper).
+
 -spec get_unreserved_resources_cpus(offer_helper()) -> float().
 get_unreserved_resources_cpus(OfferHelper) ->
     erl_mesos_utils:resources_cpus(get_unreserved_resources(OfferHelper)).
@@ -238,7 +273,7 @@ get_unreserved_resources_ports(OfferHelper) ->
 -spec get_unreserved_applied_resources_ports(offer_helper()) ->
     [non_neg_integer()].
 get_unreserved_applied_resources_ports(OfferHelper) ->
-    UnreservedPorts = get_ranges_resource_values("ports", false, 
+    UnreservedPorts = get_ranges_resource_values("ports", false,
                           get_unreserved_applied_resources(OfferHelper)),
     UnreservedResources = resources(0.0, 0.0, 0.0, UnreservedPorts),
     erl_mesos_utils:resources_ports(UnreservedResources).
@@ -326,14 +361,14 @@ make_volume(Disk, Role, Principal, PersistenceId, ContainerPath,
 apply_reserved_resources(Cpus, Mem, Disk, NumPorts, Role, Principal,
                          PersistenceId, ContainerPath,
                          #offer_helper{reserved_resources = ReservedResources,
-                                       applied_reserved_resources = 
+                                       applied_reserved_resources =
                                            AppliedReservedResources} =
                          OfferHelper) ->
     {ReservedResources1, AppliedReservedResources1} =
         apply(Cpus, Mem, Disk, NumPorts, Role, Principal, PersistenceId,
               ContainerPath, ReservedResources),
     OfferHelper#offer_helper{reserved_resources = ReservedResources1,
-                             applied_reserved_resources = 
+                             applied_reserved_resources =
                                  AppliedReservedResources ++ AppliedReservedResources1}.
 
 -spec apply_unreserved_resources(undefined | float(), undefined | float(),
@@ -342,15 +377,15 @@ apply_reserved_resources(Cpus, Mem, Disk, NumPorts, Role, Principal,
     offer_helper().
 apply_unreserved_resources(Cpus, Mem, Disk, NumPorts,
                            #offer_helper{unreserved_resources =
-                                             UnreservedResources, 
-                                         applied_unreserved_resources = 
+                                             UnreservedResources,
+                                         applied_unreserved_resources =
                                              AppliedUnreservedResources} =
                            OfferHelper) ->
     {UnreservedResources1, AppliedUnreservedResources1} =
         apply(Cpus, Mem, Disk, NumPorts, undefined, undefined, undefined,
               undefined, UnreservedResources),
     OfferHelper#offer_helper{unreserved_resources = UnreservedResources1,
-                             applied_unreserved_resources = 
+                             applied_unreserved_resources =
                                  AppliedUnreservedResources ++ AppliedUnreservedResources1}.
 
 -spec get_reserved_applied_resources(offer_helper()) ->
@@ -365,25 +400,40 @@ get_unreserved_applied_resources(#offer_helper{applied_unreserved_resources =
                                                  AppliedUnreservedResources}) ->
     AppliedUnreservedResources.
 
--spec can_fit_reserved(undefined | float(), undefined | float(),
-                       undefined | float(), undefined | non_neg_integer(),
-                       offer_helper()) ->
-    boolean().
-can_fit_reserved(Cpus, Mem, Disk, NumPorts, OfferHelper) ->
-    get_reserved_resources_cpus(OfferHelper) >= Cpus andalso
-    get_reserved_resources_mem(OfferHelper) >= Mem andalso
-    get_reserved_resources_disk(OfferHelper) >= Disk andalso
-    length(get_reserved_resources_ports(OfferHelper)) >= NumPorts.
+-spec unfit_for_reserved(list({cpus, float()} | {mem, float()} | {disk, float()} | {ports, non_neg_integer()}),
+                     offer_helper()) ->
+    list(cpus | mem | disk | ports).
+unfit_for_reserved(Wanted, OfferHelper) ->
+    lists:filtermap(
+      fun({Rsrc, Need}) ->
+              not unfit_for_reserved(Rsrc, Need, OfferHelper) andalso {true, Rsrc}
+      end,
+      Wanted).
 
--spec can_fit_unreserved(undefined | float(), undefined | float(),
-                         undefined | float(), undefined | non_neg_integer(),
-                         offer_helper()) ->
+-spec unfit_for_reserved(cpus | mem | disk | ports, float() | non_neg_integer(), offer_helper()) ->
     boolean().
-can_fit_unreserved(Cpus, Mem, Disk, NumPorts, OfferHelper) ->
-    get_unreserved_resources_cpus(OfferHelper) >= Cpus andalso
-    get_unreserved_resources_mem(OfferHelper) >= Mem andalso
-    get_unreserved_resources_disk(OfferHelper) >= Disk andalso
-    length(get_unreserved_resources_ports(OfferHelper)) >= NumPorts.
+unfit_for_reserved(ports, NumPorts, OfferHelper) ->
+    length(get_reserved_resources(ports, OfferHelper)) >= NumPorts;
+unfit_for_reserved(Rsrc, Count, OfferHelper) ->
+    get_reserved_resources(Rsrc, OfferHelper) >= Count.
+
+-spec unfit_for_unreserved(list({cpus, float()} | {mem, float()} | {disk, float()} | {ports, non_neg_integer()}),
+                     offer_helper()) ->
+    list(cpus | mem | disk | ports).
+unfit_for_unreserved(Wanted, OfferHelper) ->
+    lists:filtermap(
+      fun({Rsrc, Need}) ->
+              %% andalso doesn't care what the RHS is, just returns it iff LHS
+              not unfit_for_unreserved(Rsrc, Need, OfferHelper) andalso {true, Rsrc}
+      end,
+      Wanted).
+
+-spec unfit_for_unreserved(cpus | mem | disk | ports, float() | non_neg_integer(), offer_helper()) ->
+    boolean().
+unfit_for_unreserved(ports, NumPorts, OfferHelper) ->
+    length(get_unreserved_resources(ports, OfferHelper)) >= NumPorts;
+unfit_for_unreserved(Rsrc, Count, OfferHelper) ->
+    get_unreserved_resources(Rsrc, OfferHelper) >= Count.
 
 -spec has_persistence_id(string(), offer_helper()) -> boolean().
 has_persistence_id(PersistenceId,
@@ -758,45 +808,53 @@ unreserve_volumes([], VolumesToDestroy) ->
 -spec attributes_to_list([erl_mesos:'Attribute'()]) -> attributes().
 attributes_to_list(RawAttributes) ->
     attributes_to_list(RawAttributes, []).
-    
+
 -spec attributes_to_list([erl_mesos:'Attribute'()],
                          attributes()) -> attributes().
 attributes_to_list([], Accum) ->
     Accum;
 attributes_to_list([#'Attribute'{
-                     name=Name, 
-                     type='SCALAR', 
-                     scalar=#'Value.Scalar'{value=Value}}|Rest], 
+                     name=Name,
+                     type='SCALAR',
+                     scalar=#'Value.Scalar'{value=Value}}|Rest],
                    Accum) when is_float(Value) ->
     attributes_to_list(Rest, [{Name, float_to_list(Value)}|Accum]);
 attributes_to_list([#'Attribute'{
-                     type='RANGES', 
+                     type='RANGES',
                      ranges=#'Value.Scalar'{}}|Rest], Accum) ->
     %% TODO: Deal with range attributes
     attributes_to_list(Rest, Accum);
 attributes_to_list([#'Attribute'{
-                     type='SET', 
-                     scalar=#'Value.Set'{item=[]}}|Rest], 
+                     type='SET',
+                     scalar=#'Value.Set'{item=[]}}|Rest],
                    Accum) ->
     attributes_to_list(Rest, Accum);
 attributes_to_list([#'Attribute'{
-                     name=Name, 
-                     type='SET', 
-                     scalar=#'Value.Set'{item=[V1|_]=Value}}|Rest], 
+                     name=Name,
+                     type='SET',
+                     scalar=#'Value.Set'{item=[V1|_]=Value}}|Rest],
                    Accum) when is_list(V1) ->
     NewValues = lists:map(fun(X) -> {Name, X} end, Value),
     attributes_to_list(Rest, Accum ++ NewValues);
 attributes_to_list([#'Attribute'{
-                     name=Name, 
-                     type='TEXT', 
-                     scalar=#'Value.Text'{value=Value}}|Rest], 
+                     name=Name,
+                     type='TEXT',
+                     scalar=#'Value.Text'{value=Value}}|Rest],
                    Accum) when is_list(Value) ->
     attributes_to_list(Rest, [{Name, Value}|Accum]);
 attributes_to_list([_|Rest], Accum) ->
     attributes_to_list(Rest, Accum).
 
+-spec fit_constraint(constraint(), string(), [string()]) ->
+    ok | {error, constraint()}.
+fit_constraint(Constraint, V, Vs) ->
+    case can_fit_constraint(Constraint, V, Vs) of
+        true -> ok;
+        false -> {error, Constraint}
+    end.
+
 -spec can_fit_constraint(constraint(), string(), [string()]) -> boolean().
-can_fit_constraint(["UNIQUE"], V, Vs) -> 
+can_fit_constraint(["UNIQUE"], V, Vs) ->
     %% Unique Value
     not lists:member(V, Vs);
 can_fit_constraint(["GROUP_BY"], V, Vs) ->
@@ -822,10 +880,10 @@ can_fit_constraint(["GROUP_BY", Param], V, Vs) ->
             %% nodes evenly, because we already know how many nodes there are
             true
     end;
-can_fit_constraint(["CLUSTER", V], V, _) -> 
+can_fit_constraint(["CLUSTER", V], V, _) ->
     %% Cluster on value, values match
     true;
-can_fit_constraint(["CLUSTER", _], _, _) -> 
+can_fit_constraint(["CLUSTER", _], _, _) ->
     %% Cluster on value, hosts do not match
     false;
 can_fit_constraint(["LIKE", Param], V, _) ->
@@ -834,9 +892,9 @@ can_fit_constraint(["LIKE", Param], V, _) ->
         {match, _} -> true;
         nomatch -> false
     end;
-can_fit_constraint(["UNLIKE", Param], V, Vs) -> 
+can_fit_constraint(["UNLIKE", Param], V, Vs) ->
     %% Value is not like regex
     not can_fit_constraint(["LIKE", Param], V, Vs);
-can_fit_constraint(_, _, _) -> 
+can_fit_constraint(_, _, _) ->
     %% Undefined constraint, just schedule it
     true.

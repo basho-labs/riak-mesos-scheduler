@@ -208,7 +208,7 @@ maybe_join(Key, NodeKey) ->
 
 -spec leave(rms_cluster:key(), rms_node:key()) -> ok | {error, term()}.
 leave(Key, NodeKey) ->
-    case rms_node_manager:get_node_keys(Key) of
+    case rms_node_manager:get_node_keys(Key, started) of
         %% If this is the only node in the cluster, there's no point
         %% talking to riak-explorer: just signal that there are no other
         %% nodes to leave from
@@ -238,8 +238,17 @@ apply_offer(OfferHelper) ->
         N when length(N) > 0 ->
             OfferHelper2;
         _ ->
-            NodeKeys = rms_node_manager:get_node_keys(),
-            OfferHelper3 = apply_offer(NodeKeys, OfferHelper2),
+            NodeKeys = rms_node_manager:get_unscheduled_node_keys(),
+            ReservedNodes = lists:filter(fun rms_node_manager:node_has_reservation/1, NodeKeys),
+            UnreservedNodes = NodeKeys -- ReservedNodes,
+            OfferHelper3 =
+                case {rms_offer_helper:has_reserved_resources(OfferHelper2),
+                        rms_offer_helper:has_unreserved_resources(OfferHelper2)} of
+                    {true, _} -> % Apply reserved resources to nodes with a reservation
+                        apply_reserved_resources(ReservedNodes, OfferHelper2);
+                    {_, true} -> % Apply unreserved resources
+                        apply_unreserved_resources(UnreservedNodes, OfferHelper2)
+                end,
             case rms_offer_helper:should_unreserve_resources(OfferHelper3) of
                 true ->
                     unreserve_volumes(unreserve_resources(OfferHelper3));
@@ -259,73 +268,14 @@ init({}) ->
 
 %% Internal functions.
 
--spec apply_offer([rms_node:key()],
-                  rms_offer_helper:offer_helper()) ->
-                         rms_offer_helper:offer_helper().
-apply_offer([NodeKey | NodeKeys], OfferHelper) ->
-    %% One launch at a time for now
+-spec apply_reserved_resources(list(rms_node:key()), rms_offer_helper:offer_helper()) ->
+    rms_offer_helper:offer_helper().
+apply_reserved_resources([NodeKey | NodeKeys], OfferHelper) ->
     case rms_offer_helper:has_tasks_to_launch(OfferHelper) of
-        true ->
-            OfferHelper;
-        false ->
-            case rms_node_manager:node_can_be_scheduled(NodeKey) of
-                % TODO How do we clean up the node keys here?
-                {error, shutdown} ->
-                    apply_offer(NodeKeys, OfferHelper);
-                {ok, true} ->
-                    schedule_node(NodeKey, NodeKeys,
-                                  OfferHelper);
-                {ok, false} ->
-                    apply_offer(NodeKeys, OfferHelper)
-            end
+        true  -> OfferHelper;
+        false -> apply_reserved_offer(NodeKey, NodeKeys, OfferHelper)
     end;
-apply_offer([], OfferHelper) ->
-    OfferHelper.
-
--spec schedule_node(rms_node:key(), [rms_node:key()],
-                    rms_offer_helper:offer_helper()) ->
-    rms_offer_helper:offer_helper().
-schedule_node(NodeKey, NodeKeys, OfferHelper) ->
-    case rms_node_manager:node_has_reservation(NodeKey) of
-        true ->
-            %% Apply reserved resources.
-            apply_reserved_offer(NodeKey, NodeKeys,
-                                 OfferHelper);
-        false ->
-            %% New Node
-            case rms_offer_helper:can_fit_constraints(OfferHelper) of
-                true ->
-                    apply_unreserved_offer(NodeKey, NodeKeys,
-                                           OfferHelper);
-                false ->
-                    apply_offer(NodeKeys, OfferHelper)
-            end
-    end.
-
--spec apply_unreserved_offer(rms_node:key(), [rms_node:key()],
-                             rms_offer_helper:offer_helper()) ->
-    rms_offer_helper:offer_helper().
-apply_unreserved_offer(NodeKey, NodeKeys, OfferHelper) ->
-    case rms_node_manager:apply_unreserved_offer(NodeKey, OfferHelper) of
-        {ok, OfferHelper1} ->
-            lager:info("Found new offer for node. "
-                       "Node key: ~s. "
-                       "Offer id: ~s. "
-                       "Offer resources: ~p.",
-                       [NodeKey,
-                        rms_offer_helper:get_offer_id_value(OfferHelper1),
-                        rms_offer_helper:resources_to_list(OfferHelper1)]),
-            OfferHelper1;
-        {error, Reason} ->
-            lager:warning("Applying of unreserved resources error. "
-                          "Node key: ~s. "
-                          "Offer id: ~s. "
-                          "Error reason: ~p.",
-                          [NodeKey,
-                           rms_offer_helper:get_offer_id_value(OfferHelper),
-                           Reason]),
-            apply_offer(NodeKeys, OfferHelper)
-    end.
+apply_reserved_resources([], OfferHelper) -> OfferHelper.
 
 -spec apply_reserved_offer(rms_node:key(), [rms_node:key()],
                            rms_offer_helper:offer_helper()) ->
@@ -343,7 +293,6 @@ apply_reserved_offer(NodeKey, NodeKeys, OfferHelper) ->
                     ResourcesList =
                         rms_offer_helper:resources_to_list(OfferHelper),
                     lager:info("New node added for scheduling. "
-                               "Node has persistence id. "
                                "Node key: ~s. "
                                "Persistence id: ~s. "
                                "Offer id: ~s. "
@@ -351,31 +300,72 @@ apply_reserved_offer(NodeKey, NodeKeys, OfferHelper) ->
                                [NodeKey, PersistenceId, OfferIdValue,
                                 ResourcesList]),
                     OfferHelper1;
-                {error, not_enough_resources} ->
-                    OfferHelper1 = 
+                {error, {not_enough_resources, Missing}} ->
+                    OfferHelper1 =
                         rms_offer_helper:set_sufficient_resources(false, OfferHelper),
-                    lager:warning("Adding node for scheduling error. "
-                                  "Node has persistence id. "
-                                  "Offer did not have sufficient resources for this node. "
-                                  "Trying other nodes. "
-                                  "Node key: ~s. "
-                                  "Persistence id: ~s. "
-                                  "Offer id: ~s. ",
-                                  [NodeKey, PersistenceId, OfferIdValue]),
-                    apply_offer(NodeKeys, OfferHelper1);
+                    lager:warning("Error scheduling node."
+                                  " Offer has insufficient resources for this node."
+                                  %% TODO Do we really need to try other nodes? Do we not guarantee that all nodes in all our clusters require the same resources?
+                                  " Trying other nodes."
+                                  " Node key: ~s."
+                                  " Missing resources: ~p."
+                                  " Persistence id: ~s."
+                                  " Offer id: ~s.",
+                                  [NodeKey, Missing, PersistenceId, OfferIdValue]),
+                    apply_reserved_resources(NodeKeys, OfferHelper1);
                 {error, Reason} ->
-                    lager:warning("Adding node for scheduling error. "
-                                  "Node has persistence id. "
-                                  "Node key: ~s. "
-                                  "Persistence id: ~s. "
-                                  "Offer id: ~s. "
-                                  "Error reason: ~p.",
+                    lager:warning("Error scheduling node."
+                                  " Node key: ~s."
+                                  " Persistence id: ~s."
+                                  " Offer id: ~s."
+                                  " Error reason: ~p.",
                                   [NodeKey, PersistenceId, OfferIdValue,
                                    Reason]),
-                    apply_offer(NodeKeys, OfferHelper)
+                    apply_reserved_resources(NodeKeys, OfferHelper)
             end;
         false ->
-            apply_offer(NodeKeys, OfferHelper)
+            lager:debug("Not scheduling node on this offer: persistence_id mismatch."
+                        " Node key: ~s."
+                        " Node persistence id: ~s."
+                        " Offer id: ~s.",
+                        [NodeKey, PersistenceId, OfferIdValue]),
+            apply_reserved_resources(NodeKeys, OfferHelper)
+    end.
+
+-spec apply_unreserved_resources(list(rms_node:key()), rms_offer_helper:offer_helper()) ->
+    rms_offer_helper:offer_helper().
+apply_unreserved_resources([NodeKey | NodeKeys], OfferHelper) ->
+    case rms_offer_helper:can_fit_constraints(OfferHelper) of
+        ok -> apply_unreserved_offer(NodeKey, NodeKeys, OfferHelper);
+        {error, Reason} ->
+            lager:warning("Node (~s) unscheduled, constraint violated: ~p", [NodeKey, Reason]),
+            apply_unreserved_resources(NodeKeys, OfferHelper)
+    end;
+apply_unreserved_resources([], OfferHelper) -> OfferHelper.
+
+-spec apply_unreserved_offer(rms_node:key(), [rms_node:key()],
+                             rms_offer_helper:offer_helper()) ->
+    rms_offer_helper:offer_helper().
+apply_unreserved_offer(NodeKey, NodeKeys, OfferHelper) ->
+    case rms_node_manager:apply_unreserved_offer(NodeKey, OfferHelper) of
+        {ok, OfferHelper1} ->
+            lager:info("Found new offer for node."
+                       " Node key: ~s."
+                       " Offer id: ~s."
+                       " Offer resources: ~p.",
+                       [NodeKey,
+                        rms_offer_helper:get_offer_id_value(OfferHelper1),
+                        rms_offer_helper:resources_to_list(OfferHelper1)]),
+            OfferHelper1;
+        {error, Reason} ->
+            lager:warning("Unable to apply unreserved resources."
+                          " Node key: ~s."
+                          " Offer id: ~s."
+                          " Error reason: ~p.",
+                          [NodeKey,
+                           rms_offer_helper:get_offer_id_value(OfferHelper),
+                           Reason]),
+            apply_unreserved_resources(NodeKeys, OfferHelper)
     end.
 
 -spec unreserve_resources(rms_offer_helper:offer_helper()) ->
