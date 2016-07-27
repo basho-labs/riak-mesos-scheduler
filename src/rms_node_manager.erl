@@ -406,7 +406,7 @@ apply_reserved_offer(NodeKey, OfferHelper) ->
                     UrlList = [ExecutorUrl, RiakExplorerUrl, RiakPatchesUrl, RiakUrl],
                     CommandInfo0 = erl_mesos_utils:command_info(CommandInfoValue, UrlList),
                     %% TODO Raise PR against erl_mesos to allow managing Environment records
-                    RiakIface = rms_metadata:get_option(node_iface),
+                    {ok, RiakIface} = rms_metadata:get_option(node_iface),
                     CommandInfo =
                         case RiakIface of
                             "" -> CommandInfo0;
