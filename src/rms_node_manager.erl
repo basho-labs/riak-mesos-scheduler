@@ -404,7 +404,18 @@ apply_reserved_offer(NodeKey, OfferHelper) ->
 
                     CommandInfoValue = "./riak_mesos_executor/bin/ermf-executor",
                     UrlList = [ExecutorUrl, RiakExplorerUrl, RiakPatchesUrl, RiakUrl],
-                    CommandInfo = erl_mesos_utils:command_info(CommandInfoValue, UrlList),
+                    CommandInfo0 = erl_mesos_utils:command_info(CommandInfoValue, UrlList),
+                    %% TODO Raise PR against erl_mesos to allow managing Environment records
+                    {ok, RiakIface} = rms_metadata:get_option(node_iface),
+                    CommandInfo =
+                        case RiakIface of
+                            "" -> CommandInfo0;
+                            Iface ->
+                                NodeIfaceEnv = rms_erl_mesos_utils:environment_variable(
+                                                 "RIAK_MESOS_NODE_IFACE", Iface),
+                                CmdEnv = rms_erl_mesos_utils:environment([NodeIfaceEnv]),
+                                rms_erl_mesos_utils:set_command_info_environment(CommandInfo0, CmdEnv)
+                        end,
 
                     TaskId = erl_mesos_utils:task_id(NodeKey),
 

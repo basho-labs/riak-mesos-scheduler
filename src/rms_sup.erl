@@ -70,6 +70,7 @@ init([]) ->
     NodeCpus = rms_config:get_value(node_cpus, 0.5, number),
     NodeMem = rms_config:get_value(node_mem, 1024.0, number),
     NodeDisk = rms_config:get_value(node_disk, 4000.0, number),
+    NodeIface = rms_config:get_value(node_iface, "", string),
 
     ExecutorCpus = rms_config:get_value(executor_cpus, 0.1, number),
     ExecutorMem = rms_config:get_value(executor_mem, 512.0, number),
@@ -90,6 +91,7 @@ init([]) ->
                         {node_cpus, NodeCpus},
                         {node_mem, NodeMem},
                         {node_disk, NodeDisk},
+                        {node_iface, NodeIface},
                         {executor_cpus, ExecutorCpus},
                         {executor_mem, ExecutorMem},
                         {artifact_urls, ArtifactUrls}],
