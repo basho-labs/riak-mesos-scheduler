@@ -422,7 +422,7 @@ apply_reserved_offer(NodeKey, OfferHelper) ->
                     TaskDataPorts =
                         rms_offer_helper:get_unreserved_applied_resources_ports(OfferHelper3),
 
-                    [HTTPPort, PBPort, DisterlPort | _Ports] = TaskDataPorts,
+                    [HTTPPort, PBPort, DisterlPort, HandoffPort | _Ports] = TaskDataPorts,
 
                     NodeName = iolist_to_binary([NodeKey, "@", NodeHostname]),
                     {ZkNodes, _} = rms_config:zk(),
@@ -436,7 +436,7 @@ apply_reserved_offer(NodeKey, OfferHelper) ->
                                 {<<"ClusterName">>,            list_to_binary(ClusterKey)},
                                 {<<"HTTPPort">>,               HTTPPort},
                                 {<<"PBPort">>,                 PBPort},
-                                {<<"HandoffPort">>,            0},
+                                {<<"HandoffPort">>,            HandoffPort},
                                 {<<"DisterlPort">>,            DisterlPort}],
                     TaskDataBin = iolist_to_binary(mochijson2:encode(TaskData)),
 
