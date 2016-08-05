@@ -113,7 +113,7 @@ init_rest() ->
 
     PersistentVolPath = rms_config:persistent_path(),
     ArtifactUrls = rms_config:artifact_urls(),
-
+    ContainerPath = rms_config:container_path(),
     Ref = riak_mesos_scheduler,
     Scheduler = rms_scheduler,
 
@@ -132,7 +132,8 @@ init_rest() ->
                         {persistent_path, PersistentVolPath},
                         {executor_cpus, ExecutorCpus},
                         {executor_mem, ExecutorMem},
-                        {artifact_urls, ArtifactUrls}],
+                        {artifact_urls, ArtifactUrls},
+                        {container_path, ContainerPath}],
 
     MasterHosts = rms_config:master_hosts(),
     ResubscribeInterval = rms_config:get_value(master_election_timeout, 60000,
