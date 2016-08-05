@@ -403,7 +403,7 @@ apply_reserved_offer(NodeKey, OfferHelper) ->
                     RiakUrl = erl_mesos_utils:command_info_uri(RiakUrlStr, false, true),
 
                     CommandInfoValue = "./riak_mesos_executor/bin/ermf-executor",
-                    UrlList = [ExecutorUrl, RiakExplorerUrl, RiakPatchesUrl, RiakUrl],
+                    UrlList = [ExecutorUrl, RiakUrl, RiakExplorerUrl, RiakPatchesUrl],
                     CommandInfo0 = erl_mesos_utils:command_info(CommandInfoValue, UrlList),
                     %% TODO Raise PR against erl_mesos to allow managing Environment records
                     {ok, RiakIface} = rms_metadata:get_option(node_iface),
