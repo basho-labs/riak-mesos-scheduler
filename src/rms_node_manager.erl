@@ -337,8 +337,8 @@ apply_reserved_offer(NodeKey, OfferHelper) ->
             {ok, NodeMem} = rms_metadata:get_option(node_mem),
             {ok, NodeDisk} = rms_metadata:get_option(node_disk),
             {ok, ArtifactUrls} = rms_metadata:get_option(artifact_urls),
-            {ok, ContainerPath} = rms_metadata:get_option(persistent_path),
             NodeNumPorts = ?NODE_NUM_PORTS,
+            ContainerPath = rms_metadata:get_option(container_path),
             UnfitForReserved =
                 rms_offer_helper:unfit_for_reserved(
                   [{cpus, NodeCpus}, {mem, NodeMem},
@@ -425,6 +425,7 @@ apply_reserved_offer(NodeKey, OfferHelper) ->
                     NodeName = iolist_to_binary([NodeKey, "@", NodeHostname]),
                     {ZkNodes, _} = rms_config:zk(),
                     Zookeepers = [list_to_binary(I) || I <- ZkNodes],
+
                     TaskData = [{<<"FullyQualifiedNodeName">>, NodeName},
                                 {<<"Host">>,                   list_to_binary(NodeHostname)},
                                 %% TODO: read list of zookeepers with rms_metadata:get_option/1
