@@ -44,7 +44,7 @@
 -define(DEFAULT_CONTAINER_PATH, "root").
 
  % The path-tail in a Riak archive, for which we search
--define(RIAK_BIN, "/riak/bin/riak").
+-define(RIAK_BIN, "riak/bin/riak").
 
 %% Helper functions.
 
@@ -129,12 +129,33 @@ container_path() ->
     find_root_path(TarTable).
 
 %% TODO Should we log something in this case?
+-spec find_root_path(list(string())) -> string().
 find_root_path([]) -> ?DEFAULT_CONTAINER_PATH;
 find_root_path([P | Paths]) ->
     case lists:suffix(?RIAK_BIN, P) of
-        true -> P;
+        true ->
+            %% Strip the known tail, leave only the prefix
+            find_prefix(P, ?RIAK_BIN);
         false -> find_root_path(Paths)
     end.
+
+-spec find_prefix(string(), string()) -> string().
+find_prefix(FullPath, Tail) ->
+    % We know that FullPath = Prefix ++ Tail
+    % How to find Prefix?
+    SplitPath = filename:split(FullPath),
+    SplitTail = filename:split(Tail),
+    % Reverse the path components
+    LiatTilps = lists:reverse(SplitTail),
+    HtapTilps = lists:reverse(SplitPath),
+    % Find the common path-tail (list-head), reverse and join
+    filename:join(lists:reverse(drop_common_prefix(LiatTilps, HtapTilps))).
+
+% Drops from A the leading elements common to A and B.
+-spec drop_common_prefix(A::list(), B::list()) -> list().
+drop_common_prefix([], Rest) -> Rest;
+drop_common_prefix([X | Rest1], [X | Rest2]) -> drop_common_prefix(Rest1, Rest2);
+drop_common_prefix(Rest, _) -> Rest.
     
 -spec artifact_urls() -> [string()].
 artifact_urls() ->
