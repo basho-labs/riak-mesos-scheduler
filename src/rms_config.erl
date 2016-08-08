@@ -153,7 +153,7 @@ find_prefix(FullPath, Tail) ->
 
 % Drops from A the leading elements common to A and B.
 -spec drop_common_prefix(A::list(), B::list()) -> list().
-drop_common_prefix([], Rest) -> Rest;
+drop_common_prefix([], _) -> [];
 drop_common_prefix([X | Rest1], [X | Rest2]) -> drop_common_prefix(Rest1, Rest2);
 drop_common_prefix(Rest, _) -> Rest.
     
