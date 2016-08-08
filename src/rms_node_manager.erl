@@ -140,7 +140,7 @@ get_node_hostname(Key) ->
 
 -spec get_node_hosts() -> {ok, rms_offer_helper:hostnames()}.
 get_node_hosts() ->
-    {ok, lists:foldl(fun({_, Node}, Accum) -> 
+    {ok, lists:foldl(fun({_, Node}, Accum) ->
                         case {proplists:get_value(status, Node),
                               proplists:get_value(hostname, Node)} of
                             {shutdown, _} -> Accum;
@@ -152,7 +152,7 @@ get_node_hosts() ->
 
 -spec get_node_attributes() -> {ok, [rms_offer_helper:attributes_group()]}.
 get_node_attributes() ->
-    {ok, lists:foldl(fun({_, Node}, Accum) -> 
+    {ok, lists:foldl(fun({_, Node}, Accum) ->
                         case {proplists:get_value(status, Node),
                               proplists:get_value(attributes, Node)} of
                             {shutdown, _} -> Accum;
@@ -403,7 +403,7 @@ apply_reserved_offer(NodeKey, OfferHelper) ->
                     RiakUrl = erl_mesos_utils:command_info_uri(RiakUrlStr, false, true),
 
                     CommandInfoValue = "./riak_mesos_executor/bin/ermf-executor",
-                    UrlList = [ExecutorUrl, RiakExplorerUrl, RiakPatchesUrl, RiakUrl],
+                    UrlList = [ExecutorUrl, RiakUrl, RiakExplorerUrl, RiakPatchesUrl],
                     CommandInfo0 = erl_mesos_utils:command_info(CommandInfoValue, UrlList),
                     %% TODO Raise PR against erl_mesos to allow managing Environment records
                     {ok, RiakIface} = rms_metadata:get_option(node_iface),
