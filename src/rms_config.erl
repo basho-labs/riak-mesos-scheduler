@@ -26,7 +26,9 @@
          zk/0,
          framework_name/0,
          webui_url/0, 
+         artifacts/0,
          artifact_urls/0, 
+         persistent_path/0,
          framework_hostname/0]).
 
 -export([get_value/2, get_value/3]).
@@ -103,15 +105,23 @@ webui_url() ->
     Port = rms_config:get_value(port, 9090, integer),
     "http://" ++ Hostname ++ ":" ++ integer_to_list(Port) ++ "/".
 
+-spec artifacts() -> [string()].
+artifacts() ->
+    [
+     get_value(riak_pkg, "riak.tar.gz", string),
+     get_value(explorer_pkg, "riak_explorer.tar.gz", string),
+     get_value(patches_pkg, "riak_erlpmd_patches.tar.gz", string),
+     get_value(executor_pkg, "riak_mesos_executor.tar.gz", string)
+    ].
+
 -spec artifact_urls() -> [string()].
 artifact_urls() ->
     Base = webui_url() ++ "static/",
-    [
-     Base ++ get_value(riak_pkg, "riak.tar.gz", string),
-     Base ++ get_value(explorer_pkg, "riak_explorer.tar.gz", string),
-     Base ++ get_value(patches_pkg, "riak_erlpmd_patches.tar.gz", string),
-     Base ++ get_value(executor_pkg, "riak_mesos_executor.tar.gz", string)
-    ].
+    [ Base ++ Artifact || Artifact <- artifacts() ].
+
+-spec persistent_path() -> string().
+persistent_path() ->
+    get_value(persistent_path, "root", string).
 
 %% External functions.
 
