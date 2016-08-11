@@ -91,6 +91,7 @@
 routes() ->
     [%% Static.
      #route{base = [],
+            %% TODO "static" is magic
             path = ["static", static_resource],
             exists = {?MODULE, static_file_exists},
             provides = {?MODULE, static_types},

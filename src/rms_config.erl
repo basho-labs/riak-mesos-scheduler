@@ -116,6 +116,7 @@ artifacts() ->
 
 -spec artifact_urls() -> [string()].
 artifact_urls() ->
+    %% TODO "static" is magic
     Base = webui_url() ++ "static/",
     [ Base ++ Artifact || Artifact <- artifacts() ].
 
