@@ -226,7 +226,7 @@ get_cluster(ReqData) ->
     Status = proplists:get_value(status, Cluster),
     RiakConfig = proplists:get_value(riak_config, Cluster),
     AdvancedConfig = proplists:get_value(advanced_config, Cluster),
-    NodeKeys = proplists:get_value(node_keys, Cluster),
+    NodeKeys = rms_node_manager:get_node_keys(Key),
     BinNodeKeys = [list_to_binary(NodeKey) || NodeKey <- NodeKeys],
     ClusterData = [{Key, [{key, list_to_binary(Key)},
                           {status, Status},
