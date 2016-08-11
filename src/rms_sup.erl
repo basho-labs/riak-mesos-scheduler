@@ -37,9 +37,45 @@ start_link() ->
 -spec init([]) ->
     {ok, {{supervisor:strategy(), 1, 1}, [supervisor:child_spec()]}}.
 init([]) ->
+    PersistentVolPath = rms_config:persistent_path(),
+    ArtifactsDir = rms_config:static_root(),
+    Artifacts = rms_config:artifacts(),
+    %% For each artifact, make sure it does not contain PersistentVolPath:
+    %% if it does, DO NOT START, print something very, very clear
+    case persistent_vol_failsafe(PersistentVolPath, ArtifactsDir, Artifacts) of
+        {error, {path_clash, Artifact}} ->
+            lager:error("Unable to start scheduler: a path in ~p will overwrite"
+                        " the persistent volume path (~p) in executors. Refusing to start.",
+                        %% TODO Maybe add a link to some info in the logline? Is that naive?
+                        [Artifact, PersistentVolPath]),
+            {error, path_clash};
+        {error, _} = Error ->
+            lager:error("Unable to validate archives against persistent volume path, because: ~p",
+                        [Error]),
+            Error;
+        ok -> init_rest()
+    end.
+
+persistent_vol_failsafe(_, _, []) -> ok;
+persistent_vol_failsafe(PVPath, ArtsDir, [Art | Artifacts]) ->
+    Artifact = filename:join(ArtsDir, Art),
+    case erl_tar:table(Artifact, [compressed]) of
+        {error, _}=Error -> Error ;
+        {ok, Contents} ->
+            case lists:member(PVPath, Contents) orelse
+                    lists:member(PVPath++"/", Contents) of
+                true -> {error, {path_clash, Art}};
+                false ->
+                    persistent_vol_failsafe(PVPath, ArtsDir, Artifacts)
+            end
+    end.
+
+-spec init_rest() ->
+    {ok, {{supervisor:strategy(), 1, 1}, [supervisor:child_spec()]}}.
+init_rest() ->
     Ip = rms_config:get_value(ip, "0.0.0.0"),
     Port = rms_config:get_value(port, 9090, integer),
-    WebConfig = 
+    WebConfig =
         [{ip, Ip},
          {port, Port},
          {nodelay, true},
@@ -75,6 +111,7 @@ init([]) ->
     ExecutorCpus = rms_config:get_value(executor_cpus, 0.1, number),
     ExecutorMem = rms_config:get_value(executor_mem, 512.0, number),
 
+    PersistentVolPath = rms_config:persistent_path(),
     ArtifactUrls = rms_config:artifact_urls(),
 
     Ref = riak_mesos_scheduler,
@@ -92,6 +129,7 @@ init([]) ->
                         {node_mem, NodeMem},
                         {node_disk, NodeDisk},
                         {node_iface, NodeIface},
+                        {persistent_path, PersistentVolPath},
                         {executor_cpus, ExecutorCpus},
                         {executor_mem, ExecutorMem},
                         {artifact_urls, ArtifactUrls}],

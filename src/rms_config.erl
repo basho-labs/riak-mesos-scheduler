@@ -21,11 +21,14 @@
 -module(rms_config).
 
 -export([master_hosts/0,
+         static_root/0,
          constraints/0,
          zk/0,
          framework_name/0,
          webui_url/0, 
+         artifacts/0,
          artifact_urls/0, 
+         persistent_path/0,
          framework_hostname/0]).
 
 -export([get_value/2, get_value/3]).
@@ -35,6 +38,7 @@
 -define(DEFAULT_MASTER, "master.mesos:5050").
 -define(DEFAULT_ZK, "master.mesos:2181").
 -define(DEFAULT_CONSTRAINTS, "[]").
+-define(STATIC_ROOT, "../artifacts/").
 
 %% Helper functions.
 
@@ -42,6 +46,9 @@
 master_hosts() ->
     {Hosts, _} = split_hosts(get_value(master, ?DEFAULT_MASTER, string)),
     Hosts.
+
+-spec static_root() -> string().
+static_root() -> ?STATIC_ROOT.
 
 -spec constraints() -> rms_offer_helper:constraints().
 constraints() ->
@@ -98,15 +105,24 @@ webui_url() ->
     Port = rms_config:get_value(port, 9090, integer),
     "http://" ++ Hostname ++ ":" ++ integer_to_list(Port) ++ "/".
 
+-spec artifacts() -> [string()].
+artifacts() ->
+    [
+     get_value(riak_pkg, "riak.tar.gz", string),
+     get_value(explorer_pkg, "riak_explorer.tar.gz", string),
+     get_value(patches_pkg, "riak_erlpmd_patches.tar.gz", string),
+     get_value(executor_pkg, "riak_mesos_executor.tar.gz", string)
+    ].
+
 -spec artifact_urls() -> [string()].
 artifact_urls() ->
+    %% TODO "static" is magic
     Base = webui_url() ++ "static/",
-    [
-     Base ++ get_value(riak_pkg, "riak.tar.gz", string),
-     Base ++ get_value(explorer_pkg, "riak_explorer.tar.gz", string),
-     Base ++ get_value(patches_pkg, "riak_erlpmd_patches.tar.gz", string),
-     Base ++ get_value(executor_pkg, "riak_mesos_executor.tar.gz", string)
-    ].
+    [ Base ++ Artifact || Artifact <- artifacts() ].
+
+-spec persistent_path() -> string().
+persistent_path() ->
+    get_value(persistent_path, "data", string).
 
 %% External functions.
 

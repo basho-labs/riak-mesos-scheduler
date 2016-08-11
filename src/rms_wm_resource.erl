@@ -50,7 +50,6 @@
          create_path/2,
          last_modified/2]).
 
--define(STATIC_ROOT, "../artifacts/").
 -define(API_BASE, "api").
 -define(API_VERSION, "v1").
 -define(API_ROUTE, [?API_BASE, ?API_VERSION]).
@@ -92,6 +91,7 @@
 routes() ->
     [%% Static.
      #route{base = [],
+            %% TODO "static" is magic
             path = ["static", static_resource],
             exists = {?MODULE, static_file_exists},
             provides = {?MODULE, static_types},
@@ -474,7 +474,7 @@ build_response({error, Error}) ->
 
 static_filename(ReqData) ->
     Resource = wrq:path_info(static_resource, ReqData),
-    filename:join([?STATIC_ROOT, Resource]).
+    filename:join([rms_config:static_root(), Resource]).
 
 hash_body(Body) -> mochihex:to_hex(binary_to_list(crypto:hash(sha,Body))).
 

@@ -64,8 +64,6 @@
 
 -define(NODE_NUM_PORTS, 10).
 
--define(NODE_CONTAINER_PATH, "root").
-
 -define(CPUS_PER_EXECUTOR, 0.1).
 
 -define(MEM_PER_EXECUTOR, 32.0).
@@ -282,8 +280,8 @@ apply_unreserved_offer(NodeKey, OfferHelper) ->
             {ok, NodeCpus} = rms_metadata:get_option(node_cpus),
             {ok, NodeMem} = rms_metadata:get_option(node_mem),
             {ok, NodeDisk} = rms_metadata:get_option(node_disk),
+            {ok, ContainerPath} = rms_metadata:get_option(persistent_path),
             NodeNumPorts = ?NODE_NUM_PORTS,
-            ContainerPath = ?NODE_CONTAINER_PATH,
             Hostname = rms_offer_helper:get_hostname(OfferHelper),
             AgentIdValue = rms_offer_helper:get_agent_id_value(OfferHelper),
             PersistenceId = node_persistence_id(),
@@ -339,8 +337,8 @@ apply_reserved_offer(NodeKey, OfferHelper) ->
             {ok, NodeMem} = rms_metadata:get_option(node_mem),
             {ok, NodeDisk} = rms_metadata:get_option(node_disk),
             {ok, ArtifactUrls} = rms_metadata:get_option(artifact_urls),
+            {ok, ContainerPath} = rms_metadata:get_option(persistent_path),
             NodeNumPorts = ?NODE_NUM_PORTS,
-            ContainerPath = ?NODE_CONTAINER_PATH,
             UnfitForReserved =
                 rms_offer_helper:unfit_for_reserved(
                   [{cpus, NodeCpus}, {mem, NodeMem},
