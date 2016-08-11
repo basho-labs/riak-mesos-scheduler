@@ -13,10 +13,14 @@
          add_cluster/1,
          destroy_cluster/1,
          restart_cluster/1,
+         cluster_riak_config_exists/1,
          get_cluster_riak_config/1,
          set_cluster_riak_config/1,
+         delete_cluster_riak_config/1,
+         cluster_advanced_config_exists/1,
          get_cluster_advanced_config/1,
-         set_cluster_advanced_config/1]).
+         set_cluster_advanced_config/1,
+         delete_cluster_advanced_config/1]).
 
 -export([nodes/1,
          node_exists/1,
@@ -113,19 +117,21 @@ routes() ->
             accepts = ?ACCEPT_TEXT,
             accept = {?MODULE, restart_cluster}},
      #route{path = ["clusters", key, "config"],
-            methods = ['GET', 'PUT'],
-            exists = {?MODULE, cluster_exists},
+            methods = ['GET', 'PUT', 'DELETE'],
+            exists = {?MODULE, cluster_riak_config_exists},
             provides = ?PROVIDE_TEXT,
             content = {?MODULE, get_cluster_riak_config},
             accepts = ?ACCEPT_TEXT,
-            accept = {?MODULE, set_cluster_riak_config}},
+            accept = {?MODULE, set_cluster_riak_config},
+            delete = {?MODULE, delete_cluster_riak_config}},
      #route{path = ["clusters", key, "advancedConfig"],
-            methods = ['GET', 'PUT'],
-            exists = {?MODULE, cluster_exists},
+            methods = ['GET', 'PUT', 'DELETE'],
+            exists = {?MODULE, cluster_advanced_config_exists},
             provides = ?PROVIDE_TEXT,
             content = {?MODULE, get_cluster_advanced_config},
             accepts = ?ACCEPT_TEXT,
-            accept={?MODULE, set_cluster_advanced_config}},
+            accept={?MODULE, set_cluster_advanced_config},
+            delete = {?MODULE, delete_cluster_advanced_config}},
      %% Nodes.
      #route{path = ["clusters", key, "nodes"],
             methods = ['GET', 'POST'],
@@ -251,17 +257,57 @@ restart_cluster(ReqData) ->
     Response = build_response(rms_cluster_manager:restart_cluster(Key)),
     {true, wrq:append_to_response_body(mochijson2:encode(Response), ReqData)}.
 
+cluster_riak_config_exists(ReqData) ->
+    Key = wrq:path_info(key, ReqData),
+    Result = case rms_cluster_manager:get_cluster(Key) of
+                 {ok, _} ->
+                     case rms_cluster_manager:get_cluster_riak_config(Key) of
+                         {ok, <<>>} -> false;
+                         {ok, _} -> true
+                     end;
+                 {error, not_found} ->
+                     false
+             end,
+    {Result, ReqData}.
+
 get_cluster_riak_config(ReqData) ->
     Key = wrq:path_info(key, ReqData),
     {ok, Response} = rms_cluster_manager:get_cluster_riak_config(Key),
     {Response, ReqData}.
 
 set_cluster_riak_config(ReqData) ->
+    case wrq:req_body(ReqData) of
+        <<>> ->
+            Response = build_response({error, empty}),
+            {false, wrq:append_to_response_body(mochijson2:encode(Response),
+             ReqData)};
+        Body ->
+            Key = wrq:path_info(key, ReqData),
+            RiakConfig = binary_to_list(Body),
+            Result =
+                rms_cluster_manager:set_cluster_riak_config(Key, RiakConfig),
+            Response = build_response(Result),
+            {true, wrq:append_to_response_body(mochijson2:encode(Response),
+             ReqData)}
+    end.
+
+delete_cluster_riak_config(ReqData) ->
     Key = wrq:path_info(key, ReqData),
-    RiakConfig = binary_to_list(wrq:req_body(ReqData)),
-    Result = rms_cluster_manager:set_cluster_riak_config(Key, RiakConfig),
-    Response = build_response(Result),
+    Response = rms_cluster_manager:set_cluster_riak_config(Key, <<>>),
     {true, wrq:append_to_response_body(mochijson2:encode(Response), ReqData)}.
+
+cluster_advanced_config_exists(ReqData) ->
+    Key = wrq:path_info(key, ReqData),
+    Result = case rms_cluster_manager:get_cluster(Key) of
+                 {ok, _} ->
+                     case rms_cluster_manager:get_cluster_advanced_config(Key) of
+                         {ok, <<>>} -> false;
+                         {ok, _} -> true
+                     end;
+                 {error, not_found} ->
+                     false
+             end,
+    {Result, ReqData}.
 
 get_cluster_advanced_config(ReqData) ->
     Key = wrq:path_info(key, ReqData),
@@ -269,11 +315,24 @@ get_cluster_advanced_config(ReqData) ->
     {Response, ReqData}.
 
 set_cluster_advanced_config(ReqData) ->
+    case wrq:req_body(ReqData) of
+        <<>> ->
+            Response = build_response({error, empty}),
+            {false, wrq:append_to_response_body(mochijson2:encode(Response),
+             ReqData)};
+        Body ->
+            Key = wrq:path_info(key, ReqData),
+            AdvancedConfig = binary_to_list(Body),
+            Result = rms_cluster_manager:set_cluster_advanced_config(Key,
+                                                                     AdvancedConfig),
+            Response = build_response(Result),
+            {true, wrq:append_to_response_body(mochijson2:encode(Response),
+             ReqData)}
+    end.
+
+delete_cluster_advanced_config(ReqData) ->
     Key = wrq:path_info(key, ReqData),
-    AdvancedConfig = binary_to_list(wrq:req_body(ReqData)),
-    Result = rms_cluster_manager:set_cluster_advanced_config(Key,
-                                                             AdvancedConfig),
-    Response = build_response(Result),
+    Response = rms_cluster_manager:set_cluster_advanced_config(Key, <<>>),
     {true, wrq:append_to_response_body(mochijson2:encode(Response), ReqData)}.
 
 %% Nodes.
