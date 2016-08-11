@@ -21,6 +21,7 @@
 -module(rms_config).
 
 -export([master_hosts/0,
+         static_root/0,
          constraints/0,
          zk/0,
          framework_name/0,
@@ -35,6 +36,7 @@
 -define(DEFAULT_MASTER, "master.mesos:5050").
 -define(DEFAULT_ZK, "master.mesos:2181").
 -define(DEFAULT_CONSTRAINTS, "[]").
+-define(STATIC_ROOT, "../artifacts/").
 
 %% Helper functions.
 
@@ -42,6 +44,9 @@
 master_hosts() ->
     {Hosts, _} = split_hosts(get_value(master, ?DEFAULT_MASTER, string)),
     Hosts.
+
+-spec static_root() -> string().
+static_root() -> ?STATIC_ROOT.
 
 -spec constraints() -> rms_offer_helper:constraints().
 constraints() ->
