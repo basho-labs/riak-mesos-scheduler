@@ -243,7 +243,11 @@ platform_bin_dir = ./bin
 ##
 ## Acceptable values:
 ##   - the path to a directory
-platform_data_dir = ./data
+## For Mesos, we set this to where the scheduler will put the
+## the persistent volume
+## To use something configurable from the executor, set to
+## {{data_dir}}
+platform_data_dir = ../../data
 
 ##
 ## Default: ./etc

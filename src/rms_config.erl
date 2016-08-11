@@ -122,7 +122,7 @@ artifact_urls() ->
 
 -spec persistent_path() -> string().
 persistent_path() ->
-    get_value(persistent_path, "root", string).
+    get_value(persistent_path, "data", string).
 
 %% External functions.
 
