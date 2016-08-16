@@ -25,6 +25,7 @@
          constraints/0,
          zk/0,
          framework_name/0,
+         framework_role/0,
          webui_url/0, 
          artifacts/0,
          artifact_urls/0, 
@@ -85,6 +86,10 @@ zk() ->
 -spec framework_name() -> string().
 framework_name() ->
     get_value(name, ?DEFAULT_NAME, string).
+
+-spec framework_role() -> string().
+framework_role() ->
+    get_value(name, framework_name(), string).
 
 -spec framework_hostname() -> string().
 framework_hostname() ->

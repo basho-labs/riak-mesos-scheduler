@@ -91,7 +91,7 @@ init_rest() ->
                    end || Node <- ZkNodes],
     FrameworkUser = rms_config:get_value(user, "root"),
     FrameworkName = rms_config:framework_name(),
-    FrameworkRole = rms_config:get_value(role, "riak", string),
+    FrameworkRole = rms_config:framework_role(),
     FrameworkHostname = rms_config:framework_hostname(),
     FrameworkPrincipal = rms_config:get_value(principal, "riak", string),
     FrameworkFailoverTimeout =
