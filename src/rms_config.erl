@@ -35,7 +35,7 @@
 -export([get_value/2, get_value/3]).
 
 -define(DEFAULT_NAME, "riak").
--define(DEFAULT_HOSTNAME, "riak.mesos").
+-define(DEFAULT_HOSTNAME_SUFFIX, ".marathon.mesos").
 -define(DEFAULT_MASTER, "master.mesos:5050").
 -define(DEFAULT_ZK, "master.mesos:2181").
 -define(DEFAULT_CONSTRAINTS, "[]").
@@ -95,13 +95,9 @@ framework_role() ->
 framework_hostname() ->
     case get_value(hostname, undefined, string) of
         undefined ->
-            {ok, LH} = inet:gethostname(),
-            case inet:gethostbyname(LH) of
-                {ok, {_, FullHostname, _, _, _, _}} ->
-                    FullHostname;
-                _ -> ?DEFAULT_HOSTNAME
-            end;
-        HN -> HN
+            framework_name() ++ ?DEFAULT_HOSTNAME_SUFFIX;
+        Hostname ->
+            Hostname
     end.
 
 -spec webui_url() -> string().
