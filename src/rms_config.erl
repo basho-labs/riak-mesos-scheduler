@@ -30,7 +30,7 @@
          artifacts/0,
          artifact_urls/0, 
          persistent_path/0,
-         container_path/0,
+         riak_root_path/0,
          framework_hostname/0]).
 
 -export([get_value/2, get_value/3]).
@@ -41,7 +41,7 @@
 -define(DEFAULT_ZK, "master.mesos:2181").
 -define(DEFAULT_CONSTRAINTS, "[]").
 -define(STATIC_ROOT, "../artifacts/").
--define(DEFAULT_CONTAINER_PATH, "root").
+-define(DEFAULT_RIAK_ROOT_PATH, "root").
 
  % The path-tail in a Riak archive, for which we search
 -define(RIAK_BIN, "riak/bin/riak").
@@ -120,8 +120,8 @@ artifacts() ->
      get_value(executor_pkg, "riak_mesos_executor.tar.gz", string)
     ].
 
--spec container_path() -> string().
-container_path() ->
+-spec riak_root_path() -> string().
+riak_root_path() ->
     RiakPkg = get_value(riak_pkg, "riak.tar.gz", string),
     ArtifactDir = "../artifacts",
     Filename = filename:join([ArtifactDir, RiakPkg]),
@@ -130,7 +130,7 @@ container_path() ->
 
 %% TODO Should we log something in this case?
 -spec find_root_path(list(string())) -> string().
-find_root_path([]) -> ?DEFAULT_CONTAINER_PATH;
+find_root_path([]) -> ?DEFAULT_RIAK_ROOT_PATH;
 find_root_path([P | Paths]) ->
     case lists:suffix(?RIAK_BIN, P) of
         true ->
