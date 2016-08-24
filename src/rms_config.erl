@@ -149,7 +149,7 @@ find_prefix(FullPath, Tail) ->
     LiatTilps = lists:reverse(SplitTail),
     HtapTilps = lists:reverse(SplitPath),
     % Find the common path-tail (list-head), reverse and join
-    filename:join(lists:reverse(drop_common_prefix(LiatTilps, HtapTilps))).
+    filename:join(lists:reverse(drop_common_prefix(HtapTilps, LiatTilps))).
 
 % Drops from A the leading elements common to A and B.
 -spec drop_common_prefix(A::list(), B::list()) -> list().
