@@ -68,14 +68,17 @@
              {git,"https://github.com/avtobiff/erlang-uuid.git",
                   "585c2474afb4a597ae8c8bf6d21e5a9c73f18e0b"}},
        {protobuffs,".*",
-                   {git,"git://github.com/basho/erlang_protobuffs.git",
-                        "f88fc3c6881687432ddd5546b3c7b08009dfb26f"}},
+                   {git,"https://github.com/basho/erlang_protobuffs.git",
+                        "0d22220a8e56adab129836d6ff582a9bca103a0c"}},
+       {hamcrest,".*",
+                 {git,"https://github.com/basho/hamcrest-erlang.git",
+                      "98bc7aa19ea081478c816824aa05fc5a48acae66"}},
        {riak_pb,".*",
-                {git,"git://github.com/basho/riak_pb.git",
-                     "341269c19c75fa0557d5aa5fd5ac1f0dfe18cfae"}},
+                {git,"https://github.com/basho/riak_pb",
+                     "9ca2395f9d6464b82bab466bbdca410cb85a0ac7"}},
        {riakc,".*",
               {git,"git://github.com/basho/riak-erlang-client",
-                   "802119823bc94459e1e4ac0d747b26e0ae1f14cc"}},
+                   "261df630afe4a998e099a8ab209a2dc7419f85de"}},
        {node_package,".*",
                      {git,"git://github.com/basho/node_package",
                           "14fe2df9ae9f436f2641448b2ae16446d9e74fed"}},
@@ -96,6 +99,6 @@
                   "7222ecaebceb5422e74a9c1503043bbc6036f6b7"}},
        {riak_explorer,".*",
                       {git,"git://github.com/basho-labs/riak_explorer",
-                           "bb224dd9f1c0bdbc2f2d54049037da87801ce9c7"}}]}.
+                           "5e724e35acbc39e462692165ecf5e1eeaee32468"}}]}.
 {plugins,[rebar_lock_deps_plugin]}.
 
