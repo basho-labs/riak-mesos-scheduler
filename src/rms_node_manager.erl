@@ -280,7 +280,7 @@ apply_unreserved_offer(NodeKey, OfferHelper) ->
             {ok, NodeCpus} = rms_metadata:get_option(node_cpus),
             {ok, NodeMem} = rms_metadata:get_option(node_mem),
             {ok, NodeDisk} = rms_metadata:get_option(node_disk),
-            {ok, ContainerPath} = rms_metadata:get_option(persistent_path),
+            {ok, PersistentPath} = rms_metadata:get_option(persistent_path),
             NodeNumPorts = ?NODE_NUM_PORTS,
             Hostname = rms_offer_helper:get_hostname(OfferHelper),
             AgentIdValue = rms_offer_helper:get_agent_id_value(OfferHelper),
@@ -306,7 +306,7 @@ apply_unreserved_offer(NodeKey, OfferHelper) ->
                     OfferHelper3 =
                         rms_offer_helper:make_volume(NodeDisk, Role, Principal,
                                                      PersistenceId,
-                                                     ContainerPath,
+                                                     PersistentPath,
                                                      OfferHelper2),
 
                     Attributes =
@@ -337,7 +337,8 @@ apply_reserved_offer(NodeKey, OfferHelper) ->
             {ok, NodeMem} = rms_metadata:get_option(node_mem),
             {ok, NodeDisk} = rms_metadata:get_option(node_disk),
             {ok, ArtifactUrls} = rms_metadata:get_option(artifact_urls),
-            {ok, ContainerPath} = rms_metadata:get_option(persistent_path),
+            {ok, PersistentPath} = rms_metadata:get_option(persistent_path),
+            {ok, RiakRootPath} = rms_metadata:get_option(riak_root_path),
             NodeNumPorts = ?NODE_NUM_PORTS,
             UnfitForReserved =
                 rms_offer_helper:unfit_for_reserved(
@@ -362,7 +363,7 @@ apply_reserved_offer(NodeKey, OfferHelper) ->
                     OfferHelper1 =
                         rms_offer_helper:apply_reserved_resources(
                           NodeCpus, NodeMem, NodeDisk, undefined, Role,
-                          Principal, PersistenceId, ContainerPath,
+                          Principal, PersistenceId, PersistentPath,
                           OfferHelper0),
                     %% Apply unreserved resources for task.
                     OfferHelper2 =
@@ -425,6 +426,7 @@ apply_reserved_offer(NodeKey, OfferHelper) ->
                     NodeName = iolist_to_binary([NodeKey, "@", NodeHostname]),
                     {ZkNodes, _} = rms_config:zk(),
                     Zookeepers = [list_to_binary(I) || I <- ZkNodes],
+
                     TaskData = [{<<"FullyQualifiedNodeName">>, NodeName},
                                 {<<"Host">>,                   list_to_binary(NodeHostname)},
                                 %% TODO: read list of zookeepers with rms_metadata:get_option/1
@@ -435,7 +437,8 @@ apply_reserved_offer(NodeKey, OfferHelper) ->
                                 {<<"HTTPPort">>,               HTTPPort},
                                 {<<"PBPort">>,                 PBPort},
                                 {<<"HandoffPort">>,            HandoffPort},
-                                {<<"DisterlPort">>,            DisterlPort}],
+                                {<<"DisterlPort">>,            DisterlPort},
+                                {<<"RiakRootPath">>,           list_to_binary(RiakRootPath)}],
                     TaskDataBin = iolist_to_binary(mochijson2:encode(TaskData)),
 
                     % Tack a new UUID onto ExecutorId - this way we don't clash with previous instances of this same node
@@ -466,7 +469,7 @@ apply_reserved_offer(NodeKey, OfferHelper) ->
                                             DisterlPort,
                                             AgentIdValue,
                                             ExecutorIdValue,
-                                            ContainerPath),
+                                            PersistentPath),
 
                     {ok, rms_offer_helper:add_task_to_launch(TaskInfo,
                                                              OfferHelper3)};

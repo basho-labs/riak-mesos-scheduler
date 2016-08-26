@@ -30,6 +30,7 @@
          artifacts/0,
          artifact_urls/0, 
          persistent_path/0,
+         riak_root_path/0,
          framework_hostname/0]).
 
 -export([get_value/2, get_value/3]).
@@ -40,6 +41,10 @@
 -define(DEFAULT_ZK, "master.mesos:2181").
 -define(DEFAULT_CONSTRAINTS, "[]").
 -define(STATIC_ROOT, "../artifacts/").
+-define(DEFAULT_RIAK_ROOT_PATH, "root").
+
+ % The path-tail in a Riak archive, for which we search
+-define(RIAK_BIN, "riak/bin/riak").
 
 %% Helper functions.
 
@@ -115,6 +120,43 @@ artifacts() ->
      get_value(executor_pkg, "riak_mesos_executor.tar.gz", string)
     ].
 
+-spec riak_root_path() -> string().
+riak_root_path() ->
+    RiakPkg = get_value(riak_pkg, "riak.tar.gz", string),
+    ArtifactDir = "../artifacts",
+    Filename = filename:join([ArtifactDir, RiakPkg]),
+    {ok, TarTable} = erl_tar:table(Filename, [compressed]),
+    find_root_path(TarTable).
+
+%% TODO Should we log something in this case?
+-spec find_root_path(list(string())) -> string().
+find_root_path([]) -> ?DEFAULT_RIAK_ROOT_PATH;
+find_root_path([P | Paths]) ->
+    case lists:suffix(?RIAK_BIN, P) of
+        true ->
+            %% Strip the known tail, leave only the prefix
+            find_prefix(P, ?RIAK_BIN);
+        false -> find_root_path(Paths)
+    end.
+
+-spec find_prefix(string(), string()) -> string().
+find_prefix(FullPath, Tail) ->
+    % We know that FullPath = Prefix ++ Tail
+    % How to find Prefix?
+    SplitPath = filename:split(FullPath),
+    SplitTail = filename:split(Tail),
+    % Reverse the path components
+    LiatTilps = lists:reverse(SplitTail),
+    HtapTilps = lists:reverse(SplitPath),
+    % Find the common path-tail (list-head), reverse and join
+    filename:join(lists:reverse(drop_common_prefix(HtapTilps, LiatTilps))).
+
+% Drops from A the leading elements common to A and B.
+-spec drop_common_prefix(A::list(), B::list()) -> list().
+drop_common_prefix([], _) -> [];
+drop_common_prefix([X | Rest1], [X | Rest2]) -> drop_common_prefix(Rest1, Rest2);
+drop_common_prefix(Rest, _) -> Rest.
+    
 -spec artifact_urls() -> [string()].
 artifact_urls() ->
     %% TODO "static" is magic
