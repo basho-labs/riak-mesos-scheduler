@@ -8,6 +8,8 @@
          static_file/1]).
 
 -export([clusters/1,
+         get_clusters_structures/1,
+         set_clusters_structures/1,
          cluster_exists/1,
          get_cluster/1,
          add_cluster/1,
@@ -104,6 +106,11 @@ routes() ->
      %% Clusters.
      #route{path = ["clusters"],
             content = {?MODULE, clusters}},
+     #route{path = ["clusters", "structures"],
+            methods = ['GET', 'PUT'],
+            content = {?MODULE, get_clusters_structures},
+            accepts = ?ACCEPT_TEXT,
+            accept = {?MODULE, set_clusters_structures}},
      #route{path = ["clusters", key],
             methods = ['GET', 'PUT', 'DELETE'],
             exists = {?MODULE, cluster_exists},
@@ -215,6 +222,44 @@ clusters(ReqData) ->
     KeyList = [list_to_binary(Key) ||
                Key <- rms_cluster_manager:get_cluster_keys()],
     {[{clusters, KeyList}], ReqData}.
+
+get_clusters_structures(ReqData) ->
+    Keys = rms_cluster_manager:get_cluster_keys(),
+    Clusters =
+        lists:map(fun(Key) ->
+                      {ok, Cluster} = rms_cluster_manager:get_cluster(Key),
+                      [{key, iolist_to_binary(proplists:get_value(key, Cluster))},
+                       {riak_config,
+                        iolist_to_binary(proplists:get_value(riak_config, Cluster))},
+                       {advanced_config,
+                        iolist_to_binary(proplists:get_value(advanced_config, Cluster))},
+                       {num_nodes, proplists:get_value(generation, Cluster) - 1}]
+                  end, Keys),
+    {[{clusters, Clusters}], ReqData}.
+
+set_clusters_structures(ReqData) ->
+    Clusters = get_json_value(<<"clusters">>,
+                              mochijson2:decode(wrq:req_body(ReqData))),
+    Results =
+        lists:map(fun(Cluster) ->
+                      BinaryKey = get_json_value(<<"key">>, Cluster),
+                      Key = binary_to_list(BinaryKey),
+                      RiakConfig = get_json_value(<<"riak_config">>, Cluster),
+                      AdvancedConfig = get_json_value(<<"advanced_config">>, Cluster),
+                      NumNodes = get_json_value(<<"num_nodes">>, Cluster),
+                      case rms_cluster_manager:add_cluster(Key) of
+                          ok ->
+                              ok = rms_cluster_manager:set_cluster_riak_config(Key, RiakConfig),
+                              ok = rms_cluster_manager:set_cluster_advanced_config(Key, AdvancedConfig),
+                              [ok = rms_cluster_manager:add_node(Key) || _Num <- lists:seq(1, NumNodes + 1)],
+                              [{key, BinaryKey}, {success, true}];
+                          {error, Reason} ->
+                              FormatReason =
+                                  iolist_to_binary(io_lib:format("~p", [Reason])),
+                              [{key, BinaryKey}, {success, false}, {error, FormatReason}]
+                      end
+                  end, Clusters),
+    {true, wrq:append_to_response_body(mochijson2:encode(Results), ReqData)}.
 
 cluster_exists(ReqData) ->
     Key = wrq:path_info(key, ReqData),
@@ -493,6 +538,12 @@ last_modified(ReqData, Ctx = #ctx{route = #route{last_modified = {M, F}}}) ->
     {LM, ReqData1, Ctx}.
 
 %% Internal functions.
+
+get_json_value(Key, Object) ->
+    get_json_value(Key, Object, undefined).
+
+get_json_value(Key, {struct, PropList}, Default) ->
+    proplists:get_value(Key, PropList, Default).
 
 get_route([], _ReqData) ->
     undefined;
