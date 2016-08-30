@@ -251,7 +251,7 @@ set_clusters_structures(ReqData) ->
                           ok ->
                               ok = rms_cluster_manager:set_cluster_riak_config(Key, RiakConfig),
                               ok = rms_cluster_manager:set_cluster_advanced_config(Key, AdvancedConfig),
-                              [ok = rms_cluster_manager:add_node(Key) || _Num <- lists:seq(1, NumNodes + 1)],
+                              [ok = rms_cluster_manager:add_node(Key) || _Num <- lists:seq(1, NumNodes)],
                               [{key, BinaryKey}, {success, true}];
                           {error, Reason} ->
                               FormatReason =
