@@ -34,6 +34,10 @@ main() {
         export RIAK_MESOS_PATCHES_PKG=riak_erlpmd_patches.tar.gz
     fi
 
+    if [ -z "$RIAK_MESOS_NAME" ]; then
+        export RIAK_MESOS_NAME=riak
+    fi
+
     mkdir -p artifacts
     mv $RIAK_MESOS_RIAK_PKG artifacts/$RIAK_MESOS_RIAK_PKG &> /dev/null
     mv $RIAK_MESOS_EXPLORER_PKG artifacts/$RIAK_MESOS_EXPLORER_PKG &> /dev/null
@@ -43,8 +47,14 @@ main() {
     rm -rf root
     rm -rf riak_mesos_executor
 
+    RUN_SCHEDULER="riak_mesos_scheduler/bin/riak_mesos_scheduler -noinput"
+
+    if [ -n "$RIAK_MESOS_ATTACHE" ]; then
+        RUN_SCHEDULER="$RUN_SCHEDULER -sname '$RIAK_MESOS_NAME' -setcookie '$RIAK_MESOS_NAME'"
+    fi
+
     echo "Starting riak_mesos_scheduler..."
-    riak_mesos_scheduler/bin/riak_mesos_scheduler -noinput
+    eval "$RUN_SCHEDULER"
 }
 
 main "$@"
