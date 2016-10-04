@@ -49,7 +49,7 @@ main() {
 
     RUN_SCHEDULER="riak_mesos_scheduler/bin/riak_mesos_scheduler -noinput"
 
-    if [ -n "$RIAK_MESOS_ATTACHE" ]; then
+    if [ -n "$RIAK_MESOS_ATTACH" ]; then
         RUN_SCHEDULER="$RUN_SCHEDULER -sname '$RIAK_MESOS_NAME' -setcookie '$RIAK_MESOS_NAME'"
     fi
 
