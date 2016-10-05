@@ -225,16 +225,10 @@ clusters(ReqData) ->
 
 get_clusters_structures(ReqData) ->
     Keys = rms_cluster_manager:get_cluster_keys(),
-    Clusters =
-        lists:map(fun(Key) ->
-                      {ok, Cluster} = rms_cluster_manager:get_cluster(Key),
-                      [{key, iolist_to_binary(proplists:get_value(key, Cluster))},
-                       {riak_config,
-                        iolist_to_binary(proplists:get_value(riak_config, Cluster))},
-                       {advanced_config,
-                        iolist_to_binary(proplists:get_value(advanced_config, Cluster))},
-                       {num_nodes, proplists:get_value(generation, Cluster) - 1}]
-                  end, Keys),
+    Clusters = lists:map(fun(Key) ->
+                             {ok, Cluster} = rms_cluster_manager:get_cluster_structure(Key),
+                             Cluster
+                         end, Keys),
     {[{clusters, Clusters}], ReqData}.
 
 set_clusters_structures(ReqData) ->

@@ -28,6 +28,7 @@
          get_cluster/1,
          get_cluster_riak_config/1,
          get_cluster_advanced_config/1,
+         get_cluster_structure/1,
          add_cluster/1,
          set_cluster_riak_config/2,
          set_cluster_advanced_config/2,
@@ -80,6 +81,37 @@ get_cluster_riak_config(Key) ->
     {ok, binary()} | {error, term()}.
 get_cluster_advanced_config(Key) ->
     rms_cluster:get_field_value(advanced_config, Key).
+
+-spec get_cluster_structure(rms_cluster:key()) ->
+    {ok, [{atom(), term()}]} | {error, term()}.
+get_cluster_structure(Key) ->
+    case get_cluster(Key) of
+        {ok, Cluster} ->
+            NullIfEmptyValue = fun(Name, Plist) ->
+                              case iolist_to_binary(proplists:get_value(Name, Plist)) of
+                                  <<>> ->
+                                      null;
+                                  Value ->
+                                      Value
+                              end
+                          end,
+            NodeKeys = rms_node_manager:get_node_keys(Key),
+            Nodes = lists:map(fun(NodeKey) ->
+                                  {ok, Node} = rms_node_manager:get_node(NodeKey),
+                                  [{name, iolist_to_binary(proplists:get_value(key, Node))},
+                                   {status, atom_to_binary(proplists:get_value(status, Node), latin1)},
+                                   {container_path, NullIfEmptyValue(container_path, Node)},
+                                   {persistence_id, NullIfEmptyValue(persistence_id, Node)}]
+                              end, NodeKeys),
+
+            {ok, [{name, iolist_to_binary(proplists:get_value(key, Cluster))},
+                  {riak_config, NullIfEmptyValue(riak_config, Cluster)},
+                  {advanced_config, NullIfEmptyValue(advanced_config, Cluster)},
+                  {generation, proplists:get_value(generation, Cluster) - 1},
+                  {nodes, Nodes}]};
+        {error, _Reason} = Error ->
+            Error
+    end.
 
 -spec add_cluster(rms_cluster:key()) -> ok | {error, term()}.
 add_cluster(Key) ->
