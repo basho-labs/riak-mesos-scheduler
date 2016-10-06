@@ -407,7 +407,7 @@ get_node(ReqData) ->
 
 add_node(ReqData) ->
     Key = wrq:path_info(key, ReqData),
-    Response = build_response(rms_cluster_manager:add_node(Key)),
+    Response = build_response(rms_cluster_manager:add_node(Key, undefined)),
     {true, wrq:append_to_response_body(mochijson2:encode(Response), ReqData)}.
 
 delete_node(ReqData) ->

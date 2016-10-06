@@ -38,7 +38,7 @@
          node_stopped/2,
          destroy_cluster/1]).
 
--export([add_node/1]).
+-export([add_node/2]).
 
 -export([apply_offer/1]).
 
@@ -107,7 +107,7 @@ get_cluster_structure(Key) ->
             {ok, [{name, iolist_to_binary(proplists:get_value(key, Cluster))},
                   {riak_config, NullIfEmptyValue(riak_config, Cluster)},
                   {advanced_config, NullIfEmptyValue(advanced_config, Cluster)},
-                  {generation, proplists:get_value(generation, Cluster) - 1},
+                  {generation, proplists:get_value(generation, Cluster)},
                   {nodes, Nodes}]};
         {error, _Reason} = Error ->
             Error
@@ -171,11 +171,16 @@ set_cluster_structure({struct, ClusterList}) ->
                 null ->
                     ok;
                 AdvancedConfig ->
-                    ok = rms_cluster_manager:set_cluster_riak_config(Key, AdvancedConfig)
+                    ok = rms_cluster_manager:set_cluster_advanced_config(Key, AdvancedConfig)
             end,
             Generation = proplists:get_value(<<"generation">>, ClusterList),
             {ok, Pid} = get_cluster_pid(Key),
             ok = rms_cluster:set_generation(Pid, Generation),
+            Nodes = proplists:get_value(<<"nodes">>, ClusterList),
+            lists:map(fun({struct, NodeList}) ->
+                          NodeKey = binary_to_list(proplists:get_value(<<"name">>, NodeList)),
+                          ok = add_node(Key, NodeKey)
+                      end, Nodes),
             ok;
         {error, _Reason} = Error ->
             Error
@@ -219,11 +224,12 @@ destroy_cluster(Key) ->
             {error, Reason}
     end.
 
--spec add_node(rms_cluster:key()) -> ok | {error, term()}.
-add_node(Key) ->
+-spec add_node(rms_cluster:key(), undefined | rms_node:key()) ->
+    ok | {error, term()}.
+add_node(Key, NodeKey) ->
     case get_cluster_pid(Key) of
         {ok, Pid} ->
-            rms_cluster:add_node(Pid);
+            rms_cluster:add_node(Pid, NodeKey);
         {error, Reason} ->
             {error, Reason}
     end.

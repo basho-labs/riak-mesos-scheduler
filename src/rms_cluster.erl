@@ -32,7 +32,7 @@
          maybe_join/2,
          leave/3,
          destroy/1,
-         add_node/1,
+         add_node/2,
          commence_restart/1,
          node_started/2,
          node_stopped/2]).
@@ -124,9 +124,9 @@ maybe_join(Pid, NodeKey) ->
 destroy(Pid) ->
     gen_fsm:sync_send_all_state_event(Pid, destroy).
 
--spec add_node(pid()) -> ok | {error, term()}.
-add_node(Pid) ->
-    gen_fsm:sync_send_all_state_event(Pid, add_node).
+-spec add_node(pid(), undefined | rms_node:key()) -> ok | {error, term()}.
+add_node(Pid, NodeKey) ->
+    gen_fsm:sync_send_all_state_event(Pid, {add_node, NodeKey}).
 
 -spec commence_restart(pid()) -> ok | {error, term()}.
 commence_restart(Pid) ->
@@ -324,7 +324,7 @@ handle_sync_event(destroy, _From, State0,
             Reply = do_destroy(NodeKeys),
             update_and_reply({State0, Cluster}, {shutdown, Cluster}, Reply, next_timeout(shutdown, Cluster))
     end;
-handle_sync_event(add_node, _From, StateName, Cluster) ->
+handle_sync_event({add_node, undefined}, _From, StateName, Cluster) ->
     #cluster{key = Key,
              generation = Generation} = Cluster,
     FrameworkName = rms_config:framework_name(),
@@ -338,6 +338,14 @@ handle_sync_event(add_node, _From, StateName, Cluster) ->
                 {error,_}=Err ->
                     {reply, Err, StateName, Cluster}
             end;
+        {error,_}=Err ->
+            {reply, Err, StateName, Cluster}
+    end;
+handle_sync_event({add_node, NodeKey}, _From, StateName, Cluster) ->
+    #cluster{key = Key} = Cluster,
+    case rms_node_manager:add_node(NodeKey, Key) of
+        ok ->
+            update_and_reply({StateName, Cluster}, {requested, Cluster}, ok);
         {error,_}=Err ->
             {reply, Err, StateName, Cluster}
     end;
