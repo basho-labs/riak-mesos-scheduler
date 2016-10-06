@@ -234,25 +234,16 @@ get_clusters_structures(ReqData) ->
 set_clusters_structures(ReqData) ->
     Clusters = get_json_value(<<"clusters">>,
                               mochijson2:decode(wrq:req_body(ReqData))),
-    Results =
-        lists:map(fun(Cluster) ->
-                      BinaryKey = get_json_value(<<"key">>, Cluster),
-                      Key = binary_to_list(BinaryKey),
-                      RiakConfig = get_json_value(<<"riak_config">>, Cluster),
-                      AdvancedConfig = get_json_value(<<"advanced_config">>, Cluster),
-                      NumNodes = get_json_value(<<"num_nodes">>, Cluster),
-                      case rms_cluster_manager:add_cluster(Key) of
-                          ok ->
-                              ok = rms_cluster_manager:set_cluster_riak_config(Key, RiakConfig),
-                              ok = rms_cluster_manager:set_cluster_advanced_config(Key, AdvancedConfig),
-                              [ok = rms_cluster_manager:add_node(Key) || _Num <- lists:seq(1, NumNodes)],
-                              [{key, BinaryKey}, {success, true}];
-                          {error, Reason} ->
-                              FormatReason =
-                                  iolist_to_binary(io_lib:format("~p", [Reason])),
-                              [{key, BinaryKey}, {success, false}, {error, FormatReason}]
-                      end
-                  end, Clusters),
+    Results = [case rms_cluster_manager:set_cluster_structure(Cluster) of
+                   ok ->
+                       Name = get_json_value(<<"name">>, Cluster),
+                       [{name, Name}, {success, true}];
+                   {error, Reason} ->
+                       Name = get_json_value(<<"name">>, Cluster),
+                       FormatReason = iolist_to_binary(io_lib:format("~p",
+                                                       [Reason])),
+                       [{name, Name}, {success, false}, {error, FormatReason}]
+               end || Cluster <- Clusters],
     {true, wrq:append_to_response_body(mochijson2:encode(Results), ReqData)}.
 
 cluster_exists(ReqData) ->

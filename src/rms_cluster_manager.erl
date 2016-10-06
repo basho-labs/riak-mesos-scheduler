@@ -32,6 +32,7 @@
          add_cluster/1,
          set_cluster_riak_config/2,
          set_cluster_advanced_config/2,
+         set_cluster_structure/1,
          restart_cluster/1,
          node_started/2,
          node_stopped/2,
@@ -87,14 +88,14 @@ get_cluster_advanced_config(Key) ->
 get_cluster_structure(Key) ->
     case get_cluster(Key) of
         {ok, Cluster} ->
-            NullIfEmptyValue = fun(Name, Plist) ->
-                              case iolist_to_binary(proplists:get_value(Name, Plist)) of
-                                  <<>> ->
-                                      null;
-                                  Value ->
-                                      Value
-                              end
-                          end,
+            NullIfEmptyValue = fun(Name, PropList) ->
+                                   case iolist_to_binary(proplists:get_value(Name, PropList)) of
+                                        <<>> ->
+                                            null;
+                                        Value ->
+                                            Value
+                                   end
+                               end,
             NodeKeys = rms_node_manager:get_node_keys(Key),
             Nodes = lists:map(fun(NodeKey) ->
                                   {ok, Node} = rms_node_manager:get_node(NodeKey),
@@ -103,7 +104,6 @@ get_cluster_structure(Key) ->
                                    {container_path, NullIfEmptyValue(container_path, Node)},
                                    {persistence_id, NullIfEmptyValue(persistence_id, Node)}]
                               end, NodeKeys),
-
             {ok, [{name, iolist_to_binary(proplists:get_value(key, Cluster))},
                   {riak_config, NullIfEmptyValue(riak_config, Cluster)},
                   {advanced_config, NullIfEmptyValue(advanced_config, Cluster)},
@@ -153,6 +153,32 @@ set_cluster_advanced_config(Key, AdvancedConfig) ->
             rms_cluster:set_advanced_config(Pid, AdvancedConfig);
         {error, Reason} ->
             {error, Reason}
+    end.
+
+-spec set_cluster_structure({struct, [{binary(), term()}]}) ->
+    ok | {error, term()}.
+set_cluster_structure({struct, ClusterList}) ->
+    Key = binary_to_list(proplists:get_value(<<"name">>, ClusterList)),
+    case rms_cluster_manager:add_cluster(Key) of
+        ok ->
+            case proplists:get_value(<<"riak_config">>, ClusterList) of
+                null ->
+                    ok;
+                RiakConfig ->
+                    ok = rms_cluster_manager:set_cluster_riak_config(Key, RiakConfig)
+            end,
+            case proplists:get_value(<<"advanced_config">>, ClusterList) of
+                null ->
+                    ok;
+                AdvancedConfig ->
+                    ok = rms_cluster_manager:set_cluster_riak_config(Key, AdvancedConfig)
+            end,
+            Generation = proplists:get_value(<<"generation">>, ClusterList),
+            {ok, Pid} = get_cluster_pid(Key),
+            ok = rms_cluster:set_generation(Pid, Generation),
+            ok;
+        {error, _Reason} = Error ->
+            Error
     end.
 
 %% TODO Rename this to be clearer that returning 'ok' just means we've
