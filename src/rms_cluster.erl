@@ -28,6 +28,7 @@
          get_field_value/2,
          set_riak_config/2,
          set_advanced_config/2,
+         set_generation/2,
          maybe_join/2,
          leave/3,
          destroy/1,
@@ -110,6 +111,10 @@ set_riak_config(Pid, RiakConfig) ->
 -spec set_advanced_config(pid(), binary()) -> ok | {error, term()}.
 set_advanced_config(Pid, AdvancedConfig) ->
     gen_fsm:sync_send_all_state_event(Pid, {set_advanced_config, AdvancedConfig}).
+
+-spec set_generation(pid(), non_neg_integer()) -> ok | {error, term()}.
+set_generation(Pid, Generation) ->
+    gen_fsm:sync_send_all_state_event(Pid, {set_generation, Generation}).
 
 -spec maybe_join(pid(), rms_node:key()) -> ok | {error, term()}.
 maybe_join(Pid, NodeKey) ->
@@ -295,6 +300,14 @@ handle_sync_event({set_riak_config, RiakConfig}, _From, StateName, Cluster) ->
     end;
 handle_sync_event({set_advanced_config, AdvConfig}, _From, StateName, Cluster) ->
     Cluster1 = Cluster#cluster{advanced_config = AdvConfig},
+    case update_cluster(Cluster#cluster.key, {StateName, Cluster1}) of
+        ok ->
+            update_and_reply({StateName, Cluster}, {StateName, Cluster1}, ok);
+        {error,_}=Err ->
+            {reply, Err, StateName, Cluster}
+    end;
+handle_sync_event({set_generation, Generation}, _From, StateName, Cluster) ->
+    Cluster1 = Cluster#cluster{generation = Generation},
     case update_cluster(Cluster#cluster.key, {StateName, Cluster1}) of
         ok ->
             update_and_reply({StateName, Cluster}, {StateName, Cluster1}, ok);
