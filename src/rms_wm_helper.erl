@@ -29,6 +29,8 @@
          get_cluster_with_nodes_list/3,
          get_clusters_list_with_nodes_list/2]).
 
+-export([to_json/1, to_json/2]).
+
 -define(CLUSTER_FIELDS, [key, riak_config, advanced_config, generation]).
 
 -define(NODE_FIELDS, [key, status, container_path, persistence_id]).
@@ -84,6 +86,20 @@ get_clusters_list_with_nodes_list(ClusterFields, NodeFields) ->
     ClusterKeys = rms_cluster_manager:get_cluster_keys(),
     get_clusters_list(ClusterKeys, ClusterFields, NodeFields, []).
 
+to_json(Value) ->
+    to_json(Value, []).
+
+%% @doc Option: {rename_keys, [{FromKey, ToKey}]}.
+%%      Option: {replace_values, [{Key, FromValue, ToValue}]}.
+to_json([{_Key, _Value} | _Fields] = Object, Options) ->
+    to_json_object(Object, [], Options);
+to_json({list, List}, Options) ->
+    to_json_array(List, [], Options);
+to_json(String, _Options) when is_list(String) ->
+    list_to_binary(String);
+to_json(Value, _Options) ->
+    Value.
+
 %% Internal functions.
 
 -spec get_clusters_list([rms_cluster:key()], [atom()], [atom()],
@@ -119,3 +135,37 @@ get_nodes_list([NodeKey | NodeKeys], NodeFields, Nodes) ->
     end;
 get_nodes_list([], _NodeFields, Nodes) ->
     {list, lists:reverse(Nodes)}.
+
+to_json_array([Value | Values], JsonArray, Options) ->
+    JsonArray1 = [to_json(Value, Options) | JsonArray],
+    to_json_array(Values, JsonArray1, Options);
+to_json_array([], JsonArray, _Options) ->
+    {array, lists:reverse(JsonArray)}.
+
+to_json_object([{Key, Value} | Fields], JsonObject, Options) ->
+    Key1 = json_object_key(Key, Options),
+    Value1 = to_json(json_object_value(Key, Value, Options), Options),
+    JsonObject1 = [{Key1, Value1} | JsonObject],
+    to_json_object(Fields, JsonObject1, Options);
+to_json_object([], JsonObject, _Options) ->
+    {struct, lists:reverse(JsonObject)}.
+
+json_object_key(Key, Options) ->
+    RenameObjectKeys = proplists:get_value(rename_keys, Options, []),
+    case lists:keyfind(Key, 1, RenameObjectKeys) of
+        {_FromKey, ToKey} ->
+            ToKey;
+        false ->
+            Key
+    end.
+
+json_object_value(Key, Value, Options) ->
+    ReplaceValues = proplists:get_value(replace_values, Options, []),
+    case lists:keyfind(Key, 1, ReplaceValues) of
+        {Key, Value, ToValue} ->
+            ToValue;
+        {_Key, _FromValue, _ToValue} ->
+            Value;
+        false ->
+            Value
+    end.
