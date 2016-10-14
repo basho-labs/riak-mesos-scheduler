@@ -25,6 +25,7 @@
 %% API
 -export([start_link/1]).
 -export([get/1,
+         get/2,
          get_field_value/2,
          set_riak_config/2,
          set_advanced_config/2,
@@ -85,6 +86,17 @@ start_link(Key) ->
 -spec get(key()) -> {ok, rms_metadata:cluster_state()} | {error, term()}.
 get(Key) ->
     rms_metadata:get_cluster(Key).
+
+-spec get(key(), [atom()]) ->
+    {ok, rms_metadata:cluster_state()} | {error, term()}.
+get(Key, Fields) ->
+    case rms_metadata:get_cluster(Key) of
+        {ok, Cluster} ->
+            {ok, [Field || {Name, _Value} = Field <- Cluster,
+                  lists:member(Name, Fields)]};
+        {error, Reason} ->
+            {error, Reason}
+    end.
 
 -spec get_field_value(atom(), key()) -> {ok, term()} | {error, term()}.
 get_field_value(Field, Key) ->
