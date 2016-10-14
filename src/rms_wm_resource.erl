@@ -106,11 +106,11 @@ routes() ->
      %% Clusters.
      #route{path = ["clusters"],
             content = {?MODULE, clusters}},
-     #route{path = ["clusters", "structures"],
-            methods = ['GET', 'PUT'],
-            content = {?MODULE, get_clusters_structures},
-            accepts = ?ACCEPT_TEXT,
-            accept = {?MODULE, set_clusters_structures}},
+%%     #route{path = ["clusters", "structures"],
+%%            methods = ['GET', 'PUT'],
+%%            content = {?MODULE, get_clusters_structures},
+%%            accepts = ?ACCEPT_TEXT,
+%%            accept = {?MODULE, set_clusters_structures}},
      #route{path = ["clusters", key],
             methods = ['GET', 'PUT', 'DELETE'],
             exists = {?MODULE, cluster_exists},
@@ -219,9 +219,10 @@ static_file(ReqData) ->
 %% Clusters.
 
 clusters(ReqData) ->
-    KeyList = [list_to_binary(Key) ||
-               Key <- rms_cluster_manager:get_cluster_keys()],
-    {[{clusters, KeyList}], ReqData}.
+    {list, Clusters} = rms_wm_helper:get_clusters_list([key]),
+    Clusters1 = [proplists:get_value(key, Cluster) || Cluster <- Clusters],
+    JsonClustersKeysList = rms_wm_helper:to_json({list, Clusters1}),
+    {[{clusters, JsonClustersKeysList}], ReqData}.
 
 get_clusters_structures(ReqData) ->
     Keys = rms_cluster_manager:get_cluster_keys(),
@@ -258,6 +259,10 @@ cluster_exists(ReqData) ->
 
 get_cluster(ReqData) ->
     Key = wrq:path_info(key, ReqData),
+
+    TMP = rms_cluster_manager:get_cluster_with_nodes(Key),
+    io:format("Cluster with nodes: ~p~n", [TMP]),
+
     {ok, Cluster} = rms_cluster_manager:get_cluster(Key),
     Status = proplists:get_value(status, Cluster),
     RiakConfig = proplists:get_value(riak_config, Cluster),
@@ -524,12 +529,6 @@ last_modified(ReqData, Ctx = #ctx{route = #route{last_modified = {M, F}}}) ->
 
 %% Internal functions.
 
-get_json_value(Key, Object) ->
-    get_json_value(Key, Object, undefined).
-
-get_json_value(Key, {struct, PropList}, Default) ->
-    proplists:get_value(Key, PropList, Default).
-
 get_route([], _ReqData) ->
     undefined;
 get_route([Route | Rest], ReqData) ->
@@ -590,3 +589,9 @@ riak_explorer_command(ReqData, Command, Args) ->
         {ok, Body} ->
             {mochijson2:encode(Body), ReqData}
     end.
+
+get_json_value(Key, Object) ->
+    get_json_value(Key, Object, undefined).
+
+get_json_value(Key, {struct, PropList}, Default) ->
+    proplists:get_value(Key, PropList, Default).
