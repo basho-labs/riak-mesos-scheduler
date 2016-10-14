@@ -38,6 +38,7 @@
          get_active_node_keys/1,
          get_running_node_keys/1,
          get_node/1,
+         get_node/2,
          get_node_state/1,
          get_node_cluster_key/1,
          get_node_hostname/1,
@@ -118,9 +119,14 @@ get_running_node_keys(ClusterKey) ->
             started =:= proplists:get_value(status, Node)].
 
 -spec get_node(rms_node:key()) ->
-                      {ok, rms_metadata:node_state()} | {error, term()}.
+    {ok, rms_metadata:node_state()} | {error, term()}.
 get_node(Key) ->
     rms_node:get(Key).
+
+-spec get_node(rms_node:key(), [atom()]) ->
+    {ok, rms_metadata:node_state()} | {error, term()}.
+get_node(Key, Fields) ->
+    rms_node:get(Key, Fields).
 
 -spec get_node_state(rms_node:key()) ->
     {ok, rms_node:node_state()} | {error, term()}.
