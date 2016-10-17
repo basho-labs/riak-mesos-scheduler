@@ -29,7 +29,7 @@
          get_cluster_with_nodes_list/3,
          get_clusters_list_with_nodes_list/2]).
 
--export([to_json/1, to_json/2]).
+-export([to_json/1, to_json/2, from_json/1, from_json/2]).
 
 -define(CLUSTER_FIELDS, [key, riak_config, advanced_config, generation]).
 
@@ -91,13 +91,27 @@ to_json(Value) ->
 
 %% @doc Option: {rename_keys, [{FromKey, ToKey}]}.
 %%      Option: {replace_values, [{Key, FromValue, ToValue}]}.
-to_json([{_Key, _Value} | _Fields] = Object, Options) ->
-    to_json_object(Object, [], Options);
 to_json({list, List}, Options) ->
     to_json_array(List, [], Options);
+to_json([{_Key, _Value} | _Fields] = Object, Options) ->
+    to_json_object(Object, [], Options);
 to_json(String, _Options) when is_list(String) ->
     list_to_binary(String);
 to_json(Value, _Options) ->
+    Value.
+
+from_json(Value) ->
+    from_json(Value, []).
+
+%% @doc Option: {rename_keys, [{FromKey, ToKey}]}.
+%%      Option: {replace_values, [{Key, FromValue, ToValue}]}.
+from_json(List, Options) when is_list(List) ->
+    from_json_array(List, [], Options);
+from_json({struct, Object}, Options) ->
+    from_json_object(Object, [], Options);
+from_json(Binary, _Options) when is_list(Binary) ->
+    binary_to_list(Binary);
+from_json(Value, _Options) ->
     Value.
 
 %% Internal functions.
@@ -169,3 +183,18 @@ json_object_value(Key, Value, Options) ->
         false ->
             Value
     end.
+
+from_json_array([Value | Values], Array, Options) ->
+    Array1 = [from_json(Value, Options) | Array],
+    from_json_array(Values, Array1, Options);
+from_json_array([], Array, _Options) ->
+    {list, lists:reverse(Array)}.
+
+from_json_object([{Key, Value} | Fields], Object, Options) ->
+    Key1 = binary_to_atom(Key, utf8),
+    Key2 = json_object_key(Key1, Options),
+    Value1 = from_json(json_object_value(Key1, Value, Options), Options),
+    Object1 = [{Key2, Value1} | Object],
+    from_json_object(Fields, Object1, Options);
+from_json_object([], Object, _Options) ->
+    lists:reverse(Object).
