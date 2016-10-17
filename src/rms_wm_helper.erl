@@ -27,7 +27,8 @@
          get_clusters_list/1,
          get_nodes_list/2,
          get_cluster_with_nodes_list/3,
-         get_clusters_list_with_nodes_list/2]).
+         get_clusters_list_with_nodes_list/2,
+         add_clusters_list_with_nodes_list/1]).
 
 -export([to_json/1, to_json/2, from_json/1, from_json/2]).
 
@@ -86,6 +87,9 @@ get_clusters_list_with_nodes_list(ClusterFields, NodeFields) ->
     ClusterKeys = rms_cluster_manager:get_cluster_keys(),
     get_clusters_list(ClusterKeys, ClusterFields, NodeFields, []).
 
+add_clusters_list_with_nodes_list({list, Clusters}) ->
+    add_clusters_list_with_nodes_list(Clusters, []).
+
 to_json(Value) ->
     to_json(Value, []).
 
@@ -109,7 +113,7 @@ from_json(List, Options) when is_list(List) ->
     from_json_array(List, [], Options);
 from_json({struct, Object}, Options) ->
     from_json_object(Object, [], Options);
-from_json(Binary, _Options) when is_list(Binary) ->
+from_json(Binary, _Options) when is_binary(Binary) ->
     binary_to_list(Binary);
 from_json(Value, _Options) ->
     Value.
@@ -149,6 +153,21 @@ get_nodes_list([NodeKey | NodeKeys], NodeFields, Nodes) ->
     end;
 get_nodes_list([], _NodeFields, Nodes) ->
     {list, lists:reverse(Nodes)}.
+
+add_clusters_list_with_nodes_list([Cluster | Clusters], Results) ->
+    {list, Nodes} = proplists:get_value(nodes, Cluster),
+    Key = proplists:get_value(key, Cluster),
+    Result = case rms_cluster_manager:add_cluster(Cluster, Nodes) of
+                 ok ->
+                     [{key, Key}, {success, true}];
+                 {error, Reason} ->
+                     [{key, Key},
+                      {success, false},
+                      {reason, io_lib:format("~p", [Reason])}]
+             end,
+    add_clusters_list_with_nodes_list(Clusters, [Result | Results]);
+add_clusters_list_with_nodes_list([], Results) ->
+    {list, lists:reverse(Results)}.
 
 to_json_array([Value | Values], JsonArray, Options) ->
     JsonArray1 = [to_json(Value, Options) | JsonArray],
@@ -193,7 +212,7 @@ from_json_array([], Array, _Options) ->
 from_json_object([{Key, Value} | Fields], Object, Options) ->
     Key1 = binary_to_atom(Key, utf8),
     Key2 = json_object_key(Key1, Options),
-    Value1 = from_json(json_object_value(Key1, Value, Options), Options),
+    Value1 = json_object_value(Key1, from_json(Value, Options), Options),
     Object1 = [{Key2, Value1} | Object],
     from_json_object(Fields, Object1, Options);
 from_json_object([], Object, _Options) ->
