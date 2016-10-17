@@ -30,9 +30,9 @@
          get_cluster_riak_config/1,
          get_cluster_advanced_config/1,
          add_cluster/1,
+         add_cluster/2,
          set_cluster_riak_config/2,
          set_cluster_advanced_config/2,
-         set_cluster_structure/1,
          restart_cluster/1,
          node_started/2,
          node_stopped/2,
@@ -110,6 +110,29 @@ add_cluster(Key) ->
             end
     end.
 
+-spec add_cluster(rms_metadata:cluster_state(), [rms_metadata:node_state()]) ->
+    ok | {error, term()}.
+add_cluster(Cluster, Nodes) ->
+    Key = proplists:get_value(key, Cluster),
+    case rms_cluster_manager:add_cluster(Key) of
+        ok ->
+            {ok, Pid} = get_cluster_pid(Key),
+            RiakConfig = proplists:get_value(riak_config, Cluster),
+            AdvancedConfig = proplists:get_value(advanced_config, Cluster),
+            Generation = proplists:get_value(generation, Cluster),
+            ok = rms_cluster_manager:set_cluster_riak_config(Key, RiakConfig),
+            ok = rms_cluster_manager:set_cluster_advanced_config(Key,
+                AdvancedConfig),
+            ok = rms_cluster:set_generation(Pid, Generation),
+            [begin
+                 NodeKey = proplists:get_value(key, Node),
+                 ok = add_node(Key, NodeKey)
+             end || Node <- Nodes],
+            ok;
+        {error, _Reason} = Error ->
+            Error
+    end.
+
 -spec set_cluster_riak_config(rms_cluster:key(), binary()) ->
     ok | {error, term()}.
 set_cluster_riak_config(Key, RiakConfig) ->
@@ -128,37 +151,6 @@ set_cluster_advanced_config(Key, AdvancedConfig) ->
             rms_cluster:set_advanced_config(Pid, AdvancedConfig);
         {error, Reason} ->
             {error, Reason}
-    end.
-
--spec set_cluster_structure({struct, [{binary(), term()}]}) ->
-    ok | {error, term()}.
-set_cluster_structure({struct, ClusterList}) ->
-    Key = binary_to_list(proplists:get_value(<<"name">>, ClusterList)),
-    case rms_cluster_manager:add_cluster(Key) of
-        ok ->
-            case proplists:get_value(<<"riak_config">>, ClusterList) of
-                null ->
-                    ok;
-                RiakConfig ->
-                    ok = rms_cluster_manager:set_cluster_riak_config(Key, RiakConfig)
-            end,
-            case proplists:get_value(<<"advanced_config">>, ClusterList) of
-                null ->
-                    ok;
-                AdvancedConfig ->
-                    ok = rms_cluster_manager:set_cluster_advanced_config(Key, AdvancedConfig)
-            end,
-            Generation = proplists:get_value(<<"generation">>, ClusterList),
-            {ok, Pid} = get_cluster_pid(Key),
-            ok = rms_cluster:set_generation(Pid, Generation),
-            Nodes = proplists:get_value(<<"nodes">>, ClusterList),
-            lists:map(fun({struct, NodeList}) ->
-                          NodeKey = binary_to_list(proplists:get_value(<<"name">>, NodeList)),
-                          ok = add_node(Key, NodeKey)
-                      end, Nodes),
-            ok;
-        {error, _Reason} = Error ->
-            Error
     end.
 
 %% TODO Rename this to be clearer that returning 'ok' just means we've
