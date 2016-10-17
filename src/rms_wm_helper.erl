@@ -28,7 +28,8 @@
          get_nodes_list/2,
          get_cluster_with_nodes_list/3,
          get_clusters_list_with_nodes_list/2,
-         add_clusters_list_with_nodes_list/1]).
+         add_clusters_list_with_nodes_list/1,
+         add_cluster_with_nodes_list/1]).
 
 -export([to_json/1, to_json/2, from_json/1, from_json/2]).
 
@@ -89,6 +90,10 @@ get_clusters_list_with_nodes_list(ClusterFields, NodeFields) ->
 
 add_clusters_list_with_nodes_list({list, Clusters}) ->
     add_clusters_list_with_nodes_list(Clusters, []).
+
+add_cluster_with_nodes_list(Cluster) ->
+    {list, Nodes} = proplists:get_value(nodes, Cluster),
+    rms_cluster_manager:add_cluster(Cluster, Nodes).
 
 to_json(Value) ->
     to_json(Value, []).
