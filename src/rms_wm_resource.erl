@@ -108,11 +108,6 @@ routes() ->
             content = {?MODULE, clusters},
             accepts = ?ACCEPT_TEXT,
             accept = {?MODULE, set_clusters}},
-%%     #route{path = ["clusters", "structures"],
-%%            methods = ['GET', 'PUT'],
-%%            content = {?MODULE, get_clusters_structures},
-%%            accepts = ?ACCEPT_TEXT,
-%%            accept = {?MODULE, set_clusters_structures}},
      #route{path = ["clusters", key],
             methods = ['GET', 'PUT', 'DELETE'],
             exists = {?MODULE, cluster_exists},
@@ -253,18 +248,12 @@ cluster_exists(ReqData) ->
 
 get_cluster(ReqData) ->
     Key = wrq:path_info(key, ReqData),
-    {ok, Cluster} = rms_cluster_manager:get_cluster(Key),
-    Status = proplists:get_value(status, Cluster),
-    RiakConfig = proplists:get_value(riak_config, Cluster),
-    AdvancedConfig = proplists:get_value(advanced_config, Cluster),
-    NodeKeys = rms_node_manager:get_node_keys(Key),
-    BinNodeKeys = [list_to_binary(NodeKey) || NodeKey <- NodeKeys],
-    ClusterData = [{Key, [{key, list_to_binary(Key)},
-                          {status, Status},
-                          {advanced_config, AdvancedConfig},
-                          {riak_config, RiakConfig},
-                          {node_keys, BinNodeKeys}]}],
-    {ClusterData, ReqData}.
+    {ok, ClusterWithNodesList} = rms_wm_helper:get_cluster_with_nodes_list(Key),
+    ToJsonOptions = [{rename_keys, [{key, name}]},
+                     {replace_values, [{riak_config, <<>>, null},
+                                       {advanced_config, <<>>, null}]}],
+    Cluster = rms_wm_helper:to_json([{Key, ClusterWithNodesList}], ToJsonOptions),
+    {Cluster, ReqData}.
 
 add_cluster(ReqData) ->
     Key = wrq:path_info(key, ReqData),
