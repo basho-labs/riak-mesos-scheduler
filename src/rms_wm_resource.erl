@@ -8,8 +8,7 @@
          static_file/1]).
 
 -export([clusters/1,
-         get_clusters_structures/1,
-         set_clusters_structures/1,
+         set_clusters/1,
          cluster_exists/1,
          get_cluster/1,
          add_cluster/1,
@@ -105,7 +104,10 @@ routes() ->
             last_modified = {?MODULE, static_last_modified}},
      %% Clusters.
      #route{path = ["clusters"],
-            content = {?MODULE, clusters}},
+            methods = ['GET', 'PUT'],
+            content = {?MODULE, clusters},
+            accepts = ?ACCEPT_TEXT,
+            accept = {?MODULE, set_clusters}},
 %%     #route{path = ["clusters", "structures"],
 %%            methods = ['GET', 'PUT'],
 %%            content = {?MODULE, get_clusters_structures},
@@ -219,33 +221,25 @@ static_file(ReqData) ->
 %% Clusters.
 
 clusters(ReqData) ->
-    {list, Clusters} = rms_wm_helper:get_clusters_list([key]),
-    Clusters1 = [proplists:get_value(key, Cluster) || Cluster <- Clusters],
-    JsonClustersKeysList = rms_wm_helper:to_json({list, Clusters1}),
-    {[{clusters, JsonClustersKeysList}], ReqData}.
+    ClustersList = rms_wm_helper:get_clusters_list_with_nodes_list(),
+    ToJsonOptions = [{rename_keys, [{key, name}]},
+                     {replace_values, [{riak_config, <<>>, null},
+                                       {advanced_config, <<>>, null}]}],
+    JsonClustersList = rms_wm_helper:to_json(ClustersList, ToJsonOptions),
+    {[{clusters, JsonClustersList}], ReqData}.
 
-get_clusters_structures(ReqData) ->
-    Keys = rms_cluster_manager:get_cluster_keys(),
-    Clusters = lists:map(fun(Key) ->
-                             {ok, Cluster} = rms_cluster_manager:get_cluster_structure(Key),
-                             Cluster
-                         end, Keys),
-    {[{clusters, Clusters}], ReqData}.
-
-set_clusters_structures(ReqData) ->
-    Clusters = get_json_value(<<"clusters">>,
-                              mochijson2:decode(wrq:req_body(ReqData))),
-    Results = [case rms_cluster_manager:set_cluster_structure(Cluster) of
-                   ok ->
-                       Name = get_json_value(<<"name">>, Cluster),
-                       [{name, Name}, {success, true}];
-                   {error, Reason} ->
-                       Name = get_json_value(<<"name">>, Cluster),
-                       FormatReason = iolist_to_binary(io_lib:format("~p",
-                                                       [Reason])),
-                       [{name, Name}, {success, false}, {error, FormatReason}]
-               end || Cluster <- Clusters],
-    {true, wrq:append_to_response_body(mochijson2:encode(Results), ReqData)}.
+set_clusters(ReqData) ->
+    Json = mochijson2:decode(wrq:req_body(ReqData)),
+    FromJsonOptions = [{rename_keys, [{name, key}]},
+                       {replace_values, [{riak_config, null, <<>>},
+                                         {advanced_config, null, <<>>}]}],
+    ClustersWithNodes = rms_wm_helper:from_json(Json, FromJsonOptions),
+    ClustersListsWithNodesLists = proplists:get_value(clusters,
+                                                      ClustersWithNodes),
+    ResultsList = rms_wm_helper:add_clusters_list_with_nodes_list(ClustersListsWithNodesLists),
+    ToJsonOptions = [{rename_keys, [{key, name}]}],
+    Body = mochijson2:encode(rms_wm_helper:to_json(ResultsList, ToJsonOptions)),
+    {true, wrq:append_to_response_body(Body, ReqData)}.
 
 cluster_exists(ReqData) ->
     Key = wrq:path_info(key, ReqData),
@@ -259,10 +253,6 @@ cluster_exists(ReqData) ->
 
 get_cluster(ReqData) ->
     Key = wrq:path_info(key, ReqData),
-
-    TMP = rms_cluster_manager:get_cluster_with_nodes(Key),
-    io:format("Cluster with nodes: ~p~n", [TMP]),
-
     {ok, Cluster} = rms_cluster_manager:get_cluster(Key),
     Status = proplists:get_value(status, Cluster),
     RiakConfig = proplists:get_value(riak_config, Cluster),
@@ -589,9 +579,3 @@ riak_explorer_command(ReqData, Command, Args) ->
         {ok, Body} ->
             {mochijson2:encode(Body), ReqData}
     end.
-
-get_json_value(Key, Object) ->
-    get_json_value(Key, Object, undefined).
-
-get_json_value(Key, {struct, PropList}, Default) ->
-    proplists:get_value(Key, PropList, Default).
