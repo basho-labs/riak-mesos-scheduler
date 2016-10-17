@@ -11,7 +11,7 @@
          set_clusters/1,
          cluster_exists/1,
          get_cluster/1,
-         add_cluster/1,
+         add_set_cluster/1,
          destroy_cluster/1,
          restart_cluster/1,
          cluster_riak_config_exists/1,
@@ -70,6 +70,16 @@
                       ?ACCEPT(?TEXT_TYPE),
                       ?ACCEPT(?JSON_TYPE)]).
 
+-define(CLUSTER_TO_JSON_OPTIONS,
+        [{rename_keys, [{key, name}]},
+         {replace_values, [{riak_config, <<>>, null},
+                           {advanced_config, <<>>, null}]}]).
+
+-define(CLUSTER_FROM_JSON_OPTIONS,
+        [{rename_keys, [{name, key}]},
+         {replace_values, [{riak_config, null, <<>>},
+                           {advanced_config, null, <<>>}]}]).
+
 -record(route, {base = ?API_ROUTE :: [string()],
                 path :: [string() | atom()],
                 methods = ['GET'] :: [atom()],
@@ -109,11 +119,11 @@ routes() ->
             accepts = ?ACCEPT_TEXT,
             accept = {?MODULE, set_clusters}},
      #route{path = ["clusters", key],
-            methods = ['GET', 'PUT', 'DELETE'],
+            methods = ['GET', 'POST', 'PUT', 'DELETE'],
             exists = {?MODULE, cluster_exists},
             content = {?MODULE, get_cluster},
             accepts = ?ACCEPT_TEXT,
-            accept = {?MODULE, add_cluster},
+            accept = {?MODULE, add_set_cluster},
             delete = {?MODULE, destroy_cluster}},
      #route{path = ["clusters", key, "restart"],
             methods = ['POST'],
@@ -217,18 +227,13 @@ static_file(ReqData) ->
 
 clusters(ReqData) ->
     ClustersList = rms_wm_helper:get_clusters_list_with_nodes_list(),
-    ToJsonOptions = [{rename_keys, [{key, name}]},
-                     {replace_values, [{riak_config, <<>>, null},
-                                       {advanced_config, <<>>, null}]}],
-    JsonClustersList = rms_wm_helper:to_json(ClustersList, ToJsonOptions),
+    JsonClustersList = rms_wm_helper:to_json(ClustersList, ?CLUSTER_TO_JSON_OPTIONS),
     {[{clusters, JsonClustersList}], ReqData}.
 
 set_clusters(ReqData) ->
     Json = mochijson2:decode(wrq:req_body(ReqData)),
-    FromJsonOptions = [{rename_keys, [{name, key}]},
-                       {replace_values, [{riak_config, null, <<>>},
-                                         {advanced_config, null, <<>>}]}],
-    ClustersWithNodes = rms_wm_helper:from_json(Json, FromJsonOptions),
+    ClustersWithNodes = rms_wm_helper:from_json(Json,
+                                                ?CLUSTER_FROM_JSON_OPTIONS),
     ClustersListsWithNodesLists = proplists:get_value(clusters,
                                                       ClustersWithNodes),
     ResultsList = rms_wm_helper:add_clusters_list_with_nodes_list(ClustersListsWithNodesLists),
@@ -249,15 +254,27 @@ cluster_exists(ReqData) ->
 get_cluster(ReqData) ->
     Key = wrq:path_info(key, ReqData),
     {ok, ClusterWithNodesList} = rms_wm_helper:get_cluster_with_nodes_list(Key),
-    ToJsonOptions = [{rename_keys, [{key, name}]},
-                     {replace_values, [{riak_config, <<>>, null},
-                                       {advanced_config, <<>>, null}]}],
-    Cluster = rms_wm_helper:to_json([{Key, ClusterWithNodesList}], ToJsonOptions),
+    Cluster = rms_wm_helper:to_json([{Key, ClusterWithNodesList}],
+                                    ?CLUSTER_TO_JSON_OPTIONS),
     {Cluster, ReqData}.
+
+add_set_cluster(#wm_reqdata{method = 'POST'} = ReqData) ->
+    add_cluster(ReqData);
+add_set_cluster(#wm_reqdata{method = 'PUT'} = ReqData) ->
+    set_cluster(ReqData).
 
 add_cluster(ReqData) ->
     Key = wrq:path_info(key, ReqData),
     Response = build_response(rms_cluster_manager:add_cluster(Key)),
+    {true, wrq:append_to_response_body(mochijson2:encode(Response), ReqData)}.
+
+set_cluster(ReqData) ->
+    Key = wrq:path_info(key, ReqData),
+    Json = mochijson2:decode(wrq:req_body(ReqData)),
+    ClusterWithNodes = rms_wm_helper:from_json(Json,
+                                               ?CLUSTER_FROM_JSON_OPTIONS),
+    ClusterWithNodes1 = [{key, Key} | proplists:delete(key, ClusterWithNodes)],
+    Response = build_response(rms_wm_helper:add_cluster_with_nodes_list(ClusterWithNodes1)),
     {true, wrq:append_to_response_body(mochijson2:encode(Response), ReqData)}.
 
 destroy_cluster(ReqData) ->
@@ -364,6 +381,7 @@ node_exists(ReqData) ->
     Result = lists:member(NodeKey, NodeKeys),
     {Result, ReqData}.
 
+%% TODO: Use rms_wm_helper:to_json/2 instead proplists.
 get_node(ReqData) ->
     NodeKey = wrq:path_info(node_key, ReqData),
     {ok, Node} = rms_node_manager:get_node(NodeKey),
