@@ -20,14 +20,18 @@
 
 -module(rms_wm_helper).
 
--export([get_clusters_list/0,
-         get_nodes_list/1,
+-export([cluster_exists/1,
          get_cluster_with_nodes_list/1,
-         get_clusters_list_with_nodes_list/0,
-         get_clusters_list/1,
-         get_nodes_list/2,
          get_cluster_with_nodes_list/3,
+         get_clusters_list_with_nodes_list/0,
          get_clusters_list_with_nodes_list/2,
+         get_clusters_list/0,
+         get_clusters_list/1,
+         node_exists/1,
+         get_node_with_location/1,
+         get_node_with_location/3,
+         get_nodes_list/1,
+         get_nodes_list/2,
          add_clusters_list_with_nodes_list/1,
          add_cluster_with_nodes_list/1]).
 
@@ -35,40 +39,30 @@
 
 -define(CLUSTER_FIELDS, [key, riak_config, advanced_config, generation]).
 
+-define(CLUSTER_NODE_FIELDS, [key, status, container_path, persistence_id]).
+
 -define(NODE_FIELDS, [key, status, container_path, persistence_id]).
+
+-define(NODE_LOCATION_FIELDS, [node_name,
+                               hostname,
+                               http_port,
+                               pb_port,
+                               disterl_port,
+                               agent_id_value]).
 
 %% External functions.
 
--spec get_clusters_list() -> {list, [rms_metadata:cluster_state()]}.
-get_clusters_list() ->
-    get_clusters_list(?CLUSTER_FIELDS).
-
--spec get_nodes_list(rms_cluster:key()) -> {list, [rms_metadata:node_state()]}.
-get_nodes_list(ClusterKey) ->
-    get_nodes_list(ClusterKey, ?NODE_FIELDS).
+-spec cluster_exists(rms_cluster:key()) -> boolean().
+cluster_exists(ClusterKey) ->
+    {ok, [{key, ClusterKey}]} == rms_cluster_manager:get_cluster(ClusterKey,
+                                                                 [key]).
 
 -spec get_cluster_with_nodes_list(rms_cluster:key()) ->
     {ok, [rms_metadata:cluster_state() |
           {nodes, {list, [rms_metadata:node_state()]}}]} | {error, term()}.
 get_cluster_with_nodes_list(ClusterKey) ->
-    get_cluster_with_nodes_list(ClusterKey, ?CLUSTER_FIELDS, ?NODE_FIELDS).
-
--spec get_clusters_list_with_nodes_list() ->
-    {list, [rms_metadata:cluster_state() |
-            {nodes, {list, [rms_metadata:node_state()]}}]}.
-get_clusters_list_with_nodes_list() ->
-    get_clusters_list_with_nodes_list(?CLUSTER_FIELDS, ?NODE_FIELDS).
-
--spec get_clusters_list([atom()]) -> {list, [rms_metadata:cluster_state()]}.
-get_clusters_list(ClusterFields) ->
-    ClusterKeys = rms_cluster_manager:get_cluster_keys(),
-    get_clusters_list(ClusterKeys, ClusterFields, [], []).
-
--spec get_nodes_list(rms_cluster:key(), [atom()]) ->
-    {list, [rms_metadata:node_state()]}.
-get_nodes_list(ClusterKey, NodeFields) ->
-    NodeKeys = rms_node_manager:get_node_keys(ClusterKey),
-    get_nodes_list(NodeKeys, NodeFields, []).
+    get_cluster_with_nodes_list(ClusterKey, ?CLUSTER_FIELDS,
+                                ?CLUSTER_NODE_FIELDS).
 
 -spec get_cluster_with_nodes_list(rms_cluster:key(), [atom()], [atom()]) ->
     {ok, [rms_metadata:cluster_state() |
@@ -81,12 +75,58 @@ get_cluster_with_nodes_list(ClusterKey, ClusterFields, NodeFields) ->
             Error
     end.
 
+-spec get_clusters_list_with_nodes_list() ->
+    {list, [rms_metadata:cluster_state() |
+            {nodes, {list, [rms_metadata:node_state()]}}]}.
+get_clusters_list_with_nodes_list() ->
+    get_clusters_list_with_nodes_list(?CLUSTER_FIELDS, ?CLUSTER_NODE_FIELDS).
+
 -spec get_clusters_list_with_nodes_list([atom()], [atom()]) ->
     {list, [rms_metadata:cluster_state() |
             {nodes, {list, [rms_metadata:node_state()]}}]}.
 get_clusters_list_with_nodes_list(ClusterFields, NodeFields) ->
     ClusterKeys = rms_cluster_manager:get_cluster_keys(),
     get_clusters_list(ClusterKeys, ClusterFields, NodeFields, []).
+
+-spec get_clusters_list() -> {list, [rms_metadata:cluster_state()]}.
+get_clusters_list() ->
+    get_clusters_list(?CLUSTER_FIELDS).
+
+-spec get_clusters_list([atom()]) -> {list, [rms_metadata:cluster_state()]}.
+get_clusters_list(ClusterFields) ->
+    ClusterKeys = rms_cluster_manager:get_cluster_keys(),
+    get_clusters_list(ClusterKeys, ClusterFields, [], []).
+
+-spec node_exists(rms_node:key()) -> boolean().
+node_exists(NodeKey) ->
+    {ok, [{key, NodeKey}]} == rms_node_manager:get_node(NodeKey, [key]).
+
+-spec get_node_with_location(rms_node:key()) ->
+    {ok, [{location, rms_node:state()} | rms_node:state()]} | {error, term()}.
+get_node_with_location(NodeKey) ->
+    get_node_with_location(NodeKey, ?NODE_FIELDS, ?NODE_LOCATION_FIELDS).
+
+-spec get_node_with_location(rms_node:key(), atom(), atom()) ->
+    {ok, [{location, rms_node:state()} | rms_node:state()]} | {error, term()}.
+get_node_with_location(NodeKey, NodeFields, NodeLocationFields) ->
+    case rms_node_manager:get_node(NodeKey, NodeFields) of
+        {ok, Node} ->
+            {ok, NodeLocation} = rms_node_manager:get_node(NodeKey,
+                                                           NodeLocationFields),
+            {ok, [{location, NodeLocation} | Node]};
+        {error, _Reason} = Error ->
+            Error
+    end.
+
+-spec get_nodes_list(rms_cluster:key()) -> {list, [rms_metadata:node_state()]}.
+get_nodes_list(ClusterKey) ->
+    get_nodes_list(ClusterKey, ?CLUSTER_NODE_FIELDS).
+
+-spec get_nodes_list(rms_cluster:key(), [atom()]) ->
+    {list, [rms_metadata:node_state()]}.
+get_nodes_list(ClusterKey, NodeFields) ->
+    NodeKeys = rms_node_manager:get_node_keys(ClusterKey),
+    get_nodes_list(NodeKeys, NodeFields, []).
 
 add_clusters_list_with_nodes_list({list, Clusters}) ->
     add_clusters_list_with_nodes_list(Clusters, []).
