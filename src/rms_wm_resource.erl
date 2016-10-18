@@ -11,7 +11,8 @@
          set_clusters/1,
          cluster_exists/1,
          get_cluster/1,
-         add_set_cluster/1,
+         add_cluster/1,
+         set_cluster/1,
          destroy_cluster/1,
          restart_cluster/1,
          cluster_riak_config_exists/1,
@@ -119,12 +120,17 @@ routes() ->
             accepts = ?ACCEPT_TEXT,
             accept = {?MODULE, set_clusters}},
      #route{path = ["clusters", key],
-            methods = ['GET', 'POST', 'PUT', 'DELETE'],
+            methods = ['GET', 'PUT', 'DELETE'],
             exists = {?MODULE, cluster_exists},
+            provides = ?PROVIDE_TEXT,
             content = {?MODULE, get_cluster},
             accepts = ?ACCEPT_TEXT,
-            accept = {?MODULE, add_set_cluster},
+            accept = {?MODULE, set_cluster},
             delete = {?MODULE, destroy_cluster}},
+     #route{path = ["clusters", key, "create"],
+            methods = ['POST'],
+            accepts = ?ACCEPT_TEXT,
+            accept = {?MODULE, add_cluster}},
      #route{path = ["clusters", key, "restart"],
             methods = ['POST'],
             exists = {?MODULE, cluster_exists},
@@ -243,25 +249,14 @@ set_clusters(ReqData) ->
 
 cluster_exists(ReqData) ->
     Key = wrq:path_info(key, ReqData),
-    Result = case rms_cluster_manager:get_cluster(Key) of
-                 {ok, _Cluster} ->
-                     true;
-                 {error, not_found} ->
-                     false
-             end,
-    {Result, ReqData}.
+    {rms_wm_helper:cluster_exists(Key), ReqData}.
 
 get_cluster(ReqData) ->
     Key = wrq:path_info(key, ReqData),
     {ok, ClusterWithNodesList} = rms_wm_helper:get_cluster_with_nodes_list(Key),
-    Cluster = rms_wm_helper:to_json([{Key, ClusterWithNodesList}],
-                                    ?CLUSTER_TO_JSON_OPTIONS),
-    {Cluster, ReqData}.
-
-add_set_cluster(#wm_reqdata{method = 'POST'} = ReqData) ->
-    add_cluster(ReqData);
-add_set_cluster(#wm_reqdata{method = 'PUT'} = ReqData) ->
-    set_cluster(ReqData).
+    JsonCluster = rms_wm_helper:to_json([{Key, ClusterWithNodesList}],
+                                        ?CLUSTER_TO_JSON_OPTIONS),
+    {JsonCluster, ReqData}.
 
 add_cluster(ReqData) ->
     Key = wrq:path_info(key, ReqData),
@@ -375,37 +370,14 @@ nodes(ReqData) ->
     {[{nodes, NodeKeyList}], ReqData}.
 
 node_exists(ReqData) ->
-    Key = wrq:path_info(key, ReqData),
-    NodeKeys = rms_node_manager:get_node_keys(Key),
     NodeKey = wrq:path_info(node_key, ReqData),
-    Result = lists:member(NodeKey, NodeKeys),
-    {Result, ReqData}.
+    {rms_wm_helper:node_exists(NodeKey), ReqData}.
 
-%% TODO: Use rms_wm_helper:to_json/2 instead proplists.
 get_node(ReqData) ->
     NodeKey = wrq:path_info(node_key, ReqData),
-    {ok, Node} = rms_node_manager:get_node(NodeKey),
-    Status = proplists:get_value(status, Node),
-    NodeName = proplists:get_value(node_name, Node),
-    Hostname = proplists:get_value(hostname, Node),
-    HttpPort = proplists:get_value(http_port, Node),
-    PbPort = proplists:get_value(pb_port, Node),
-    DisterlPort = proplists:get_value(disterl_port, Node),
-    AgentIdValue = proplists:get_value(agent_id_value, Node),
-    ContainerPath = proplists:get_value(container_path, Node),
-    PersistenceId = proplists:get_value(persistence_id, Node),
-    Location = [{node_name, list_to_binary(NodeName)},
-                {hostname, list_to_binary(Hostname)},
-                {http_port, HttpPort},
-                {pb_port, PbPort},
-                {disterl_port, DisterlPort},
-                {agent_id_value, list_to_binary(AgentIdValue)}],
-    NodeData = [{NodeKey, [{key, list_to_binary(NodeKey)},
-                           {status, Status},
-                           {location, Location},
-                           {container_path, list_to_binary(ContainerPath)},
-                           {persistence_id, list_to_binary(PersistenceId)}]}],
-    {NodeData, ReqData}.
+    {ok, Node} = rms_wm_helper:get_node_with_location(NodeKey),
+    NodeJson = rms_wm_helper:to_json([{NodeKey, Node}]),
+    {NodeJson, ReqData}.
 
 add_node(ReqData) ->
     Key = wrq:path_info(key, ReqData),
