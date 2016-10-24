@@ -122,7 +122,6 @@ routes() ->
      #route{path = ["clusters", key],
             methods = ['GET', 'PUT', 'DELETE'],
             exists = {?MODULE, cluster_exists},
-            provides = ?PROVIDE_TEXT,
             content = {?MODULE, get_cluster},
             accepts = ?ACCEPT_TEXT,
             accept = {?MODULE, set_cluster},
