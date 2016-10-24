@@ -26,9 +26,11 @@
 
 -export([get_cluster_keys/0,
          get_cluster/1,
+         get_cluster/2,
          get_cluster_riak_config/1,
          get_cluster_advanced_config/1,
          add_cluster/1,
+         add_cluster/2,
          set_cluster_riak_config/2,
          set_cluster_advanced_config/2,
          restart_cluster/1,
@@ -36,7 +38,7 @@
          node_stopped/2,
          destroy_cluster/1]).
 
--export([add_node/1]).
+-export([add_node/2]).
 
 -export([apply_offer/1]).
 
@@ -71,6 +73,11 @@ get_cluster_keys() ->
 get_cluster(Key) ->
     rms_cluster:get(Key).
 
+-spec get_cluster(rms_cluster:key(), [atom()]) ->
+    {ok, rms_metadata:cluster_state()} | {error, term()}.
+get_cluster(Key, Fields) ->
+    rms_cluster:get(Key, Fields).
+
 -spec get_cluster_riak_config(rms_cluster:key()) ->
     {ok, binary()} | {error, term()}.
 get_cluster_riak_config(Key) ->
@@ -101,6 +108,29 @@ add_cluster(Key) ->
                 {error, Reason} ->
                     {error, Reason}
             end
+    end.
+
+-spec add_cluster(rms_metadata:cluster_state(), [rms_metadata:node_state()]) ->
+    ok | {error, term()}.
+add_cluster(Cluster, Nodes) ->
+    Key = proplists:get_value(key, Cluster),
+    case rms_cluster_manager:add_cluster(Key) of
+        ok ->
+            {ok, Pid} = get_cluster_pid(Key),
+            RiakConfig = proplists:get_value(riak_config, Cluster),
+            AdvancedConfig = proplists:get_value(advanced_config, Cluster),
+            Generation = proplists:get_value(generation, Cluster),
+            ok = rms_cluster_manager:set_cluster_riak_config(Key, RiakConfig),
+            ok = rms_cluster_manager:set_cluster_advanced_config(Key,
+                AdvancedConfig),
+            ok = rms_cluster:set_generation(Pid, Generation),
+            [begin
+                 NodeKey = proplists:get_value(key, Node),
+                 ok = add_node(Key, NodeKey)
+             end || Node <- Nodes],
+            ok;
+        {error, _Reason} = Error ->
+            Error
     end.
 
 -spec set_cluster_riak_config(rms_cluster:key(), binary()) ->
@@ -161,11 +191,12 @@ destroy_cluster(Key) ->
             {error, Reason}
     end.
 
--spec add_node(rms_cluster:key()) -> ok | {error, term()}.
-add_node(Key) ->
+-spec add_node(rms_cluster:key(), undefined | rms_node:key()) ->
+    ok | {error, term()}.
+add_node(Key, NodeKey) ->
     case get_cluster_pid(Key) of
         {ok, Pid} ->
-            rms_cluster:add_node(Pid);
+            rms_cluster:add_node(Pid, NodeKey);
         {error, Reason} ->
             {error, Reason}
     end.

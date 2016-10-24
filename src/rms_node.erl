@@ -37,6 +37,7 @@
 %%% API
 -export([start_link/2]).
 -export([get/1,
+         get/2,
          get_field_value/2,
          needs_to_be_reconciled/1,
          can_be_scheduled/1,
@@ -116,6 +117,17 @@ start_link(Key, ClusterKey) ->
 -spec get(key()) -> {ok, rms_metadata:node_state()} | {error, term()}.
 get(Key) ->
     rms_metadata:get_node(Key).
+
+-spec get(key(), [atom()]) ->
+    {ok, rms_metadata:cluster_state()} | {error, term()}.
+get(Key, Fields) ->
+    case rms_metadata:get_node(Key) of
+        {ok, Node} ->
+            {ok, [Field || {Name, _Value} = Field <- Node,
+                  lists:member(Name, Fields)]};
+        {error, Reason} ->
+            {error, Reason}
+    end.
 
 -spec get_field_value(atom(), key()) -> {ok, term()} | {error, term()}.
 get_field_value(Field, Key) ->

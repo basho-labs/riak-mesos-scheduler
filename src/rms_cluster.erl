@@ -25,13 +25,15 @@
 %% API
 -export([start_link/1]).
 -export([get/1,
+         get/2,
          get_field_value/2,
          set_riak_config/2,
          set_advanced_config/2,
+         set_generation/2,
          maybe_join/2,
          leave/3,
          destroy/1,
-         add_node/1,
+         add_node/2,
          commence_restart/1,
          node_started/2,
          node_stopped/2]).
@@ -85,6 +87,17 @@ start_link(Key) ->
 get(Key) ->
     rms_metadata:get_cluster(Key).
 
+-spec get(key(), [atom()]) ->
+    {ok, rms_metadata:cluster_state()} | {error, term()}.
+get(Key, Fields) ->
+    case rms_metadata:get_cluster(Key) of
+        {ok, Cluster} ->
+            {ok, [Field || {Name, _Value} = Field <- Cluster,
+                  lists:member(Name, Fields)]};
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
 -spec get_field_value(atom(), key()) -> {ok, term()} | {error, term()}.
 get_field_value(Field, Key) ->
     case rms_metadata:get_cluster(Key) of
@@ -111,6 +124,10 @@ set_riak_config(Pid, RiakConfig) ->
 set_advanced_config(Pid, AdvancedConfig) ->
     gen_fsm:sync_send_all_state_event(Pid, {set_advanced_config, AdvancedConfig}).
 
+-spec set_generation(pid(), non_neg_integer()) -> ok | {error, term()}.
+set_generation(Pid, Generation) ->
+    gen_fsm:sync_send_all_state_event(Pid, {set_generation, Generation}).
+
 -spec maybe_join(pid(), rms_node:key()) -> ok | {error, term()}.
 maybe_join(Pid, NodeKey) ->
     gen_fsm:sync_send_all_state_event(Pid, {maybe_join, NodeKey}).
@@ -119,9 +136,9 @@ maybe_join(Pid, NodeKey) ->
 destroy(Pid) ->
     gen_fsm:sync_send_all_state_event(Pid, destroy).
 
--spec add_node(pid()) -> ok | {error, term()}.
-add_node(Pid) ->
-    gen_fsm:sync_send_all_state_event(Pid, add_node).
+-spec add_node(pid(), undefined | rms_node:key()) -> ok | {error, term()}.
+add_node(Pid, NodeKey) ->
+    gen_fsm:sync_send_all_state_event(Pid, {add_node, NodeKey}).
 
 -spec commence_restart(pid()) -> ok | {error, term()}.
 commence_restart(Pid) ->
@@ -301,6 +318,14 @@ handle_sync_event({set_advanced_config, AdvConfig}, _From, StateName, Cluster) -
         {error,_}=Err ->
             {reply, Err, StateName, Cluster}
     end;
+handle_sync_event({set_generation, Generation}, _From, StateName, Cluster) ->
+    Cluster1 = Cluster#cluster{generation = Generation},
+    case update_cluster(Cluster#cluster.key, {StateName, Cluster1}) of
+        ok ->
+            update_and_reply({StateName, Cluster}, {StateName, Cluster1}, ok);
+        {error,_}=Err ->
+            {reply, Err, StateName, Cluster}
+    end;
 handle_sync_event(destroy, _From, State0,
                   #cluster{key = Key} = Cluster) ->
     %% TODO Get rid of this clause in favour of an exponential backoff feeding shutdown(timeout, Cluster)
@@ -311,7 +336,7 @@ handle_sync_event(destroy, _From, State0,
             Reply = do_destroy(NodeKeys),
             update_and_reply({State0, Cluster}, {shutdown, Cluster}, Reply, next_timeout(shutdown, Cluster))
     end;
-handle_sync_event(add_node, _From, StateName, Cluster) ->
+handle_sync_event({add_node, undefined}, _From, StateName, Cluster) ->
     #cluster{key = Key,
              generation = Generation} = Cluster,
     FrameworkName = rms_config:framework_name(),
@@ -325,6 +350,14 @@ handle_sync_event(add_node, _From, StateName, Cluster) ->
                 {error,_}=Err ->
                     {reply, Err, StateName, Cluster}
             end;
+        {error,_}=Err ->
+            {reply, Err, StateName, Cluster}
+    end;
+handle_sync_event({add_node, NodeKey}, _From, StateName, Cluster) ->
+    #cluster{key = Key} = Cluster,
+    case rms_node_manager:add_node(NodeKey, Key) of
+        ok ->
+            update_and_reply({StateName, Cluster}, {requested, Cluster}, ok);
         {error,_}=Err ->
             {reply, Err, StateName, Cluster}
     end;

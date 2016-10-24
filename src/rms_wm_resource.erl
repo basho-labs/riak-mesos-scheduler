@@ -8,9 +8,11 @@
          static_file/1]).
 
 -export([clusters/1,
+         set_clusters/1,
          cluster_exists/1,
          get_cluster/1,
          add_cluster/1,
+         set_cluster/1,
          destroy_cluster/1,
          restart_cluster/1,
          cluster_riak_config_exists/1,
@@ -69,6 +71,16 @@
                       ?ACCEPT(?TEXT_TYPE),
                       ?ACCEPT(?JSON_TYPE)]).
 
+-define(CLUSTER_TO_JSON_OPTIONS,
+        [{rename_keys, [{key, name}]},
+         {replace_values, [{riak_config, <<>>, null},
+                           {advanced_config, <<>>, null}]}]).
+
+-define(CLUSTER_FROM_JSON_OPTIONS,
+        [{rename_keys, [{name, key}]},
+         {replace_values, [{riak_config, null, <<>>},
+                           {advanced_config, null, <<>>}]}]).
+
 -record(route, {base = ?API_ROUTE :: [string()],
                 path :: [string() | atom()],
                 methods = ['GET'] :: [atom()],
@@ -103,14 +115,21 @@ routes() ->
             last_modified = {?MODULE, static_last_modified}},
      %% Clusters.
      #route{path = ["clusters"],
-            content = {?MODULE, clusters}},
+            methods = ['GET', 'PUT'],
+            content = {?MODULE, clusters},
+            accepts = ?ACCEPT_TEXT,
+            accept = {?MODULE, set_clusters}},
      #route{path = ["clusters", key],
             methods = ['GET', 'PUT', 'DELETE'],
             exists = {?MODULE, cluster_exists},
             content = {?MODULE, get_cluster},
             accepts = ?ACCEPT_TEXT,
-            accept = {?MODULE, add_cluster},
+            accept = {?MODULE, set_cluster},
             delete = {?MODULE, destroy_cluster}},
+     #route{path = ["clusters", key, "create"],
+            methods = ['POST'],
+            accepts = ?ACCEPT_TEXT,
+            accept = {?MODULE, add_cluster}},
      #route{path = ["clusters", key, "restart"],
             methods = ['POST'],
             exists = {?MODULE, cluster_exists},
@@ -212,38 +231,44 @@ static_file(ReqData) ->
 %% Clusters.
 
 clusters(ReqData) ->
-    KeyList = [list_to_binary(Key) ||
-               Key <- rms_cluster_manager:get_cluster_keys()],
-    {[{clusters, KeyList}], ReqData}.
+    ClustersList = rms_wm_helper:get_clusters_list_with_nodes_list(),
+    JsonClustersList = rms_wm_helper:to_json(ClustersList, ?CLUSTER_TO_JSON_OPTIONS),
+    {[{clusters, JsonClustersList}], ReqData}.
+
+set_clusters(ReqData) ->
+    Json = mochijson2:decode(wrq:req_body(ReqData)),
+    ClustersWithNodes = rms_wm_helper:from_json(Json,
+                                                ?CLUSTER_FROM_JSON_OPTIONS),
+    ClustersListsWithNodesLists = proplists:get_value(clusters,
+                                                      ClustersWithNodes),
+    ResultsList = rms_wm_helper:add_clusters_list_with_nodes_list(ClustersListsWithNodesLists),
+    ToJsonOptions = [{rename_keys, [{key, name}]}],
+    Body = mochijson2:encode(rms_wm_helper:to_json(ResultsList, ToJsonOptions)),
+    {true, wrq:append_to_response_body(Body, ReqData)}.
 
 cluster_exists(ReqData) ->
     Key = wrq:path_info(key, ReqData),
-    Result = case rms_cluster_manager:get_cluster(Key) of
-                 {ok, _Cluster} ->
-                     true;
-                 {error, not_found} ->
-                     false
-             end,
-    {Result, ReqData}.
+    {rms_wm_helper:cluster_exists(Key), ReqData}.
 
 get_cluster(ReqData) ->
     Key = wrq:path_info(key, ReqData),
-    {ok, Cluster} = rms_cluster_manager:get_cluster(Key),
-    Status = proplists:get_value(status, Cluster),
-    RiakConfig = proplists:get_value(riak_config, Cluster),
-    AdvancedConfig = proplists:get_value(advanced_config, Cluster),
-    NodeKeys = rms_node_manager:get_node_keys(Key),
-    BinNodeKeys = [list_to_binary(NodeKey) || NodeKey <- NodeKeys],
-    ClusterData = [{Key, [{key, list_to_binary(Key)},
-                          {status, Status},
-                          {advanced_config, AdvancedConfig},
-                          {riak_config, RiakConfig},
-                          {node_keys, BinNodeKeys}]}],
-    {ClusterData, ReqData}.
+    {ok, ClusterWithNodesList} = rms_wm_helper:get_cluster_with_nodes_list(Key),
+    JsonCluster = rms_wm_helper:to_json([{Key, ClusterWithNodesList}],
+                                        ?CLUSTER_TO_JSON_OPTIONS),
+    {JsonCluster, ReqData}.
 
 add_cluster(ReqData) ->
     Key = wrq:path_info(key, ReqData),
     Response = build_response(rms_cluster_manager:add_cluster(Key)),
+    {true, wrq:append_to_response_body(mochijson2:encode(Response), ReqData)}.
+
+set_cluster(ReqData) ->
+    Key = wrq:path_info(key, ReqData),
+    Json = mochijson2:decode(wrq:req_body(ReqData)),
+    ClusterWithNodes = rms_wm_helper:from_json(Json,
+                                               ?CLUSTER_FROM_JSON_OPTIONS),
+    ClusterWithNodes1 = [{key, Key} | proplists:delete(key, ClusterWithNodes)],
+    Response = build_response(rms_wm_helper:add_cluster_with_nodes_list(ClusterWithNodes1)),
     {true, wrq:append_to_response_body(mochijson2:encode(Response), ReqData)}.
 
 destroy_cluster(ReqData) ->
@@ -344,40 +369,18 @@ nodes(ReqData) ->
     {[{nodes, NodeKeyList}], ReqData}.
 
 node_exists(ReqData) ->
-    Key = wrq:path_info(key, ReqData),
-    NodeKeys = rms_node_manager:get_node_keys(Key),
     NodeKey = wrq:path_info(node_key, ReqData),
-    Result = lists:member(NodeKey, NodeKeys),
-    {Result, ReqData}.
+    {rms_wm_helper:node_exists(NodeKey), ReqData}.
 
 get_node(ReqData) ->
     NodeKey = wrq:path_info(node_key, ReqData),
-    {ok, Node} = rms_node_manager:get_node(NodeKey),
-    Status = proplists:get_value(status, Node),
-    NodeName = proplists:get_value(node_name, Node),
-    Hostname = proplists:get_value(hostname, Node),
-    HttpPort = proplists:get_value(http_port, Node),
-    PbPort = proplists:get_value(pb_port, Node),
-    DisterlPort = proplists:get_value(disterl_port, Node),
-    AgentIdValue = proplists:get_value(agent_id_value, Node),
-    ContainerPath = proplists:get_value(container_path, Node),
-    PersistenceId = proplists:get_value(persistence_id, Node),
-    Location = [{node_name, list_to_binary(NodeName)},
-                {hostname, list_to_binary(Hostname)},
-                {http_port, HttpPort},
-                {pb_port, PbPort},
-                {disterl_port, DisterlPort},
-                {agent_id_value, list_to_binary(AgentIdValue)}],
-    NodeData = [{NodeKey, [{key, list_to_binary(NodeKey)},
-                           {status, Status},
-                           {location, Location},
-                           {container_path, list_to_binary(ContainerPath)},
-                           {persistence_id, list_to_binary(PersistenceId)}]}],
-    {NodeData, ReqData}.
+    {ok, Node} = rms_wm_helper:get_node_with_location(NodeKey),
+    NodeJson = rms_wm_helper:to_json([{NodeKey, Node}]),
+    {NodeJson, ReqData}.
 
 add_node(ReqData) ->
     Key = wrq:path_info(key, ReqData),
-    Response = build_response(rms_cluster_manager:add_node(Key)),
+    Response = build_response(rms_cluster_manager:add_node(Key, undefined)),
     {true, wrq:append_to_response_body(mochijson2:encode(Response), ReqData)}.
 
 delete_node(ReqData) ->
