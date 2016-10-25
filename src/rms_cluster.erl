@@ -23,7 +23,7 @@
 -behaviour(gen_fsm).
 
 %% API
--export([start_link/1]).
+-export([start_link/2]).
 -export([get/1,
          get/2,
          get_field_value/2,
@@ -46,18 +46,18 @@
          terminate/3,
          code_change/4]).
 
--export([
-         requested/2,
+-export([requested/2,
          requested/3,
          running/2,
          running/3,
          restarting/2,
          restarting/3,
          shutdown/2,
-         shutdown/3
-        ]).
+         shutdown/3]).
 
 -record(cluster, {key :: rms_cluster:key(),
+                  riak_version = "" :: string(),
+                  %% TODO: change to undefined | string() for configs.
                   riak_config = <<>> :: binary(),
                   advanced_config = <<>> :: binary(),
                   generation = 1 :: pos_integer(),
@@ -78,10 +78,9 @@
 
 %%% API
 
--spec start_link(key()) ->
-                        {ok, pid()} | {error, term()}.
-start_link(Key) ->
-    gen_fsm:start_link(?MODULE, Key, []).
+-spec start_link(key(), string()) -> {ok, pid()} | {error, term()}.
+start_link(Key, RiakVersion) ->
+    gen_fsm:start_link(?MODULE, {Key, RiakVersion}, []).
 
 -spec get(key()) -> {ok, rms_metadata:cluster_state()} | {error, term()}.
 get(Key) ->
@@ -103,8 +102,8 @@ get_field_value(Field, Key) ->
     case rms_metadata:get_cluster(Key) of
         {ok, Cluster} ->
             case proplists:get_value(Field, Cluster, field_not_found) of
-                field_not_found ->
-                    {error, field_not_found};
+                field_not_found = Reason ->
+                    {error, Reason};
                 Value ->
                     {ok, Value}
             end;
@@ -169,15 +168,14 @@ node_stopped(Pid, NodeKey) ->
       | {reply, reply(), Next::state(), New::cluster_state()}
       | {reply, reply(), Next::state(), New::cluster_state(), state_timeout()}.
 
--spec init(key()) ->
-                  {ok, state(), cluster_state()}
-                      | {stop, reason()}.
-init(Key) ->
+-spec init({key(), string()}) ->
+    {ok, state(), cluster_state()} | {stop, reason()}.
+init({Key, RiakVersion}) ->
     case get_cluster(Key) of
         {ok, {State, Cluster}} ->
             {ok, State, Cluster};
         {error, not_found} ->
-            Cluster = #cluster{key = Key},
+            Cluster = #cluster{key = Key, riak_version = RiakVersion},
             case add_cluster({running, Cluster}) of
                 ok ->
                     {ok, running, Cluster};
@@ -507,6 +505,7 @@ next_timeout(shutdown, #cluster{}=_Cluster) ->
 from_list(ClusterList) ->
     {proplists:get_value(status, ClusterList),
      #cluster{key = proplists:get_value(key, ClusterList),
+              riak_version = proplists:get_value(riak_version, ClusterList),
               riak_config = proplists:get_value(riak_config, ClusterList),
               advanced_config = proplists:get_value(advanced_config,
                                                     ClusterList),
@@ -516,12 +515,14 @@ from_list(ClusterList) ->
 -spec to_list({atom(), cluster_state()}) -> rms_metadata:cluster_state().
 to_list({State,
          #cluster{key = Key,
+                  riak_version = RiakVersion,
                   riak_config = RiakConf,
                   advanced_config = AdvancedConfig,
                   to_restart = ToRestart,
                   generation = Generation}}) ->
     [{key, Key},
      {status, State},
+     {riak_version, RiakVersion},
      {riak_config, RiakConf},
      {advanced_config, AdvancedConfig},
      {to_restart, ToRestart},
