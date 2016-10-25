@@ -26,7 +26,8 @@
          zk/0,
          framework_name/0,
          framework_role/0,
-         webui_url/0, 
+         webui_url/0,
+         riak_urls/0,
          artifacts/0,
          artifact_urls/0, 
          persistent_path/0,
@@ -62,27 +63,28 @@ constraints() ->
     %% constraints might be double-string-encoded
     ConstraintsStr =
         case {re:run(ConstraintsRaw, "\\\\"), re:run(ConstraintsRaw, "&quot;")} of
-            {nomatch, nomatch} -> % plain JSON-as-a-string "[[ \"hostname\", \"UNIQUE\" ]]"
+            {nomatch, nomatch} ->
+                %% plain JSON-as-a-string "[[ \"hostname\", \"UNIQUE\" ]]"
                 convert_value(ConstraintsRaw, string);
-            {nomatch, {match, _}} -> % plain JSON as an html-encoded string e.g. "[[&quot;hostname&quot;, &quot;UNIQUE&quot;]]"
+            {nomatch, {match, _}} ->
+                %% plain JSON as an html-encoded string e.g. "[[&quot;hostname&quot;, &quot;UNIQUE&quot;]]"
                 convert_value(ConstraintsRaw, html_string);
-            {{match, _}, nomatch} -> % double-encoded string e.g. "\"[[\\\"hostname\\\", \\\"UNIQUE\\\"]]\""
+            {{match, _}, nomatch} ->
+                %% double-encoded string e.g. "\"[[\\\"hostname\\\", \\\"UNIQUE\\\"]]\""
                 mochijson2:decode(convert_value(ConstraintsRaw, string))
         end,
     ConstraintsBin = case mochijson2:decode(ConstraintsStr) of
-        [] -> [];
-        [[]] -> [];
-        [[F|_]|_]=C when is_binary(F) -> C;
-        [F|_]=C when is_binary(F) -> [C];
-        _ -> []
-    end,
-    lists:foldr(
-      fun(X1, Accum1) -> 
-              [lists:foldr(
-                 fun(X2, Accum2) -> 
-                         [binary_to_list(X2)|Accum2]
-                 end, [], X1)|Accum1]
-      end, [], ConstraintsBin).
+                         [] -> [];
+                         [[]] -> [];
+                         [[F | _] | _] = C when is_binary(F) -> C;
+                         [F | _] = C when is_binary(F) -> [C];
+                         _ -> []
+                     end,
+    lists:foldr(fun(X1, Accum1) ->
+                    [lists:foldr(fun(X2, Accum2) ->
+                                     [binary_to_list(X2)|Accum2]
+                                 end, [], X1)|Accum1]
+                end, [], ConstraintsBin).
 
 -spec zk() -> string().
 zk() ->
@@ -111,14 +113,17 @@ webui_url() ->
     Port = rms_config:get_value(port, 9090, integer),
     "http://" ++ Hostname ++ ":" ++ integer_to_list(Port) ++ "/".
 
+-spec riak_urls() -> [{string(), string()}].
+riak_urls() ->
+    %% TODO: replace with encoded json object value.
+    [{"riak-kv-2", "/vagrant/riak/packages/riak-2.1.4-ubuntu-14.04.tar.gz"},
+     {"riak-ts-1", "/vagrant/riak/packages/riak_ts-1.3.1-ubuntu-14.04.tar.gz"}].
+
 -spec artifacts() -> [string()].
 artifacts() ->
-    [
-     get_value(riak_pkg, "riak.tar.gz", string),
-     get_value(explorer_pkg, "riak_explorer.tar.gz", string),
+    [get_value(explorer_pkg, "riak_explorer.tar.gz", string),
      get_value(patches_pkg, "riak_erlpmd_patches.tar.gz", string),
-     get_value(executor_pkg, "riak_mesos_executor.tar.gz", string)
-    ].
+     get_value(executor_pkg, "riak_mesos_executor.tar.gz", string)].
 
 -spec riak_root_path() -> string().
 riak_root_path() ->
@@ -130,13 +135,15 @@ riak_root_path() ->
 
 %% TODO Should we log something in this case?
 -spec find_root_path(list(string())) -> string().
-find_root_path([]) -> ?DEFAULT_RIAK_ROOT_PATH;
+find_root_path([]) ->
+    ?DEFAULT_RIAK_ROOT_PATH;
 find_root_path([P | Paths]) ->
     case lists:suffix(?RIAK_BIN, P) of
         true ->
             %% Strip the known tail, leave only the prefix
             find_prefix(P, ?RIAK_BIN);
-        false -> find_root_path(Paths)
+        false ->
+            find_root_path(Paths)
     end.
 
 -spec find_prefix(string(), string()) -> string().
@@ -153,9 +160,12 @@ find_prefix(FullPath, Tail) ->
 
 % Drops from A the leading elements common to A and B.
 -spec drop_common_prefix(A::list(), B::list()) -> list().
-drop_common_prefix([], _) -> [];
-drop_common_prefix([X | Rest1], [X | Rest2]) -> drop_common_prefix(Rest1, Rest2);
-drop_common_prefix(Rest, _) -> Rest.
+drop_common_prefix([], _) ->
+    [];
+drop_common_prefix([X | Rest1], [X | Rest2]) ->
+    drop_common_prefix(Rest1, Rest2);
+drop_common_prefix(Rest, _) ->
+    Rest.
     
 -spec artifact_urls() -> [string()].
 artifact_urls() ->
@@ -219,7 +229,7 @@ unescape_html("&quot;"++Rest) -> "\"" ++ unescape_html(Rest);
 unescape_html("&lt;" ++ Rest) -> "<" ++ unescape_html(Rest);
 unescape_html("&gt;" ++ Rest) -> ">" ++ unescape_html(Rest);
 unescape_html("&amp;"++ Rest) -> "&" ++ unescape_html(Rest);
-unescape_html([C | Rest]) -> [ C | unescape_html(Rest) ].
+unescape_html([C | Rest]) -> [C | unescape_html(Rest)].
 
 -spec get_env_value(atom()) -> string() | false.
 get_env_value(Key) ->

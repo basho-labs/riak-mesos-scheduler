@@ -112,8 +112,10 @@ init_rest() ->
     ExecutorMem = rms_config:get_value(executor_mem, 512.0, number),
 
     PersistentVolPath = rms_config:persistent_path(),
+    RiakUrls = rms_config:riak_urls(),
     ArtifactUrls = rms_config:artifact_urls(),
     RiakRootPath = rms_config:riak_root_path(),
+
     Ref = riak_mesos_scheduler,
     Scheduler = rms_scheduler,
 
@@ -132,6 +134,7 @@ init_rest() ->
                         {persistent_path, PersistentVolPath},
                         {executor_cpus, ExecutorCpus},
                         {executor_mem, ExecutorMem},
+                        {riak_urls, RiakUrls},
                         {artifact_urls, ArtifactUrls},
                         {riak_root_path, RiakRootPath}],
 
