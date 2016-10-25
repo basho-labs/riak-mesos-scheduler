@@ -259,7 +259,9 @@ get_cluster(ReqData) ->
 
 add_cluster(ReqData) ->
     Key = wrq:path_info(key, ReqData),
-    Response = build_response(rms_cluster_manager:add_cluster(Key)),
+    Json = mochijson2:decode(wrq:req_body(ReqData)),
+    Cluster = [{key, Key} | rms_wm_helper:from_json(Json)],
+    Response = build_response(rms_wm_helper:add_cluster(Cluster)),
     {true, wrq:append_to_response_body(mochijson2:encode(Response), ReqData)}.
 
 set_cluster(ReqData) ->

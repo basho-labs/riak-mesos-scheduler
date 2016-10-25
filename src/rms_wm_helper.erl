@@ -33,11 +33,12 @@
          get_nodes_list/1,
          get_nodes_list/2,
          add_clusters_list_with_nodes_list/1,
-         add_cluster_with_nodes_list/1]).
+         add_cluster_with_nodes_list/1,
+         add_cluster/1]).
 
 -export([to_json/1, to_json/2, from_json/1, from_json/2]).
 
--define(CLUSTER_FIELDS, [key, riak_config, advanced_config, generation]).
+-define(CLUSTER_FIELDS, [key, riak_version, riak_config, advanced_config, generation]).
 
 -define(CLUSTER_NODE_FIELDS, [key, status, container_path, persistence_id]).
 
@@ -133,7 +134,17 @@ add_clusters_list_with_nodes_list({list, Clusters}) ->
 
 add_cluster_with_nodes_list(Cluster) ->
     {list, Nodes} = proplists:get_value(nodes, Cluster),
-    rms_cluster_manager:add_cluster(Cluster, Nodes).
+    rms_cluster_manager:add_cluster_with_nodes(Cluster, Nodes).
+
+add_cluster(Cluster) ->
+    Key = proplists:get_value(key, Cluster),
+    RiakVersion = proplists:get_value(riak_version, Cluster),
+    case valid_riak_version(RiakVersion) of
+        true ->
+            rms_cluster_manager:add_cluster(Key, RiakVersion);
+        false ->
+            {error, invalid_riak_version}
+    end.
 
 to_json(Value) ->
     to_json(Value, []).
@@ -164,6 +175,11 @@ from_json(Value, _Options) ->
     Value.
 
 %% Internal functions.
+
+-spec valid_riak_version(string()) -> boolean().
+valid_riak_version(RiakVersion) ->
+    {ok, RiakUrls} = rms_metadata:get_option(riak_urls),
+    lists:keymember(RiakVersion, 1, RiakUrls).
 
 -spec get_clusters_list([rms_cluster:key()], [atom()], [atom()],
                         [rms_metadata:cluster_state() |
