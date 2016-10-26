@@ -133,17 +133,23 @@ add_clusters_list_with_nodes_list({list, Clusters}) ->
     add_clusters_list_with_nodes_list(Clusters, []).
 
 add_cluster_with_nodes_list(Cluster) ->
-    {list, Nodes} = proplists:get_value(nodes, Cluster),
-    rms_cluster_manager:add_cluster_with_nodes(Cluster, Nodes).
+    RiakVersion = proplists:get_value(riak_version, Cluster),
+    case validate_riak_version(RiakVersion) of
+        ok ->
+            {list, Nodes} = proplists:get_value(nodes, Cluster),
+            rms_cluster_manager:add_cluster_with_nodes(Cluster, Nodes);
+        {error, _Reason} = Reason ->
+            Reason
+    end.
 
 add_cluster(Cluster) ->
     Key = proplists:get_value(key, Cluster),
     RiakVersion = proplists:get_value(riak_version, Cluster),
-    case valid_riak_version(RiakVersion) of
-        true ->
+    case validate_riak_version(RiakVersion) of
+        ok ->
             rms_cluster_manager:add_cluster(Key, RiakVersion);
-        false ->
-            {error, invalid_riak_version}
+        {error, _Reason} = Reason ->
+            Reason
     end.
 
 to_json(Value) ->
@@ -176,10 +182,15 @@ from_json(Value, _Options) ->
 
 %% Internal functions.
 
--spec valid_riak_version(string()) -> boolean().
-valid_riak_version(RiakVersion) ->
+-spec validate_riak_version(string()) -> boolean().
+validate_riak_version(RiakVersion) ->
     {ok, RiakUrls} = rms_metadata:get_option(riak_urls),
-    lists:keymember(RiakVersion, 1, RiakUrls).
+    case lists:keymember(RiakVersion, 1, RiakUrls) of
+        true ->
+            ok;
+        false ->
+            {error, invalid_riak_version}
+    end.
 
 -spec get_clusters_list([rms_cluster:key()], [atom()], [atom()],
                         [rms_metadata:cluster_state() |
@@ -216,17 +227,24 @@ get_nodes_list([], _NodeFields, Nodes) ->
     {list, lists:reverse(Nodes)}.
 
 add_clusters_list_with_nodes_list([Cluster | Clusters], Results) ->
-    {list, Nodes} = proplists:get_value(nodes, Cluster),
     Key = proplists:get_value(key, Cluster),
-    Result = case rms_cluster_manager:add_cluster(Cluster, Nodes) of
+    RiakVersion = proplists:get_value(riak_version, Cluster),
+    Result = case validate_riak_version(RiakVersion) of
                  ok ->
-                     [{key, Key}, {success, true}];
-                 {error, Reason} ->
-                     [{key, Key},
-                      {success, false},
-                      {reason, io_lib:format("~p", [Reason])}]
+                     {list, Nodes} = proplists:get_value(nodes, Cluster),
+                     rms_cluster_manager:add_cluster_with_nodes(Cluster, Nodes);
+                 {error, _Reason} = Error ->
+                     Error
              end,
-    add_clusters_list_with_nodes_list(Clusters, [Result | Results]);
+    Result1 = case Result of
+                  ok ->
+                      [{key, Key}, {success, true}];
+                  {error, Reason} ->
+                      [{key, Key},
+                       {success, false},
+                       {reason, io_lib:format("~p", [Reason])}]
+              end,
+    add_clusters_list_with_nodes_list(Clusters, [Result1 | Results]);
 add_clusters_list_with_nodes_list([], Results) ->
     {list, lists:reverse(Results)}.
 
