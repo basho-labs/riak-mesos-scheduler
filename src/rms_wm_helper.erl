@@ -20,7 +20,8 @@
 
 -module(rms_wm_helper).
 
--export([cluster_exists/1,
+-export([riak_urls/0,
+         cluster_exists/1,
          get_cluster_with_nodes_list/1,
          get_cluster_with_nodes_list/3,
          get_clusters_list_with_nodes_list/0,
@@ -52,6 +53,11 @@
                                agent_id_value]).
 
 %% External functions.
+
+-spec riak_urls() -> [{string(), string()}].
+riak_urls() ->
+    {ok, RiakUrls} = rms_metadata:get_option(riak_urls),
+    RiakUrls.
 
 -spec cluster_exists(rms_cluster:key()) -> boolean().
 cluster_exists(ClusterKey) ->
@@ -184,8 +190,7 @@ from_json(Value, _Options) ->
 
 -spec validate_riak_version(string()) -> boolean().
 validate_riak_version(RiakVersion) ->
-    {ok, RiakUrls} = rms_metadata:get_option(riak_urls),
-    case lists:keymember(RiakVersion, 1, RiakUrls) of
+    case lists:keymember(RiakVersion, 1, riak_urls()) of
         true ->
             ok;
         false ->

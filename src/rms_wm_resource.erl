@@ -7,6 +7,8 @@
          static_last_modified/1,
          static_file/1]).
 
+-export([riak_versions/1]).
+
 -export([clusters/1,
          set_clusters/1,
          cluster_exists/1,
@@ -113,6 +115,10 @@ routes() ->
             provides = {?MODULE, static_types},
             content = {?MODULE, static_file},
             last_modified = {?MODULE, static_last_modified}},
+     %% Riak versions.
+     #route{path = ["riak", "versions"],
+            methods = ['GET'],
+            content = {?MODULE, riak_versions}},
      %% Clusters.
      #route{path = ["clusters"],
             methods = ['GET', 'PUT'],
@@ -227,6 +233,12 @@ static_file(ReqData) ->
     ET = hash_body(Response),
     ReqData1 = wrq:set_resp_header("ETag", webmachine_util:quoted_string(ET), ReqData),
     {Response, ReqData1}.
+
+%% Riak versions.
+
+riak_versions(ReqData) ->
+    JsonRiakUrls = rms_wm_helper:to_json(rms_wm_helper:riak_urls()),
+    {[{riak_versions, JsonRiakUrls}], ReqData}.
 
 %% Clusters.
 
