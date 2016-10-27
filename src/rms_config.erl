@@ -115,9 +115,10 @@ webui_url() ->
 
 -spec riak_urls() -> [{string(), string()}].
 riak_urls() ->
-    %% TODO: replace with encoded json object value.
-    [{"riak-kv-2", "/vagrant/riak/packages/riak-2.1.4-ubuntu-14.04.tar.gz"},
-     {"riak-ts-1", "/vagrant/riak/packages/riak_ts-1.3.1-ubuntu-14.04.tar.gz"}].
+    RiakUrls = mochijson2:decode(get_value(riak_urls, undefined, string),
+                                 [{format, proplist}]),
+    [{binary_to_list(RiakVersion), binary_to_list(RiakUrl)} ||
+     {RiakVersion, RiakUrl} <- RiakUrls].
 
 -spec artifacts() -> [string()].
 artifacts() ->
