@@ -57,9 +57,8 @@
 
 -record(cluster, {key :: rms_cluster:key(),
                   riak_version = "" :: string(),
-                  %% TODO: change to undefined | string() for configs.
-                  riak_config = <<>> :: binary(),
-                  advanced_config = <<>> :: binary(),
+                  riak_config = undefined :: undefined | string(),
+                  advanced_config = undefined :: undefined | string(),
                   generation = 1 :: pos_integer(),
                   to_restart = {[], []} :: {list(rms_node:key()), list(rms_node:key())}}).
 

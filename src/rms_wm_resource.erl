@@ -75,13 +75,13 @@
 
 -define(CLUSTER_TO_JSON_OPTIONS,
         [{rename_keys, [{key, name}]},
-         {replace_values, [{riak_config, <<>>, null},
-                           {advanced_config, <<>>, null}]}]).
+         {replace_values, [{riak_config, undefined, null},
+                           {advanced_config, undefined, null}]}]).
 
 -define(CLUSTER_FROM_JSON_OPTIONS,
         [{rename_keys, [{name, key}]},
-         {replace_values, [{riak_config, null, <<>>},
-                           {advanced_config, null, <<>>}]}]).
+         {replace_values, [{riak_config, null, undefined},
+                           {advanced_config, null, undefined}]}]).
 
 -record(route, {base = ?API_ROUTE :: [string()],
                 path :: [string() | atom()],
@@ -298,16 +298,7 @@ restart_cluster(ReqData) ->
 
 cluster_riak_config_exists(ReqData) ->
     Key = wrq:path_info(key, ReqData),
-    Result = case rms_cluster_manager:get_cluster(Key) of
-                 {ok, _} ->
-                     case rms_cluster_manager:get_cluster_riak_config(Key) of
-                         {ok, <<>>} -> false;
-                         {ok, _} -> true
-                     end;
-                 {error, not_found} ->
-                     false
-             end,
-    {Result, ReqData}.
+    {rms_wm_helper:cluster_riak_config_exists(Key), ReqData}.
 
 get_cluster_riak_config(ReqData) ->
     Key = wrq:path_info(key, ReqData),
@@ -332,21 +323,12 @@ set_cluster_riak_config(ReqData) ->
 
 delete_cluster_riak_config(ReqData) ->
     Key = wrq:path_info(key, ReqData),
-    Response = rms_cluster_manager:set_cluster_riak_config(Key, <<>>),
+    Response = rms_cluster_manager:set_cluster_riak_config(Key, undefined),
     {true, wrq:append_to_response_body(mochijson2:encode(Response), ReqData)}.
 
 cluster_advanced_config_exists(ReqData) ->
     Key = wrq:path_info(key, ReqData),
-    Result = case rms_cluster_manager:get_cluster(Key) of
-                 {ok, _} ->
-                     case rms_cluster_manager:get_cluster_advanced_config(Key) of
-                         {ok, <<>>} -> false;
-                         {ok, _} -> true
-                     end;
-                 {error, not_found} ->
-                     false
-             end,
-    {Result, ReqData}.
+    {rms_wm_helper:cluster_advanced_config_exists(Key), ReqData}.
 
 get_cluster_advanced_config(ReqData) ->
     Key = wrq:path_info(key, ReqData),
@@ -371,7 +353,7 @@ set_cluster_advanced_config(ReqData) ->
 
 delete_cluster_advanced_config(ReqData) ->
     Key = wrq:path_info(key, ReqData),
-    Response = rms_cluster_manager:set_cluster_advanced_config(Key, <<>>),
+    Response = rms_cluster_manager:set_cluster_advanced_config(Key, undefined),
     {true, wrq:append_to_response_body(mochijson2:encode(Response), ReqData)}.
 
 %% Nodes.

@@ -22,6 +22,8 @@
 
 -export([riak_urls/0,
          cluster_exists/1,
+         cluster_riak_config_exists/1,
+         cluster_advanced_config_exists/1,
          get_cluster_with_nodes_list/1,
          get_cluster_with_nodes_list/3,
          get_clusters_list_with_nodes_list/0,
@@ -63,6 +65,28 @@ riak_urls() ->
 cluster_exists(ClusterKey) ->
     {ok, [{key, ClusterKey}]} == rms_cluster_manager:get_cluster(ClusterKey,
                                                                  [key]).
+
+-spec cluster_riak_config_exists(rms_cluster:key()) -> boolean().
+cluster_riak_config_exists(ClusterKey) ->
+    case rms_cluster_manager:get_cluster_riak_config(ClusterKey) of
+        {ok, undefined} ->
+            false;
+        {ok, _RiakConfig} ->
+            true;
+        {error, not_found} ->
+            false
+    end.
+
+-spec cluster_advanced_config_exists(rms_cluster:key()) -> boolean().
+cluster_advanced_config_exists(ClusterKey) ->
+    case rms_cluster_manager:get_cluster_advanced_config(ClusterKey) of
+        {ok, undefined} ->
+            false;
+        {ok, _RiakConfig} ->
+            true;
+        {error, not_found} ->
+            false
+    end.
 
 -spec get_cluster_with_nodes_list(rms_cluster:key()) ->
     {ok, [rms_metadata:cluster_state() |
