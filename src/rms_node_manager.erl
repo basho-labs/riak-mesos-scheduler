@@ -341,10 +341,10 @@ apply_reserved_offer(NodeKey, OfferHelper) ->
             {ok, NodeCpus} = rms_metadata:get_option(node_cpus),
             {ok, NodeMem} = rms_metadata:get_option(node_mem),
             {ok, NodeDisk} = rms_metadata:get_option(node_disk),
-            {ok, RiakUrls} = rms_metadata:get_option(riak_urls),
             {ok, ArtifactUrls} = rms_metadata:get_option(artifact_urls),
+            {ok, ArtifactDir} = rms_metadata:get_option(artifact_dir),
             {ok, PersistentPath} = rms_metadata:get_option(persistent_path),
-            {ok, RiakRootPath} = rms_metadata:get_option(riak_root_path),
+
             NodeNumPorts = ?NODE_NUM_PORTS,
             UnfitForReserved =
                 rms_offer_helper:unfit_for_reserved(
@@ -364,7 +364,8 @@ apply_reserved_offer(NodeKey, OfferHelper) ->
                     {ok, AgentIdValue} = get_node_agent_id_value(NodeKey),
 
                     {ok, RiakVersion} = rms_cluster_manager:get_cluster_riak_version(ClusterKey),
-                    RiakUrlStr = proplists:get_value(RiakVersion, RiakUrls),
+                    RiakUrlStr = proplists:get_value(RiakVersion, ArtifactUrls),
+                    RiakRootPath = rms_resources:riak_root_path(ArtifactDir, RiakUrlStr),
 
                     %% Apply reserved resources for task.
                     OfferHelper0 =
@@ -402,7 +403,9 @@ apply_reserved_offer(NodeKey, OfferHelper) ->
 
                     AgentId = erl_mesos_utils:agent_id(AgentIdValue),
 
-                    [RiakExplorerUrlStr, RiakPatchesStr, ExecutorUrlStr] = ArtifactUrls,
+                    ExecutorUrlStr = proplists:get_value("executor", ArtifactUrls),
+                    RiakPatchesStr = proplists:get_value("patches", ArtifactUrls),
+                    RiakExplorerUrlStr = proplists:get_value("explorer", ArtifactUrls),
 
                     ExecutorUrl = erl_mesos_utils:command_info_uri(ExecutorUrlStr, false, true),
                     RiakExplorerUrl = erl_mesos_utils:command_info_uri(RiakExplorerUrlStr, false, true),
