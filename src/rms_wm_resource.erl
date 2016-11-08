@@ -237,7 +237,7 @@ static_file(ReqData) ->
 %% Riak versions.
 
 riak_versions(ReqData) ->
-    JsonRiakUrls = rms_wm_helper:to_json(rms_wm_helper:riak_urls()),
+    JsonRiakUrls = rms_wm_helper:to_json(rms_wm_helper:riak_artifact_urls()),
     {[{riak_versions, JsonRiakUrls}], ReqData}.
 
 %% Clusters.
