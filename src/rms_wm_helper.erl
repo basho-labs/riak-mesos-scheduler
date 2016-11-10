@@ -20,7 +20,7 @@
 
 -module(rms_wm_helper).
 
--export([riak_artifact_urls/0,
+-export([riak_urls/0,
          cluster_exists/1,
          cluster_riak_config_exists/1,
          cluster_advanced_config_exists/1,
@@ -56,10 +56,10 @@
 
 %% External functions.
 
--spec riak_artifact_urls() -> [{string(), string()}].
-riak_artifact_urls() ->
-    {ok, ArtifactUrls} = rms_metadata:get_option(artifact_urls),
-    rms_resources:riak_artifact_urls(ArtifactUrls).
+-spec riak_urls() -> [{string(), string()}].
+riak_urls() ->
+    ResourceUrls = rms_config:resource_urls(),
+    rms_resources:riak_urls(ResourceUrls).
 
 -spec cluster_exists(rms_cluster:key()) -> boolean().
 cluster_exists(ClusterKey) ->
@@ -214,7 +214,7 @@ from_json(Value, _Options) ->
 
 -spec validate_riak_version(string()) -> boolean().
 validate_riak_version(RiakVersion) ->
-    case lists:keymember(RiakVersion, 1, riak_artifact_urls()) of
+    case lists:keymember(RiakVersion, 1, riak_urls()) of
         true ->
             ok;
         false ->

@@ -22,7 +22,7 @@
 
 -export([init_artifacts/4,
          artifact_urls/2,
-         riak_artifact_urls/1,
+         riak_urls/1,
          riak_root_path/2]).
 
 -define(EXCLUDE_ARTIFACT_KEYS, ["scheduler"]).
@@ -56,9 +56,9 @@ artifact_urls(BaseUrl, ResourceUrls) ->
     Artifacts = artifacts(ResourceUrls),
     [{Key, BaseUrl ++ Package} || {Key, Package} <- Artifacts].
 
--spec riak_artifact_urls([{string(), string()}]) -> [{string(), string()}].
-riak_artifact_urls(ArtifactUrls) ->
-    [ArtifactUrl || {Key, _Url} = ArtifactUrl <- ArtifactUrls,
+-spec riak_urls([{string(), string()}]) -> [{string(), string()}].
+riak_urls(ResourceUrls) ->
+    [ResourceUrl || {Key, _Url} = ResourceUrl <- ResourceUrls,
      case Key of
          "riak-" ++ _Version ->
              true;
