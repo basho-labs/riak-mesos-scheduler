@@ -145,26 +145,26 @@ get_node_hostname(Key) ->
 -spec get_node_hosts() -> {ok, rms_offer_helper:hostnames()}.
 get_node_hosts() ->
     {ok, lists:foldl(fun({_, Node}, Accum) ->
-                        case {proplists:get_value(status, Node),
-                              proplists:get_value(hostname, Node)} of
-                            {shutdown, _} -> Accum;
-                            {_,{error, _}} -> Accum;
-                            {_,undefined} -> Accum;
-                            {_,Host} -> [Host|Accum]
-                        end
-                end, [], rms_metadata:get_nodes())}.
+                         case {proplists:get_value(status, Node),
+                               proplists:get_value(hostname, Node)} of
+                             {shutdown, _} -> Accum;
+                             {_, {error, _}} -> Accum;
+                             {_, undefined} -> Accum;
+                             {_, Host} -> [Host|Accum]
+                         end
+                     end, [], rms_metadata:get_nodes())}.
 
 -spec get_node_attributes() -> {ok, [rms_offer_helper:attributes_group()]}.
 get_node_attributes() ->
     {ok, lists:foldl(fun({_, Node}, Accum) ->
-                        case {proplists:get_value(status, Node),
+                         case {proplists:get_value(status, Node),
                               proplists:get_value(attributes, Node)} of
-                            {shutdown, _} -> Accum;
-                            {_,{error, _}} -> Accum;
-                            {_,undefined} -> Accum;
-                            {_,Attributes} -> [Attributes|Accum]
-                        end
-                end, [], rms_metadata:get_nodes())}.
+                             {shutdown, _} -> Accum;
+                             {_, {error, _}} -> Accum;
+                             {_, undefined} -> Accum;
+                             {_, Attributes} -> [Attributes | Accum]
+                         end
+                     end, [], rms_metadata:get_nodes())}.
 
 -spec get_node_http_port(rms_node:key()) -> {ok, pos_integer()} | {error, term()}.
 get_node_http_port(Key) ->
@@ -176,25 +176,25 @@ get_node_name(Key) ->
 
 -spec get_node_http_url(rms_node:key()) -> {ok, string()} | {error, term()}.
 get_node_http_url(Key) ->
-    case {get_node_hostname(Key),
-          get_node_http_port(Key)} of
-        {{ok, H},{ok, P}} when is_list(H) and is_integer(P) ->
+    case {get_node_hostname(Key), get_node_http_port(Key)} of
+        {{ok, H}, {ok, P}} when is_list(H) and is_integer(P) ->
             {ok, H ++ ":" ++ integer_to_list(P)};
-        _ -> {error, not_found}
+        _ ->
+            {error, not_found}
     end.
 
 -spec get_node_agent_id_value(rms_node:key()) ->
-                                     {ok, string()} | {error, term()}.
+    {ok, string()} | {error, term()}.
 get_node_agent_id_value(Key) ->
     rms_node:get_field_value(agent_id_value, Key).
 
 -spec get_node_executor_id_value(rms_node:key()) ->
-                                     {ok, string()} | {error, term()}.
+    {ok, string()} | {error, term()}.
 get_node_executor_id_value(Key) ->
     rms_node:get_field_value(executor_id_value, Key).
 
 -spec get_node_persistence_id(rms_node:key()) ->
-                                     {ok, string()} | {error, term()}.
+    {ok, string()} | {error, term()}.
 get_node_persistence_id(Key) ->
     rms_node:get_field_value(persistence_id, Key).
 
@@ -329,8 +329,7 @@ apply_unreserved_offer(NodeKey, OfferHelper) ->
     end.
 
 -spec apply_reserved_offer(rms_node:key(), rms_offer_helper:offer_helper()) ->
-                                  {ok, rms_offer_helper:offer_helper()} |
-                                  {error, not_enough_resources | term()}.
+    {ok, rms_offer_helper:offer_helper()} | {error, term()}.
 apply_reserved_offer(NodeKey, OfferHelper) ->
     case get_node_pid(NodeKey) of
         {ok, _Pid} ->
@@ -343,8 +342,9 @@ apply_reserved_offer(NodeKey, OfferHelper) ->
             {ok, NodeMem} = rms_metadata:get_option(node_mem),
             {ok, NodeDisk} = rms_metadata:get_option(node_disk),
             {ok, ArtifactUrls} = rms_metadata:get_option(artifact_urls),
+            {ok, ArtifactDir} = rms_metadata:get_option(artifact_dir),
             {ok, PersistentPath} = rms_metadata:get_option(persistent_path),
-            {ok, RiakRootPath} = rms_metadata:get_option(riak_root_path),
+
             NodeNumPorts = ?NODE_NUM_PORTS,
             UnfitForReserved =
                 rms_offer_helper:unfit_for_reserved(
@@ -362,6 +362,10 @@ apply_reserved_offer(NodeKey, OfferHelper) ->
                     {ok, PersistenceId} = get_node_persistence_id(NodeKey),
                     {ok, NodeHostname} = get_node_hostname(NodeKey),
                     {ok, AgentIdValue} = get_node_agent_id_value(NodeKey),
+
+                    {ok, RiakVersion} = rms_cluster_manager:get_cluster_riak_version(ClusterKey),
+                    RiakUrlStr = proplists:get_value(RiakVersion, ArtifactUrls),
+                    RiakRootPath = rms_resources:riak_root_path(ArtifactDir, RiakUrlStr),
 
                     %% Apply reserved resources for task.
                     OfferHelper0 =
@@ -399,8 +403,9 @@ apply_reserved_offer(NodeKey, OfferHelper) ->
 
                     AgentId = erl_mesos_utils:agent_id(AgentIdValue),
 
-                    [RiakUrlStr, RiakExplorerUrlStr, RiakPatchesStr, ExecutorUrlStr] =
-                        ArtifactUrls,
+                    ExecutorUrlStr = proplists:get_value("executor", ArtifactUrls),
+                    RiakPatchesStr = proplists:get_value("patches", ArtifactUrls),
+                    RiakExplorerUrlStr = proplists:get_value("explorer", ArtifactUrls),
 
                     ExecutorUrl = erl_mesos_utils:command_info_uri(ExecutorUrlStr, false, true),
                     RiakExplorerUrl = erl_mesos_utils:command_info_uri(RiakExplorerUrlStr, false, true),
@@ -414,10 +419,11 @@ apply_reserved_offer(NodeKey, OfferHelper) ->
                     {ok, RiakIface} = rms_metadata:get_option(node_iface),
                     CommandInfo =
                         case RiakIface of
-                            "" -> CommandInfo0;
+                            "" ->
+                                CommandInfo0;
                             Iface ->
-                                NodeIfaceEnv = rms_erl_mesos_utils:environment_variable(
-                                                 "RIAK_MESOS_NODE_IFACE", Iface),
+                                NodeIfaceEnv =
+                                    rms_erl_mesos_utils:environment_variable("RIAK_MESOS_NODE_IFACE", Iface),
                                 CmdEnv = rms_erl_mesos_utils:environment([NodeIfaceEnv]),
                                 rms_erl_mesos_utils:set_command_info_environment(CommandInfo0, CmdEnv)
                         end,
@@ -449,7 +455,7 @@ apply_reserved_offer(NodeKey, OfferHelper) ->
 
                     % Tack a new UUID onto ExecutorId - this way we don't clash with previous instances of this same node
                     % in places like mesos web-ui
-                    % NB This is used as the executor's nodename so must be a valid erlang nodename
+                    % NB This is used as the executor's node name so must be a valid erlang node name
                     ExecutorIdValue = NodeKey ++ "-" ++ uuid:to_string(uuid:uuid4()),
                     ExecutorId = erl_mesos_utils:executor_id(ExecutorIdValue),
 

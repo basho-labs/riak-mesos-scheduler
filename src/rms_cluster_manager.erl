@@ -27,10 +27,11 @@
 -export([get_cluster_keys/0,
          get_cluster/1,
          get_cluster/2,
+         get_cluster_riak_version/1,
          get_cluster_riak_config/1,
          get_cluster_advanced_config/1,
-         add_cluster/1,
          add_cluster/2,
+         add_cluster_with_nodes/2,
          set_cluster_riak_config/2,
          set_cluster_advanced_config/2,
          restart_cluster/1,
@@ -78,6 +79,11 @@ get_cluster(Key) ->
 get_cluster(Key, Fields) ->
     rms_cluster:get(Key, Fields).
 
+-spec get_cluster_riak_version(rms_cluster:key()) ->
+    {ok, string()} | {error, term()}.
+get_cluster_riak_version(Key) ->
+    rms_cluster:get_field_value(riak_version, Key).
+
 -spec get_cluster_riak_config(rms_cluster:key()) ->
     {ok, binary()} | {error, term()}.
 get_cluster_riak_config(Key) ->
@@ -88,13 +94,13 @@ get_cluster_riak_config(Key) ->
 get_cluster_advanced_config(Key) ->
     rms_cluster:get_field_value(advanced_config, Key).
 
--spec add_cluster(rms_cluster:key()) -> ok | {error, term()}.
-add_cluster(Key) ->
+-spec add_cluster(rms_cluster:key(), string()) -> ok | {error, term()}.
+add_cluster(Key, RiakVersion) ->
     case get_cluster(Key) of
         {ok, _Cluster} ->
             {error, exists};
         {error, not_found} ->
-            ClusterSpec = cluster_spec(Key),
+            ClusterSpec = cluster_spec(Key, RiakVersion),
             case supervisor:start_child(?MODULE, ClusterSpec) of
                 {ok, _Pid} ->
                     ok;
@@ -110,19 +116,20 @@ add_cluster(Key) ->
             end
     end.
 
--spec add_cluster(rms_metadata:cluster_state(), [rms_metadata:node_state()]) ->
+-spec add_cluster_with_nodes(rms_metadata:cluster_state(),
+                             [rms_metadata:node_state()]) ->
     ok | {error, term()}.
-add_cluster(Cluster, Nodes) ->
+add_cluster_with_nodes(Cluster, Nodes) ->
     Key = proplists:get_value(key, Cluster),
-    case rms_cluster_manager:add_cluster(Key) of
+    RiakVersion = proplists:get_value(riak_version, Cluster),
+    case add_cluster(Key, RiakVersion) of
         ok ->
             {ok, Pid} = get_cluster_pid(Key),
             RiakConfig = proplists:get_value(riak_config, Cluster),
             AdvancedConfig = proplists:get_value(advanced_config, Cluster),
             Generation = proplists:get_value(generation, Cluster),
-            ok = rms_cluster_manager:set_cluster_riak_config(Key, RiakConfig),
-            ok = rms_cluster_manager:set_cluster_advanced_config(Key,
-                AdvancedConfig),
+            ok = set_cluster_riak_config(Key, RiakConfig),
+            ok = set_cluster_advanced_config(Key, AdvancedConfig),
             ok = rms_cluster:set_generation(Pid, Generation),
             [begin
                  NodeKey = proplists:get_value(key, Node),
@@ -215,7 +222,7 @@ executors_to_shutdown([NodeKey|Rest], Accum) ->
       {ok, true} ->
           {ok, AgentIdValue} = rms_node_manager:get_node_agent_id_value(NodeKey),
           {ok, ExecutorIdValue} = rms_node_manager:get_node_executor_id_value(NodeKey),
-          executors_to_shutdown(Rest, [{ExecutorIdValue, AgentIdValue}|Accum]);
+          executors_to_shutdown(Rest, [{ExecutorIdValue, AgentIdValue} | Accum]);
       {ok, false} ->
           executors_to_shutdown(Rest, Accum)
   end.
@@ -285,8 +292,8 @@ apply_offer(OfferHelper) ->
 -spec init({}) ->
     {ok, {{supervisor:strategy(), 1, 1}, [supervisor:child_spec()]}}.
 init({}) ->
-    Specs = [cluster_spec(Key) ||
-             {Key, _Cluster} <- rms_metadata:get_clusters()],
+    Specs = [cluster_spec(Key, proplists:get_value(riak_version, Cluster)) ||
+             {Key, Cluster} <- rms_metadata:get_clusters()],
     {ok, {{one_for_one, 1, 1}, Specs}}.
 
 %% Internal functions.
@@ -423,10 +430,10 @@ unreserve_volumes(OfferHelper) ->
             OfferHelper
     end.
 
--spec cluster_spec(rms_cluster:key()) -> supervisor:child_spec().
-cluster_spec(Key) ->
+-spec cluster_spec(rms_cluster:key(), string()) -> supervisor:child_spec().
+cluster_spec(Key, RiakVersion) ->
     {Key,
-        {rms_cluster, start_link, [Key]},
+        {rms_cluster, start_link, [Key, RiakVersion]},
         transient, 5000, worker, [rms_cluster]}.
 
 -spec get_cluster_pid(rms_cluster:key()) -> {ok, pid()} | {error, not_found}.

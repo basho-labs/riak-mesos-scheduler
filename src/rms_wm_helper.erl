@@ -20,7 +20,10 @@
 
 -module(rms_wm_helper).
 
--export([cluster_exists/1,
+-export([riak_urls/0,
+         cluster_exists/1,
+         cluster_riak_config_exists/1,
+         cluster_advanced_config_exists/1,
          get_cluster_with_nodes_list/1,
          get_cluster_with_nodes_list/3,
          get_clusters_list_with_nodes_list/0,
@@ -33,11 +36,12 @@
          get_nodes_list/1,
          get_nodes_list/2,
          add_clusters_list_with_nodes_list/1,
-         add_cluster_with_nodes_list/1]).
+         add_cluster_with_nodes_list/1,
+         add_cluster/1]).
 
 -export([to_json/1, to_json/2, from_json/1, from_json/2]).
 
--define(CLUSTER_FIELDS, [key, riak_config, advanced_config, generation]).
+-define(CLUSTER_FIELDS, [key, riak_version, riak_config, advanced_config, generation]).
 
 -define(CLUSTER_NODE_FIELDS, [key, status, container_path, persistence_id]).
 
@@ -52,10 +56,37 @@
 
 %% External functions.
 
+-spec riak_urls() -> [{string(), string()}].
+riak_urls() ->
+    ResourceUrls = rms_config:resource_urls(),
+    rms_resources:riak_urls(ResourceUrls).
+
 -spec cluster_exists(rms_cluster:key()) -> boolean().
 cluster_exists(ClusterKey) ->
     {ok, [{key, ClusterKey}]} == rms_cluster_manager:get_cluster(ClusterKey,
                                                                  [key]).
+
+-spec cluster_riak_config_exists(rms_cluster:key()) -> boolean().
+cluster_riak_config_exists(ClusterKey) ->
+    case rms_cluster_manager:get_cluster_riak_config(ClusterKey) of
+        {ok, undefined} ->
+            false;
+        {ok, _RiakConfig} ->
+            true;
+        {error, not_found} ->
+            false
+    end.
+
+-spec cluster_advanced_config_exists(rms_cluster:key()) -> boolean().
+cluster_advanced_config_exists(ClusterKey) ->
+    case rms_cluster_manager:get_cluster_advanced_config(ClusterKey) of
+        {ok, undefined} ->
+            false;
+        {ok, _RiakConfig} ->
+            true;
+        {error, not_found} ->
+            false
+    end.
 
 -spec get_cluster_with_nodes_list(rms_cluster:key()) ->
     {ok, [rms_metadata:cluster_state() |
@@ -132,8 +163,24 @@ add_clusters_list_with_nodes_list({list, Clusters}) ->
     add_clusters_list_with_nodes_list(Clusters, []).
 
 add_cluster_with_nodes_list(Cluster) ->
-    {list, Nodes} = proplists:get_value(nodes, Cluster),
-    rms_cluster_manager:add_cluster(Cluster, Nodes).
+    RiakVersion = proplists:get_value(riak_version, Cluster),
+    case validate_riak_version(RiakVersion) of
+        ok ->
+            {list, Nodes} = proplists:get_value(nodes, Cluster),
+            rms_cluster_manager:add_cluster_with_nodes(Cluster, Nodes);
+        {error, _Reason} = Reason ->
+            Reason
+    end.
+
+add_cluster(Cluster) ->
+    Key = proplists:get_value(key, Cluster),
+    RiakVersion = proplists:get_value(riak_version, Cluster),
+    case validate_riak_version(RiakVersion) of
+        ok ->
+            rms_cluster_manager:add_cluster(Key, RiakVersion);
+        {error, _Reason} = Reason ->
+            Reason
+    end.
 
 to_json(Value) ->
     to_json(Value, []).
@@ -164,6 +211,15 @@ from_json(Value, _Options) ->
     Value.
 
 %% Internal functions.
+
+-spec validate_riak_version(string()) -> boolean().
+validate_riak_version(RiakVersion) ->
+    case lists:keymember(RiakVersion, 1, riak_urls()) of
+        true ->
+            ok;
+        false ->
+            {error, invalid_riak_version}
+    end.
 
 -spec get_clusters_list([rms_cluster:key()], [atom()], [atom()],
                         [rms_metadata:cluster_state() |
@@ -200,17 +256,24 @@ get_nodes_list([], _NodeFields, Nodes) ->
     {list, lists:reverse(Nodes)}.
 
 add_clusters_list_with_nodes_list([Cluster | Clusters], Results) ->
-    {list, Nodes} = proplists:get_value(nodes, Cluster),
     Key = proplists:get_value(key, Cluster),
-    Result = case rms_cluster_manager:add_cluster(Cluster, Nodes) of
+    RiakVersion = proplists:get_value(riak_version, Cluster),
+    Result = case validate_riak_version(RiakVersion) of
                  ok ->
-                     [{key, Key}, {success, true}];
-                 {error, Reason} ->
-                     [{key, Key},
-                      {success, false},
-                      {reason, io_lib:format("~p", [Reason])}]
+                     {list, Nodes} = proplists:get_value(nodes, Cluster),
+                     rms_cluster_manager:add_cluster_with_nodes(Cluster, Nodes);
+                 {error, _Reason} = Error ->
+                     Error
              end,
-    add_clusters_list_with_nodes_list(Clusters, [Result | Results]);
+    Result1 = case Result of
+                  ok ->
+                      [{key, Key}, {success, true}];
+                  {error, Reason} ->
+                      [{key, Key},
+                       {success, false},
+                       {reason, io_lib:format("~p", [Reason])}]
+              end,
+    add_clusters_list_with_nodes_list(Clusters, [Result1 | Results]);
 add_clusters_list_with_nodes_list([], Results) ->
     {list, lists:reverse(Results)}.
 
