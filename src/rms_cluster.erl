@@ -50,6 +50,8 @@
          requested/3,
          running/2,
          running/3,
+         modified/2,
+         modified/3,
          restarting/2,
          restarting/3,
          shutdown/2,
@@ -217,6 +219,14 @@ running({node_stopped, _NodeKey}, Cluster) ->
 running(_Event, Cluster) ->
     {stop, {unhandled_event, _Event}, Cluster}.
 
+-spec modified(event(), cluster_state()) -> state_cb_return().
+modified({node_started,_} = Event, #cluster{}=Cluster) ->
+    requested(Event, Cluster);
+modified({node_stopped, _}, Cluster) ->
+    {next_state, modified, Cluster};
+modified(_Event, Cluster) ->
+    {stop, {unhandled_event, _Event}, Cluster}.
+
 -spec restarting(event(), cluster_state()) -> state_cb_return().
 %% TODO Handle timeout when restarting (i.e. when node has not come back soon enougH)
 restarting(timeout, #cluster{}=Cluster) ->
@@ -275,6 +285,10 @@ requested(_Event, _From, Cluster) ->
 running(_Event, _From, Cluster) ->
     {reply, {error, unhandled_event}, running, Cluster}.
 
+-spec modified(event(), from(), cluster_state()) -> state_cb_reply().
+modified(_Event, _From, Cluster) ->
+    {reply, {error, unhandled_event}, modified, Cluster}.
+
 -spec restarting(event(), from(), cluster_state()) -> state_cb_reply().
 restarting(_Event, _From, Cluster) ->
     {reply, {error, unhandled_event}, restarting, Cluster}.
@@ -303,7 +317,7 @@ handle_sync_event({set_riak_config, RiakConfig}, _From, StateName, Cluster) ->
     Cluster1 = Cluster#cluster{riak_config = RiakConfig},
     case update_cluster(Cluster#cluster.key, {StateName, Cluster1}) of
         ok ->
-            update_and_reply({StateName, Cluster}, {StateName, Cluster1}, ok);
+            update_and_reply({StateName, Cluster}, {modified, Cluster1}, ok);
         {error, _}=Err ->
             {reply, Err, StateName, Cluster}
     end;
@@ -311,9 +325,23 @@ handle_sync_event({set_advanced_config, AdvConfig}, _From, StateName, Cluster) -
     Cluster1 = Cluster#cluster{advanced_config = AdvConfig},
     case update_cluster(Cluster#cluster.key, {StateName, Cluster1}) of
         ok ->
-            update_and_reply({StateName, Cluster}, {StateName, Cluster1}, ok);
+            update_and_reply({StateName, Cluster}, {modified, Cluster1}, ok);
         {error,_}=Err ->
             {reply, Err, StateName, Cluster}
+    end;
+handle_sync_event({set_riak_version, Version}, _From, StateName, Cluster) ->
+    RiakVersions = rms_wm_helper:riak_urls(),
+    case lists:keyfind(Version, 1, RiakVersions) of
+        false ->
+            {reply, {error, {unknown_riak_version, Version}}, StateName, Cluster};
+        {Version, _} ->
+            Cluster1 = Cluster#cluster{riak_version = Version},
+            case update_cluster(Cluster#cluster.key, {StateName, Cluster1}) of
+                ok ->
+                    update_and_reply({StateName, Cluster}, {modified, Cluster1}, ok);
+                {error, _} = Err ->
+                    {reply, Err, StateName, Cluster}
+            end
     end;
 handle_sync_event({set_generation, Generation}, _From, StateName, Cluster) ->
     Cluster1 = Cluster#cluster{generation = Generation},
