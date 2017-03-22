@@ -32,6 +32,7 @@
          get_cluster_advanced_config/1,
          add_cluster/2,
          add_cluster_with_nodes/2,
+         set_cluster_riak_version/2,
          set_cluster_riak_config/2,
          set_cluster_advanced_config/2,
          restart_cluster/1,
@@ -138,6 +139,17 @@ add_cluster_with_nodes(Cluster, Nodes) ->
             ok;
         {error, _Reason} = Error ->
             Error
+    end.
+
+
+-spec set_cluster_riak_version(rms_cluster:key(), string()) ->
+    ok | {error, term()}.
+set_cluster_riak_version(Key, RiakVersion) ->
+    case get_cluster_pid(Key) of
+        {ok, Pid} ->
+            rms_cluster:set_riak_version(Pid, RiakVersion);
+        {error, Reason} ->
+            {error, Reason}
     end.
 
 -spec set_cluster_riak_config(rms_cluster:key(), binary()) ->

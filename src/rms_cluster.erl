@@ -27,6 +27,7 @@
 -export([get/1,
          get/2,
          get_field_value/2,
+         set_riak_version/2,
          set_riak_config/2,
          set_advanced_config/2,
          set_generation/2,
@@ -115,6 +116,11 @@ get_field_value(Field, Key) ->
 -spec leave(pid(), rms_node:key(), list(rms_node:key())) -> ok | {error, term()}.
 leave(Pid, NodeKey, NodeKeys) ->
     gen_fsm:send_all_state_event(Pid, {leave, NodeKey, NodeKeys}).
+
+-spec set_riak_version(pid(), string()) -> ok | {error, term()}.
+set_riak_version(Pid, RiakVersion) ->
+    gen_fsm:sync_send_all_state_event(Pid, {set_riak_version, RiakVersion}).
+
 
 -spec set_riak_config(pid(), binary()) -> ok | {error, term()}.
 set_riak_config(Pid, RiakConfig) ->

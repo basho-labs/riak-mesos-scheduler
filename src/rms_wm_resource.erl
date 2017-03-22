@@ -18,6 +18,8 @@
          destroy_cluster/1,
          restart_cluster/1,
          cluster_riak_config_exists/1,
+         get_cluster_riak_version/1,
+         set_cluster_riak_version/1,
          get_cluster_riak_config/1,
          set_cluster_riak_config/1,
          delete_cluster_riak_config/1,
@@ -141,6 +143,12 @@ routes() ->
             exists = {?MODULE, cluster_exists},
             accepts = ?ACCEPT_TEXT,
             accept = {?MODULE, restart_cluster}},
+     #route{path = ["clusters", key, "riak_version"],
+            methods = ['GET', 'PUT'],
+            provides = ?PROVIDE_TEXT,
+            content = {?MODULE, get_cluster_riak_version},
+            accepts = ?ACCEPT_TEXT,
+            accept = {?MODULE, set_cluster_riak_version}},
      #route{path = ["clusters", key, "config"],
             methods = ['GET', 'PUT', 'DELETE'],
             exists = {?MODULE, cluster_riak_config_exists},
@@ -299,6 +307,23 @@ restart_cluster(ReqData) ->
 cluster_riak_config_exists(ReqData) ->
     Key = wrq:path_info(key, ReqData),
     {rms_wm_helper:cluster_riak_config_exists(Key), ReqData}.
+
+get_cluster_riak_version(ReqData) ->
+    Key = wrq:path_info(key, ReqData),
+    {ok, Response} = rms_cluster_manager:get_cluster_riak_version(Key),
+    {Response, ReqData}.
+
+set_cluster_riak_version(ReqData) ->
+    case wrq:req_body(ReqData) of
+        <<>> ->
+            Response = build_response({error, empty}),
+            {false, wrq:append_to_response_body(mochijson2:encode(Response), ReqData)};
+        BinRiakVersion when is_binary(BinRiakVersion) ->
+            Key = wrq:path_info(key, ReqData),
+            RiakVersion = binary_to_list(BinRiakVersion),
+            Response = rms_cluster_manager:set_cluster_riak_version(Key, RiakVersion),
+            {true, wrq:append_to_response_body(mochijson2:encode(Response), ReqData)}
+    end.
 
 get_cluster_riak_config(ReqData) ->
     Key = wrq:path_info(key, ReqData),
