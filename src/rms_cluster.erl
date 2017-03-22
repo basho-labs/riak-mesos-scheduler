@@ -475,7 +475,7 @@ maybe_do_join(NodeKey, [ExistingNodeKey|Rest]) ->
                 {ok, [{<<"error">>,<<"not_single_node">>}]} ->
                     ok;
                 {ok, [{_,[{<<"success">>,true}]}]} ->
-                    ok;            
+                    ok;
                 {ok, Json} ->
                     lager:warning("Failed node join attempt from node ~s to node ~s. Reason: ~p", [N, E, Json]),
                     maybe_do_join(NodeKey, Rest);
