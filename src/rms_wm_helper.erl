@@ -41,7 +41,7 @@
 
 -export([to_json/1, to_json/2, from_json/1, from_json/2]).
 
--define(CLUSTER_FIELDS, [key, riak_version, riak_config, advanced_config, generation]).
+-define(CLUSTER_FIELDS, [key, status, riak_version, riak_config, advanced_config, generation]).
 
 -define(CLUSTER_NODE_FIELDS, [key, status, container_path, persistence_id]).
 
