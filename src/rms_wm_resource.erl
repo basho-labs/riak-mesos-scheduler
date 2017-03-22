@@ -321,7 +321,7 @@ set_cluster_riak_version(ReqData) ->
         BinRiakVersion when is_binary(BinRiakVersion) ->
             Key = wrq:path_info(key, ReqData),
             RiakVersion = binary_to_list(BinRiakVersion),
-            Response = rms_cluster_manager:set_cluster_riak_version(Key, RiakVersion),
+            Response = build_response(rms_cluster_manager:set_cluster_riak_version(Key, RiakVersion)),
             {true, wrq:append_to_response_body(mochijson2:encode(Response), ReqData)}
     end.
 
